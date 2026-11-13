@@ -44,7 +44,7 @@ Linux 容器由 [tawcroot](https://github.com/taowen/tawc) 提供，单进程、
 ## 构建
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/mf9593/codetool.git
 cd codetool
 
 # 1. 配置 SDK 路径（Android Studio 会自动生成）
