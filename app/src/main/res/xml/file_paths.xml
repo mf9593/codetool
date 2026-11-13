@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- FileProvider 共享路径：让外部应用能通过 content:// 读取本应用文件（如日志）。 -->
+<paths>
+    <!-- 应用私有 files 目录（codetool.log 在 files/logs/ 下） -->
+    <files-path name="internal_files" path="." />
+    <!-- 外部私有目录（Android/data/<pkg>/files/...，日志镜像在这里） -->
+    <external-files-path name="external_files" path="." />
+    <!-- 共享存储根（Download 等），仅在有 MANAGE_EXTERNAL_STORAGE 时有效 -->
+    <external-path name="external_root" path="." />
+</paths>

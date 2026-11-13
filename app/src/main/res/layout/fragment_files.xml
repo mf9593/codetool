@@ -1,0 +1,151 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?android:attr/colorBackground">
+
+    <!-- 路径栏：上级 + 当前路径 + 新建（页面标题由外层 Toolbar 统一，避免双标题栏） -->
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingTop="4dp">
+
+        <ImageView
+            android:id="@+id/upBtn"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:src="@drawable/ic_up"
+            android:contentDescription="上级目录"
+            android:padding="6dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/pathText"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:layout_marginStart="4dp"
+            android:fontFamily="monospace"
+            android:textAppearance="?attr/textAppearanceLabelMedium"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:ellipsize="start"
+            android:maxLines="1"
+            android:text="/storage/emulated/0/Download/codetool" />
+
+        <ImageView
+            android:id="@+id/btnNew"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:src="@drawable/ic_plus"
+            android:contentDescription="新建"
+            android:padding="8dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="?attr/colorOnSurfaceVariant" />
+    </LinearLayout>
+
+    <!-- 快速入口 + 路径收藏：同一行，无图标，统一 Chip 样式 -->
+    <HorizontalScrollView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingHorizontal="8dp"
+        android:paddingBottom="4dp"
+        android:scrollbars="none">
+
+        <com.google.android.material.chip.ChipGroup
+            android:id="@+id/entryChips"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            app:chipSpacingHorizontal="4dp">
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/btnContainer"
+                style="@style/Widget.CodeTool.FileChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="容器根目录"
+                android:checkable="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/btnCodeToolDir"
+                style="@style/Widget.CodeTool.FileChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="codetool"
+                android:checkable="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/btnDownloadDir"
+                style="@style/Widget.CodeTool.FileChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="Download"
+                android:checkable="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/btnLogDir"
+                style="@style/Widget.CodeTool.FileChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="日志"
+                android:checkable="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/btnAppDataDir"
+                style="@style/Widget.CodeTool.FileChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="应用数据"
+                android:checkable="true" />
+
+            <!-- 路径收藏 chips 由 FilesFragment.renderFavChips() 动态追加 -->
+        </com.google.android.material.chip.ChipGroup>
+    </HorizontalScrollView>
+
+    <FrameLayout
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1">
+
+        <androidx.recyclerview.widget.RecyclerView
+            android:id="@+id/fileList"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:clipToPadding="false"
+            android:paddingVertical="4dp"
+            android:scrollbars="vertical" />
+
+        <!-- 中间状态 -->
+        <LinearLayout
+            android:id="@+id/emptyState"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:orientation="vertical"
+            android:gravity="center"
+            android:padding="32dp"
+            android:visibility="gone">
+
+            <ImageView
+                android:id="@+id/emptyIcon"
+                android:layout_width="56dp"
+                android:layout_height="56dp"
+                android:src="@drawable/ic_folder"
+                android:contentDescription="@null"
+                app:tint="?attr/colorOnSurfaceVariant" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/emptyText"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="12dp"
+                android:textAppearance="?attr/textAppearanceTitleMedium"
+                android:text="空目录" />
+        </LinearLayout>
+    </FrameLayout>
+
+</LinearLayout>

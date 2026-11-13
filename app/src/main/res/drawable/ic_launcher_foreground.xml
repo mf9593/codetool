@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+
+    <!--
+      LOGO：按比例设计的终端窗框（横向 52:40 ≈ 1.3:1，天然终端长宽比）。
+      窗框居中于 54,54，四边不等距（左右 28，上下 34），符合终端横屏形态。
+      外接半径 sqrt(26²+20²)≈32.8 < 33（自适应图标安全区），不会溢出被裁切。
+    -->
+    <path
+        android:pathData="M38,34 h32 a10,10 0 0 1 10,10 v20 a10,10 0 0 1 -10,10 H38 a10,10 0 0 1 -10,-10 V44 a10,10 0 0 1 10,-10 z"
+        android:strokeColor="#FF006A78"
+        android:strokeWidth="3.5"
+        android:fillColor="#00000000" />
+
+    <!-- 标题栏分隔线（横向贯穿） -->
+    <path
+        android:pathData="M28,47 H80"
+        android:strokeColor="#FFA8D6DD"
+        android:strokeWidth="2" />
+
+    <!-- 标题栏三点（mac 风，左上，位于标题栏垂直中心） -->
+    <path android:pathData="M36,40.5 m-1.8,0 a1.8,1.8 0 1 1 3.6,0 a1.8,1.8 0 1 1 -3.6,0" android:fillColor="#FF006A78" />
+    <path android:pathData="M43,40.5 m-1.8,0 a1.8,1.8 0 1 1 3.6,0 a1.8,1.8 0 1 1 -3.6,0" android:fillColor="#FF26A0B5" />
+    <path android:pathData="M50,40.5 m-1.8,0 a1.8,1.8 0 1 1 3.6,0 a1.8,1.8 0 1 1 -3.6,0" android:fillColor="#FF4DD0E1" />
+
+    <!-- 提示符 > （深青，粗，圆头） -->
+    <path
+        android:pathData="M39,54 L48,59 L39,64"
+        android:strokeColor="#FF006A78"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round"
+        android:fillColor="#00000000" />
+
+    <!-- 光标 _ （深青，粗，圆头） -->
+    <path
+        android:pathData="M54,69.5 L71,69.5"
+        android:strokeColor="#FF006A78"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:fillColor="#00000000" />
+</vector>

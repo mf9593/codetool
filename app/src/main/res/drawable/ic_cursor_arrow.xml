@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自绘鼠标箭头：白底黑描边，任何背景上都看得清（16dp 接近系统光标大小） -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="16dp"
+    android:height="19dp"
+    android:viewportWidth="22"
+    android:viewportHeight="26">
+    <path
+        android:fillColor="#FFFFFFFF"
+        android:strokeColor="#EE000000"
+        android:strokeWidth="1.2"
+        android:pathData="M3,2 L3,19.5 L7.6,15.4 L10.4,22 L13.6,20.6 L10.9,14.4 L17,14.4 Z" />
+</vector>

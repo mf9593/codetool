@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 选中/未选中都不填充，直接透出页面底色（与终端标签一致），
+     选中态只由描边颜色/粗细表达。任何固定填充色在浅色主题下都会偏灰。 -->
+<selector xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:color="@android:color/transparent" />
+</selector>

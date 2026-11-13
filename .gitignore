@@ -1,0 +1,28 @@
+# Gradle / 构建产物
+.gradle/
+build/
+.kotlin/
+local.properties
+captures/
+
+# IDE
+.idea/
+*.iml
+.DS_Store
+
+# 签名与密钥（绝不入库）
+*.jks
+*.keystore
+*.p12
+*.pfx
+keystore/
+
+# 第三方参考源码：Termux 上游副本（GPLv3，含上游 dev_keystore.jks），构建未引用
+termux-src/
+
+# 构建输入：根目录 assets 里的 209MB cloud image 与重复 rootfs，运行时用的是 app/src/main/assets 下的文件
+/assets/
+
+# Python 缓存
+__pycache__/
+*.pyc

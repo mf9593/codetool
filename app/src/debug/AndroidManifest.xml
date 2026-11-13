@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <application>
+        <!-- 仅 debug 构建：通过 adb 在容器里执行命令并捕获输出，方便自动化排查（release 不包含）。 -->
+        <activity
+            android:name=".debug.RunCmdActivity"
+            android:exported="true" />
+    </application>
+</manifest>

@@ -1,0 +1,315 @@
+<resources>
+    <!-- MD3 深色主题 · 青色（terminal 风格，非紫非绿） -->
+    <color name="primary">#FF4DD0E1</color>
+    <color name="on_primary">#FF00363D</color>
+    <color name="primary_container">#FF00505A</color>
+    <color name="on_primary_container">#FF97F0FF</color>
+    <color name="secondary">#FFB0CCD0</color>
+    <color name="on_secondary">#FF1A3438</color>
+    <color name="secondary_container">#FF324A4F</color>
+    <color name="on_secondary_container">#FFCCE8EC</color>
+    <color name="tertiary">#FF9BCBDB</color>
+    <color name="surface">#FF0E1514</color>
+    <color name="on_surface">#FFDEE4E2</color>
+    <color name="surface_variant">#FF3A4946</color>
+    <color name="on_surface_variant">#FFBAC9C5</color>
+    <color name="background">#FF0E1514</color>
+    <color name="on_background">#FFDEE4E2</color>
+    <color name="outline">#FF83938F</color>
+    <color name="error">#FFFFB4AB</color>
+    <color name="error_container">#FF93000A</color>
+    <color name="on_error_container">#FFFFDAD6</color>
+
+    <!-- 图标背景（深青黑） -->
+    <color name="ic_launcher_background">#FF0B1B1E</color>
+    <!-- 图标前景元素 -->
+    <color name="logo_primary">#FF4DD0E1</color>
+    <color name="logo_secondary">#FFFFFFFF</color>
+
+    <!-- 兼容旧引用 -->
+    <color name="purple_500">#FF4DD0E1</color>
+    <color name="purple_700">#FF0B1B1E</color>
+    <color name="teal_200">#FF4DD0E1</color>
+    <color name="black">#FF000000</color>
+    <color name="white">#FFFFFFFF</color>
+
+    <!-- 终端背景/前景 -->
+    <color name="terminal_bg">#FF0B1213</color>
+    <color name="terminal_fg">#FFDEE4E2</color>
+
+    <!-- ===== 主题变体调色板（切换主题不重写 UI，只换这套颜色）===== -->
+
+    <!-- 琥珀（暖色） -->
+    <color name="amber_primary">#FFFFC107</color>
+    <color name="amber_on_primary">#FF3F2E00</color>
+    <color name="amber_primary_container">#FF594600</color>
+    <color name="amber_on_primary_container">#FFFFE08D</color>
+    <color name="amber_secondary">#FFE0C1A3</color>
+    <color name="amber_on_secondary">#FF3E2D1C</color>
+    <color name="amber_secondary_container">#FF564330</color>
+    <color name="amber_on_secondary_container">#FFFCDEC3</color>
+    <color name="amber_surface">#FF1A1410</color>
+    <color name="amber_on_surface">#FFEFE0DB</color>
+    <color name="amber_surface_variant">#FF4A413B</color>
+    <color name="amber_on_surface_variant">#FFCDC0B8</color>
+    <color name="amber_background">#FF1A1410</color>
+    <color name="amber_on_background">#FFEFE0DB</color>
+    <color name="amber_outline">#FF958C83</color>
+
+    <!-- 翠绿 -->
+    <color name="green_primary">#FF6FCF7C</color>
+    <color name="green_on_primary">#FF00391A</color>
+    <color name="green_primary_container">#FF005227</color>
+    <color name="green_on_primary_container">#FF8BEC9A</color>
+    <color name="green_secondary">#FFB6CCB6</color>
+    <color name="green_on_secondary">#FF213529</color>
+    <color name="green_secondary_container">#FF374B3C</color>
+    <color name="green_on_secondary_container">#FFD2E8D1</color>
+    <color name="green_surface">#FF0E1510</color>
+    <color name="green_on_surface">#FFDEE4DF</color>
+    <color name="green_surface_variant">#FF3A4940</color>
+    <color name="green_on_surface_variant">#FFBAC9C1</color>
+    <color name="green_background">#FF0E1510</color>
+    <color name="green_on_background">#FFDEE4DF</color>
+    <color name="green_outline">#FF83938A</color>
+
+    <!-- 湖蓝 -->
+    <color name="blue_primary">#FF64B5F6</color>
+    <color name="blue_on_primary">#FF002E56</color>
+    <color name="blue_primary_container">#FF00446E</color>
+    <color name="blue_on_primary_container">#FFCFE5FF</color>
+    <color name="blue_secondary">#FFB7C9DD</color>
+    <color name="blue_on_secondary">#FF213347</color>
+    <color name="blue_secondary_container">#FF38495F</color>
+    <color name="blue_on_secondary_container">#FFD3E5FB</color>
+    <color name="blue_surface">#FF0E1419</color>
+    <color name="blue_on_surface">#FFDEE3E9</color>
+    <color name="blue_surface_variant">#FF3A4855</color>
+    <color name="blue_on_surface_variant">#FFBAC8D7</color>
+    <color name="blue_background">#FF0E1419</color>
+    <color name="blue_on_background">#FFDEE3E9</color>
+    <color name="blue_outline">#FF8392A1</color>
+
+    <!-- ===== 浅色主题调色板（默认浅色）===== -->
+    <color name="light_primary">#FF006A78</color>
+    <color name="light_on_primary">#FFFFFFFF</color>
+    <color name="light_primary_container">#FF9CEAFB</color>
+    <color name="light_on_primary_container">#FF00202A</color>
+    <color name="light_secondary">#FF4C636B</color>
+    <color name="light_on_secondary">#FFFFFFFF</color>
+    <color name="light_secondary_container">#FFCFE8F1</color>
+    <color name="light_on_secondary_container">#FF071F25</color>
+    <color name="light_surface">#FFF2FAFB</color>
+    <color name="light_on_surface">#FF171D1F</color>
+    <color name="light_surface_variant">#FFDBE4E8</color>
+    <color name="light_on_surface_variant">#FF3F484D</color>
+    <color name="light_background">#FFF2FAFB</color>
+    <color name="light_on_background">#FF171D1F</color>
+    <color name="light_outline">#FF6F797D</color>
+    <!-- 底部导航容器色（比 surface 略亮，深色下也清晰） -->
+    <color name="light_surface_container">#FFE6EFF1</color>
+    <color name="dark_surface_container">#FF18211F</color>
+
+    <!-- ===== 浅色主题调色板：琥珀 ===== -->
+    <color name="light_amber_primary">#FF8A5300</color>
+    <color name="light_amber_on_primary">#FFFFFFFF</color>
+    <color name="light_amber_primary_container">#FFFFE0B8</color>
+    <color name="light_amber_on_primary_container">#FF2B1500</color>
+    <color name="light_amber_secondary">#FF705A40</color>
+    <color name="light_amber_on_secondary">#FFFFFFFF</color>
+    <color name="light_amber_secondary_container">#FFF9E0C8</color>
+    <color name="light_amber_on_secondary_container">#FF291800</color>
+    <color name="light_amber_surface">#FFFFF8F5</color>
+    <color name="light_amber_on_surface">#FF221A15</color>
+    <color name="light_amber_surface_variant">#FFE4DCD3</color>
+    <color name="light_amber_on_surface_variant">#FF4A4340</color>
+    <color name="light_amber_background">#FFFFF8F5</color>
+    <color name="light_amber_on_background">#FF221A15</color>
+    <color name="light_amber_outline">#FF7C6F66</color>
+    <color name="light_amber_surface_container">#FFF3E8DC</color>
+
+    <!-- ===== 浅色主题调色板：翠绿 ===== -->
+    <color name="light_green_primary">#FF2E6F4E</color>
+    <color name="light_green_on_primary">#FFFFFFFF</color>
+    <color name="light_green_primary_container">#FFB2F2C9</color>
+    <color name="light_green_on_primary_container">#FF002112</color>
+    <color name="light_green_secondary">#FF52664F</color>
+    <color name="light_green_on_secondary">#FFFFFFFF</color>
+    <color name="light_green_secondary_container">#FFD5EBD2</color>
+    <color name="light_green_on_secondary_container">#FF102117</color>
+    <color name="light_green_surface">#FFF5FBF3</color>
+    <color name="light_green_on_surface">#FF181D18</color>
+    <color name="light_green_surface_variant">#FFDCE5D9</color>
+    <color name="light_green_on_surface_variant">#FF404940</color>
+    <color name="light_green_background">#FFF5FBF3</color>
+    <color name="light_green_on_background">#FF181D18</color>
+    <color name="light_green_outline">#FF707A70</color>
+    <color name="light_green_surface_container">#FFE7F0E4</color>
+
+    <!-- ===== 浅色主题调色板：湖蓝 ===== -->
+    <color name="light_blue_primary">#FF3B5BA9</color>
+    <color name="light_blue_on_primary">#FFFFFFFF</color>
+    <color name="light_blue_primary_container">#FFD9E2FF</color>
+    <color name="light_blue_on_primary_container">#FF001A42</color>
+    <color name="light_blue_secondary">#FF585E71</color>
+    <color name="light_blue_on_secondary">#FFFFFFFF</color>
+    <color name="light_blue_secondary_container">#FFDDE1F9</color>
+    <color name="light_blue_on_secondary_container">#FF151B2C</color>
+    <color name="light_blue_surface">#FFF9F9FF</color>
+    <color name="light_blue_on_surface">#FF1A1B21</color>
+    <color name="light_blue_surface_variant">#FFE3E1EC</color>
+    <color name="light_blue_on_surface_variant">#FF46464F</color>
+    <color name="light_blue_background">#FFF9F9FF</color>
+    <color name="light_blue_on_background">#FF1A1B21</color>
+    <color name="light_blue_outline">#FF777680</color>
+    <color name="light_blue_surface_container">#FFEDEBF6</color>
+
+    <!-- ===== 深色·紫罗兰 ===== -->
+    <color name="violet_primary">#FFB69DF5</color>
+    <color name="violet_on_primary">#FF2A1A5C</color>
+    <color name="violet_primary_container">#FF47357C</color>
+    <color name="violet_on_primary_container">#FFDBCDFF</color>
+    <color name="violet_secondary">#FFC8BFE8</color>
+    <color name="violet_on_secondary">#FF302B44</color>
+    <color name="violet_secondary_container">#FF464157</color>
+    <color name="violet_on_secondary_container">#FFE4DEFF</color>
+    <color name="violet_surface">#FF14121A</color>
+    <color name="violet_on_surface">#FFE6E1EA</color>
+    <color name="violet_surface_variant">#FF48454F</color>
+    <color name="violet_on_surface_variant">#FFC9C5D0</color>
+    <color name="violet_background">#FF14121A</color>
+    <color name="violet_on_background">#FFE6E1EA</color>
+    <color name="violet_outline">#FF938F9A</color>
+    <color name="violet_surface_container">#FF1F1C25</color>
+
+    <!-- ===== 深色·玫红 ===== -->
+    <color name="rose_primary">#FFFFB1C8</color>
+    <color name="rose_on_primary">#FF5E112F</color>
+    <color name="rose_primary_container">#FF7D2848</color>
+    <color name="rose_on_primary_container">#FFFFD9E2</color>
+    <color name="rose_secondary">#FFE2BDC5</color>
+    <color name="rose_on_secondary">#FF42292F</color>
+    <color name="rose_secondary_container">#FF5A3F45</color>
+    <color name="rose_on_secondary_container">#FFFFD9E1</color>
+    <color name="rose_surface">#FF191114</color>
+    <color name="rose_on_surface">#FFF0DFE1</color>
+    <color name="rose_surface_variant">#FF4A3F42</color>
+    <color name="rose_on_surface_variant">#FFCCC1C3</color>
+    <color name="rose_background">#FF191114</color>
+    <color name="rose_on_background">#FFF0DFE1</color>
+    <color name="rose_outline">#FF96898C</color>
+    <color name="rose_surface_container">#FF241A1D</color>
+
+    <!-- ===== 深色·橙 ===== -->
+    <color name="orange_primary">#FFFFB868</color>
+    <color name="orange_on_primary">#FF4A2800</color>
+    <color name="orange_primary_container">#FF683A00</color>
+    <color name="orange_on_primary_container">#FFFFDDB8</color>
+    <color name="orange_secondary">#FFE3C1A3</color>
+    <color name="orange_on_secondary">#FF3E2D1C</color>
+    <color name="orange_secondary_container">#FF564330</color>
+    <color name="orange_on_secondary_container">#FFFCDEC3</color>
+    <color name="orange_surface">#FF1A1410</color>
+    <color name="orange_on_surface">#FFF0E0DB</color>
+    <color name="orange_surface_variant">#FF4A413B</color>
+    <color name="orange_on_surface_variant">#FFCDC0B8</color>
+    <color name="orange_background">#FF1A1410</color>
+    <color name="orange_on_background">#FFF0E0DB</color>
+    <color name="orange_outline">#FF958C83</color>
+    <color name="orange_surface_container">#FF261E18</color>
+
+    <!-- ===== 深色·蓝灰 ===== -->
+    <color name="slate_primary">#FFAFC8D6</color>
+    <color name="slate_on_primary">#FF18333F</color>
+    <color name="slate_primary_container">#FF2E4A56</color>
+    <color name="slate_on_primary_container">#FFCBE4F2</color>
+    <color name="slate_secondary">#FFB9C9D1</color>
+    <color name="slate_on_secondary">#FF24333B</color>
+    <color name="slate_secondary_container">#FF3A4951</color>
+    <color name="slate_on_secondary_container">#FFD5E5ED</color>
+    <color name="slate_surface">#FF101418</color>
+    <color name="slate_on_surface">#FFE1E2E6</color>
+    <color name="slate_surface_variant">#FF43474E</color>
+    <color name="slate_on_surface_variant">#FFC3C7CF</color>
+    <color name="slate_background">#FF101418</color>
+    <color name="slate_on_background">#FFE1E2E6</color>
+    <color name="slate_outline">#FF8D919A</color>
+    <color name="slate_surface_container">#FF1B1F24</color>
+
+    <!-- ===== 浅色·紫罗兰 ===== -->
+    <color name="light_violet_primary">#FF6B4FB8</color>
+    <color name="light_violet_on_primary">#FFFFFFFF</color>
+    <color name="light_violet_primary_container">#FFE8DEFF</color>
+    <color name="light_violet_on_primary_container">#FF21005D</color>
+    <color name="light_violet_secondary">#FF5F5D72</color>
+    <color name="light_violet_on_secondary">#FFFFFFFF</color>
+    <color name="light_violet_secondary_container">#FFE4DFF9</color>
+    <color name="light_violet_on_secondary_container">#FF1B1B2D</color>
+    <color name="light_violet_surface">#FFFCF8FF</color>
+    <color name="light_violet_on_surface">#FF1C1B20</color>
+    <color name="light_violet_surface_variant">#FFE5E1EC</color>
+    <color name="light_violet_on_surface_variant">#FF48464F</color>
+    <color name="light_violet_background">#FFFCF8FF</color>
+    <color name="light_violet_on_background">#FF1C1B20</color>
+    <color name="light_violet_outline">#FF797680</color>
+    <color name="light_violet_surface_container">#FFF1EEF9</color>
+
+    <!-- ===== 浅色·玫红 ===== -->
+    <color name="light_rose_primary">#FFB02B5B</color>
+    <color name="light_rose_on_primary">#FFFFFFFF</color>
+    <color name="light_rose_primary_container">#FFFFD9E2</color>
+    <color name="light_rose_on_primary_container">#FF3F001C</color>
+    <color name="light_rose_secondary">#FF75565D</color>
+    <color name="light_rose_on_secondary">#FFFFFFFF</color>
+    <color name="light_rose_secondary_container">#FFFFD9E1</color>
+    <color name="light_rose_on_secondary_container">#FF2C151A</color>
+    <color name="light_rose_surface">#FFFFF8F8</color>
+    <color name="light_rose_on_surface">#FF22191B</color>
+    <color name="light_rose_surface_variant">#FFE5DEE0</color>
+    <color name="light_rose_on_surface_variant">#FF494346</color>
+    <color name="light_rose_background">#FFFFF8F8</color>
+    <color name="light_rose_on_background">#FF22191B</color>
+    <color name="light_rose_outline">#FF7A7275</color>
+    <color name="light_rose_surface_container">#FFF6EDEF</color>
+
+    <!-- ===== 浅色·橙 ===== -->
+    <color name="light_orange_primary">#FF8C4D00</color>
+    <color name="light_orange_on_primary">#FFFFFFFF</color>
+    <color name="light_orange_primary_container">#FFFFDDB8</color>
+    <color name="light_orange_on_primary_container">#FF2D1600</color>
+    <color name="light_orange_secondary">#FF755A42</color>
+    <color name="light_orange_on_secondary">#FFFFFFFF</color>
+    <color name="light_orange_secondary_container">#FFFCDEC3</color>
+    <color name="light_orange_on_secondary_container">#FF2B1707</color>
+    <color name="light_orange_surface">#FFFFF8F4</color>
+    <color name="light_orange_on_surface">#FF221A15</color>
+    <color name="light_orange_surface_variant">#FFE5DED7</color>
+    <color name="light_orange_on_surface_variant">#FF4B443C</color>
+    <color name="light_orange_background">#FFFFF8F4</color>
+    <color name="light_orange_on_background">#FF221A15</color>
+    <color name="light_orange_outline">#FF7D756C</color>
+    <color name="light_orange_surface_container">#FFF5EBE3</color>
+
+    <!-- ===== 浅色·蓝灰 ===== -->
+    <color name="light_slate_primary">#FF415C6B</color>
+    <color name="light_slate_on_primary">#FFFFFFFF</color>
+    <color name="light_slate_primary_container">#FFC4E5F5</color>
+    <color name="light_slate_on_primary_container">#FF001F2A</color>
+    <color name="light_slate_secondary">#FF525E66</color>
+    <color name="light_slate_on_secondary">#FFFFFFFF</color>
+    <color name="light_slate_secondary_container">#FFD5E3EC</color>
+    <color name="light_slate_on_secondary_container">#FF0F1C23</color>
+    <color name="light_slate_surface">#FFF6FAFD</color>
+    <color name="light_slate_on_surface">#FF191C1F</color>
+    <color name="light_slate_surface_variant">#FFDBE1E7</color>
+    <color name="light_slate_on_surface_variant">#FF40484E</color>
+    <color name="light_slate_background">#FFF6FAFD</color>
+    <color name="light_slate_on_background">#FF191C1F</color>
+    <color name="light_slate_outline">#FF70787F</color>
+    <color name="light_slate_surface_container">#FFEAF0F5</color>
+
+    <!-- 任务状态色 -->
+    <color name="task_ok">#FF2E7D32</color>
+    <color name="task_error">#FFC62828</color>
+    <color name="task_running">#FF006A78</color>
+</resources>

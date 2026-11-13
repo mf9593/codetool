@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 内置编辑器标题栏菜单：复制全部（方便把 .log 内容一键复制出去） -->
+<menu xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto">
+
+    <item
+        android:id="@+id/action_copy_all"
+        android:title="复制全部"
+        android:icon="@drawable/ic_copy"
+        app:showAsAction="ifRoom" />
+</menu>

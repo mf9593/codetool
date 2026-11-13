@@ -1,0 +1,410 @@
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+      Theme.CodeTool = 浅色主题（默认）。
+      UI 全部通过 ?attr/colorXxx 引用，换主题只改这里，不重写 UI。
+      colorSurfaceContainer 专用于底部导航等容器（比 surface 略亮，深色下也清晰）。
+    -->
+    <style name="Theme.CodeTool" parent="Theme.Material3.Light.NoActionBar">
+        <item name="colorPrimary">@color/light_primary</item>
+        <item name="colorOnPrimary">@color/light_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_on_primary_container</item>
+        <item name="colorSecondary">@color/light_secondary</item>
+        <item name="colorOnSecondary">@color/light_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_on_secondary_container</item>
+        <item name="colorSurface">@color/light_surface</item>
+        <item name="colorOnSurface">@color/light_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/light_surface_container</item>
+        <!-- MD3 弹窗/菜单背景用 colorSurfaceContainerHigh：引用容器色，跟随主题 -->
+        <item name="colorSurfaceContainerHigh">?attr/colorSurfaceContainer</item>
+        <item name="colorSurfaceContainerLow">?attr/colorSurfaceContainer</item>
+        <item name="android:colorBackground">@color/light_background</item>
+        <item name="colorOnBackground">@color/light_on_background</item>
+        <item name="colorOutline">@color/light_outline</item>
+        <item name="colorError">@color/error</item>
+        <item name="colorErrorContainer">@color/error_container</item>
+        <item name="colorOnErrorContainer">@color/on_error_container</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">true</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">true</item>
+        <item name="android:windowBackground">@color/light_background</item>
+    </style>
+
+    <!-- 浅色·琥珀 -->
+    <style name="Theme.CodeTool.Light.Amber" parent="Theme.CodeTool">
+        <item name="colorPrimary">@color/light_amber_primary</item>
+        <item name="colorOnPrimary">@color/light_amber_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_amber_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_amber_on_primary_container</item>
+        <item name="colorSecondary">@color/light_amber_secondary</item>
+        <item name="colorOnSecondary">@color/light_amber_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_amber_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_amber_on_secondary_container</item>
+        <item name="colorSurface">@color/light_amber_surface</item>
+        <item name="colorOnSurface">@color/light_amber_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_amber_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_amber_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/light_amber_surface_container</item>
+        <item name="android:colorBackground">@color/light_amber_background</item>
+        <item name="colorOnBackground">@color/light_amber_on_background</item>
+        <item name="colorOutline">@color/light_amber_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/light_amber_background</item>
+    </style>
+
+    <!-- 浅色·翠绿 -->
+    <style name="Theme.CodeTool.Light.Green" parent="Theme.CodeTool">
+        <item name="colorPrimary">@color/light_green_primary</item>
+        <item name="colorOnPrimary">@color/light_green_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_green_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_green_on_primary_container</item>
+        <item name="colorSecondary">@color/light_green_secondary</item>
+        <item name="colorOnSecondary">@color/light_green_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_green_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_green_on_secondary_container</item>
+        <item name="colorSurface">@color/light_green_surface</item>
+        <item name="colorOnSurface">@color/light_green_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_green_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_green_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/light_green_surface_container</item>
+        <item name="android:colorBackground">@color/light_green_background</item>
+        <item name="colorOnBackground">@color/light_green_on_background</item>
+        <item name="colorOutline">@color/light_green_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/light_green_background</item>
+    </style>
+
+    <!-- 浅色·湖蓝 -->
+    <style name="Theme.CodeTool.Light.Blue" parent="Theme.CodeTool">
+        <item name="colorPrimary">@color/light_blue_primary</item>
+        <item name="colorOnPrimary">@color/light_blue_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_blue_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_blue_on_primary_container</item>
+        <item name="colorSecondary">@color/light_blue_secondary</item>
+        <item name="colorOnSecondary">@color/light_blue_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_blue_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_blue_on_secondary_container</item>
+        <item name="colorSurface">@color/light_blue_surface</item>
+        <item name="colorOnSurface">@color/light_blue_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_blue_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_blue_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/light_blue_surface_container</item>
+        <item name="android:colorBackground">@color/light_blue_background</item>
+        <item name="colorOnBackground">@color/light_blue_on_background</item>
+        <item name="colorOutline">@color/light_blue_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/light_blue_background</item>
+    </style>
+
+    <!-- 深色·青 -->
+    <style name="Theme.CodeTool.Dark" parent="Theme.Material3.Dark.NoActionBar">
+        <item name="colorPrimary">@color/primary</item>
+        <item name="colorOnPrimary">@color/on_primary</item>
+        <item name="colorPrimaryContainer">@color/primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/on_primary_container</item>
+        <item name="colorSecondary">@color/secondary</item>
+        <item name="colorOnSecondary">@color/on_secondary</item>
+        <item name="colorSecondaryContainer">@color/secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/on_secondary_container</item>
+        <item name="colorSurface">@color/surface</item>
+        <item name="colorOnSurface">@color/on_surface</item>
+        <item name="colorSurfaceVariant">@color/surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/dark_surface_container</item>
+        <!-- MD3 弹窗/菜单背景用 colorSurfaceContainerHigh：引用容器色，跟随主题 -->
+        <item name="colorSurfaceContainerHigh">?attr/colorSurfaceContainer</item>
+        <item name="colorSurfaceContainerLow">?attr/colorSurfaceContainer</item>
+        <item name="android:colorBackground">@color/background</item>
+        <item name="colorOnBackground">@color/on_background</item>
+        <item name="colorOutline">@color/outline</item>
+        <item name="colorError">@color/error</item>
+        <item name="colorErrorContainer">@color/error_container</item>
+        <item name="colorOnErrorContainer">@color/on_error_container</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowLightStatusBar" tools:targetApi="m">false</item>
+        <item name="android:windowLightNavigationBar" tools:targetApi="o_mr1">false</item>
+        <item name="android:windowBackground">@color/background</item>
+    </style>
+
+    <!-- 深色·琥珀（暖色） -->
+    <style name="Theme.CodeTool.Dark.Amber" parent="Theme.CodeTool.Dark">
+        <item name="colorPrimary">@color/amber_primary</item>
+        <item name="colorOnPrimary">@color/amber_on_primary</item>
+        <item name="colorPrimaryContainer">@color/amber_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/amber_on_primary_container</item>
+        <item name="colorSecondary">@color/amber_secondary</item>
+        <item name="colorOnSecondary">@color/amber_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/amber_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/amber_on_secondary_container</item>
+        <item name="colorSurface">@color/amber_surface</item>
+        <item name="colorOnSurface">@color/amber_on_surface</item>
+        <item name="colorSurfaceVariant">@color/amber_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/amber_on_surface_variant</item>
+        <item name="android:colorBackground">@color/amber_background</item>
+        <item name="colorOnBackground">@color/amber_on_background</item>
+        <item name="colorOutline">@color/amber_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/amber_background</item>
+    </style>
+
+    <!-- 深色·翠绿 -->
+    <style name="Theme.CodeTool.Dark.Green" parent="Theme.CodeTool.Dark">
+        <item name="colorPrimary">@color/green_primary</item>
+        <item name="colorOnPrimary">@color/green_on_primary</item>
+        <item name="colorPrimaryContainer">@color/green_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/green_on_primary_container</item>
+        <item name="colorSecondary">@color/green_secondary</item>
+        <item name="colorOnSecondary">@color/green_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/green_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/green_on_secondary_container</item>
+        <item name="colorSurface">@color/green_surface</item>
+        <item name="colorOnSurface">@color/green_on_surface</item>
+        <item name="colorSurfaceVariant">@color/green_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/green_on_surface_variant</item>
+        <item name="android:colorBackground">@color/green_background</item>
+        <item name="colorOnBackground">@color/green_on_background</item>
+        <item name="colorOutline">@color/green_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/green_background</item>
+    </style>
+
+    <!-- 深色·湖蓝 -->
+    <style name="Theme.CodeTool.Dark.Blue" parent="Theme.CodeTool.Dark">
+        <item name="colorPrimary">@color/blue_primary</item>
+        <item name="colorOnPrimary">@color/blue_on_primary</item>
+        <item name="colorPrimaryContainer">@color/blue_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/blue_on_primary_container</item>
+        <item name="colorSecondary">@color/blue_secondary</item>
+        <item name="colorOnSecondary">@color/blue_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/blue_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/blue_on_secondary_container</item>
+        <item name="colorSurface">@color/blue_surface</item>
+        <item name="colorOnSurface">@color/blue_on_surface</item>
+        <item name="colorSurfaceVariant">@color/blue_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/blue_on_surface_variant</item>
+        <item name="android:colorBackground">@color/blue_background</item>
+        <item name="colorOnBackground">@color/blue_on_background</item>
+        <item name="colorOutline">@color/blue_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/blue_background</item>
+    </style>
+
+    <!-- 深色·紫罗兰 -->
+    <style name="Theme.CodeTool.Dark.Violet" parent="Theme.CodeTool.Dark">
+        <item name="colorPrimary">@color/violet_primary</item>
+        <item name="colorOnPrimary">@color/violet_on_primary</item>
+        <item name="colorPrimaryContainer">@color/violet_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/violet_on_primary_container</item>
+        <item name="colorSecondary">@color/violet_secondary</item>
+        <item name="colorOnSecondary">@color/violet_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/violet_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/violet_on_secondary_container</item>
+        <item name="colorSurface">@color/violet_surface</item>
+        <item name="colorOnSurface">@color/violet_on_surface</item>
+        <item name="colorSurfaceVariant">@color/violet_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/violet_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/violet_surface_container</item>
+        <item name="android:colorBackground">@color/violet_background</item>
+        <item name="colorOnBackground">@color/violet_on_background</item>
+        <item name="colorOutline">@color/violet_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/violet_background</item>
+    </style>
+
+    <!-- 深色·玫红 -->
+    <style name="Theme.CodeTool.Dark.Rose" parent="Theme.CodeTool.Dark">
+        <item name="colorPrimary">@color/rose_primary</item>
+        <item name="colorOnPrimary">@color/rose_on_primary</item>
+        <item name="colorPrimaryContainer">@color/rose_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/rose_on_primary_container</item>
+        <item name="colorSecondary">@color/rose_secondary</item>
+        <item name="colorOnSecondary">@color/rose_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/rose_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/rose_on_secondary_container</item>
+        <item name="colorSurface">@color/rose_surface</item>
+        <item name="colorOnSurface">@color/rose_on_surface</item>
+        <item name="colorSurfaceVariant">@color/rose_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/rose_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/rose_surface_container</item>
+        <item name="android:colorBackground">@color/rose_background</item>
+        <item name="colorOnBackground">@color/rose_on_background</item>
+        <item name="colorOutline">@color/rose_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/rose_background</item>
+    </style>
+
+    <!-- 深色·橙 -->
+    <style name="Theme.CodeTool.Dark.Orange" parent="Theme.CodeTool.Dark">
+        <item name="colorPrimary">@color/orange_primary</item>
+        <item name="colorOnPrimary">@color/orange_on_primary</item>
+        <item name="colorPrimaryContainer">@color/orange_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/orange_on_primary_container</item>
+        <item name="colorSecondary">@color/orange_secondary</item>
+        <item name="colorOnSecondary">@color/orange_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/orange_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/orange_on_secondary_container</item>
+        <item name="colorSurface">@color/orange_surface</item>
+        <item name="colorOnSurface">@color/orange_on_surface</item>
+        <item name="colorSurfaceVariant">@color/orange_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/orange_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/orange_surface_container</item>
+        <item name="android:colorBackground">@color/orange_background</item>
+        <item name="colorOnBackground">@color/orange_on_background</item>
+        <item name="colorOutline">@color/orange_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/orange_background</item>
+    </style>
+
+    <!-- 深色·蓝灰 -->
+    <style name="Theme.CodeTool.Dark.Slate" parent="Theme.CodeTool.Dark">
+        <item name="colorPrimary">@color/slate_primary</item>
+        <item name="colorOnPrimary">@color/slate_on_primary</item>
+        <item name="colorPrimaryContainer">@color/slate_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/slate_on_primary_container</item>
+        <item name="colorSecondary">@color/slate_secondary</item>
+        <item name="colorOnSecondary">@color/slate_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/slate_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/slate_on_secondary_container</item>
+        <item name="colorSurface">@color/slate_surface</item>
+        <item name="colorOnSurface">@color/slate_on_surface</item>
+        <item name="colorSurfaceVariant">@color/slate_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/slate_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/slate_surface_container</item>
+        <item name="android:colorBackground">@color/slate_background</item>
+        <item name="colorOnBackground">@color/slate_on_background</item>
+        <item name="colorOutline">@color/slate_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/slate_background</item>
+    </style>
+
+    <!-- 浅色·紫罗兰 -->
+    <style name="Theme.CodeTool.Light.Violet" parent="Theme.CodeTool">
+        <item name="colorPrimary">@color/light_violet_primary</item>
+        <item name="colorOnPrimary">@color/light_violet_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_violet_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_violet_on_primary_container</item>
+        <item name="colorSecondary">@color/light_violet_secondary</item>
+        <item name="colorOnSecondary">@color/light_violet_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_violet_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_violet_on_secondary_container</item>
+        <item name="colorSurface">@color/light_violet_surface</item>
+        <item name="colorOnSurface">@color/light_violet_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_violet_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_violet_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/light_violet_surface_container</item>
+        <item name="android:colorBackground">@color/light_violet_background</item>
+        <item name="colorOnBackground">@color/light_violet_on_background</item>
+        <item name="colorOutline">@color/light_violet_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/light_violet_background</item>
+    </style>
+
+    <!-- 浅色·玫红 -->
+    <style name="Theme.CodeTool.Light.Rose" parent="Theme.CodeTool">
+        <item name="colorPrimary">@color/light_rose_primary</item>
+        <item name="colorOnPrimary">@color/light_rose_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_rose_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_rose_on_primary_container</item>
+        <item name="colorSecondary">@color/light_rose_secondary</item>
+        <item name="colorOnSecondary">@color/light_rose_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_rose_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_rose_on_secondary_container</item>
+        <item name="colorSurface">@color/light_rose_surface</item>
+        <item name="colorOnSurface">@color/light_rose_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_rose_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_rose_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/light_rose_surface_container</item>
+        <item name="android:colorBackground">@color/light_rose_background</item>
+        <item name="colorOnBackground">@color/light_rose_on_background</item>
+        <item name="colorOutline">@color/light_rose_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/light_rose_background</item>
+    </style>
+
+    <!-- 浅色·橙 -->
+    <style name="Theme.CodeTool.Light.Orange" parent="Theme.CodeTool">
+        <item name="colorPrimary">@color/light_orange_primary</item>
+        <item name="colorOnPrimary">@color/light_orange_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_orange_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_orange_on_primary_container</item>
+        <item name="colorSecondary">@color/light_orange_secondary</item>
+        <item name="colorOnSecondary">@color/light_orange_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_orange_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_orange_on_secondary_container</item>
+        <item name="colorSurface">@color/light_orange_surface</item>
+        <item name="colorOnSurface">@color/light_orange_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_orange_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_orange_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/light_orange_surface_container</item>
+        <item name="android:colorBackground">@color/light_orange_background</item>
+        <item name="colorOnBackground">@color/light_orange_on_background</item>
+        <item name="colorOutline">@color/light_orange_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/light_orange_background</item>
+    </style>
+
+    <!-- 浅色·蓝灰 -->
+    <style name="Theme.CodeTool.Light.Slate" parent="Theme.CodeTool">
+        <item name="colorPrimary">@color/light_slate_primary</item>
+        <item name="colorOnPrimary">@color/light_slate_on_primary</item>
+        <item name="colorPrimaryContainer">@color/light_slate_primary_container</item>
+        <item name="colorOnPrimaryContainer">@color/light_slate_on_primary_container</item>
+        <item name="colorSecondary">@color/light_slate_secondary</item>
+        <item name="colorOnSecondary">@color/light_slate_on_secondary</item>
+        <item name="colorSecondaryContainer">@color/light_slate_secondary_container</item>
+        <item name="colorOnSecondaryContainer">@color/light_slate_on_secondary_container</item>
+        <item name="colorSurface">@color/light_slate_surface</item>
+        <item name="colorOnSurface">@color/light_slate_on_surface</item>
+        <item name="colorSurfaceVariant">@color/light_slate_surface_variant</item>
+        <item name="colorOnSurfaceVariant">@color/light_slate_on_surface_variant</item>
+        <item name="colorSurfaceContainer">@color/light_slate_surface_container</item>
+        <item name="android:colorBackground">@color/light_slate_background</item>
+        <item name="colorOnBackground">@color/light_slate_on_background</item>
+        <item name="colorOutline">@color/light_slate_outline</item>
+        <item name="android:statusBarColor" tools:targetApi="l">?attr/colorSurface</item>
+        <item name="android:navigationBarColor" tools:targetApi="l">@android:color/transparent</item>
+        <item name="android:windowBackground">@color/light_slate_background</item>
+    </style>
+
+    <!-- 合成器宿主窗口主题：DeviceDefault 深色（非 AppCompat，配合
+         TawcCompositorActivity : Activity）。深色避免浅色 Material3 主题的
+         窗口格式与合成器 EGL 配置（RGBA8）不匹配导致黑屏。 -->
+    <style name="Theme.CodeTool.Compositor" parent="android:Theme.DeviceDefault.NoActionBar">
+        <item name="android:windowNoTitle">true</item>
+        <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
+        <item name="android:windowIsTranslucent">false</item>
+        <item name="android:colorBackground">#FF0E1514</item>
+        <item name="android:windowBackground">#FF0E1514</item>
+    </style>
+
+    <!-- 文件页统一 chip 样式：所有入口（含收藏）都有 1dp 边框，
+         选中时用主色容器背景 + 主色边框 + 高对比文字。 -->
+    <style name="Widget.CodeTool.FileChip" parent="Widget.Material3.Chip.Filter">
+        <!-- 描边宽度随 checked 变化，由 FilesFragment.setChipChecked 设置初始值 -->
+        <item name="chipStrokeWidth">1dp</item>
+        <item name="chipStrokeColor">@color/file_chip_stroke</item>
+        <item name="chipBackgroundColor">@color/file_chip_bg</item>
+        <item name="android:textColor">@color/file_chip_text</item>
+        <item name="checkedIconVisible">false</item>
+        <item name="android:paddingStart">4dp</item>
+        <item name="android:paddingEnd">4dp</item>
+    </style>
+</resources>

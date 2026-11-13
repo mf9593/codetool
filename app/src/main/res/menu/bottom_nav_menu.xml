@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<menu xmlns:android="http://schemas.android.com/apk/res/android">
+    <item android:id="@+id/nav_home"
+        android:icon="@drawable/ic_home"
+        android:title="首页" />
+    <item android:id="@+id/nav_terminal"
+        android:icon="@drawable/ic_terminal"
+        android:title="终端" />
+    <item android:id="@+id/nav_tools"
+        android:icon="@drawable/ic_tools"
+        android:title="工具" />
+    <item android:id="@+id/nav_files"
+        android:icon="@drawable/ic_files"
+        android:title="文件" />
+    <item android:id="@+id/nav_tasks"
+        android:icon="@drawable/ic_tasks_filled"
+        android:title="日志" />
+</menu>

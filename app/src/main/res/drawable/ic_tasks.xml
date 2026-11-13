@@ -1,0 +1,8 @@
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <!-- 任务图标：圆圈 + 勾（task_alt 风格），替代旧「圆圈+圆点」 -->
+    <path android:fillColor="@android:color/white"
+        android:pathData="M22,5.18 L10.59,16.6 6.35,12.36 7.76,10.95 10.59,13.78 20.59,3.78z M12,20c-4.41,0 -8,-3.59 -8,-8 s3.59,-8 8,-8 c1.57,0 3.04,0.46 4.28,1.25 l1.45,-1.45 C16.1,2.67 14.13,2 12,2 C6.48,2 2,6.48 2,12 s4.48,10 10,10 c1.73,0 3.36,-0.44 4.78,-1.22 l-1.5,-1.5 c-1.02,0.44 -2.13,0.72 -3.28,0.72 z"/>
+</vector>

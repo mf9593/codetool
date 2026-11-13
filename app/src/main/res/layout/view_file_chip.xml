@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 文件页路径收藏 chip：与固定入口 chip 共用同一套描边高亮样式。
+     checkable 必须为 true，否则 Material Chip 的 setChecked() 不会生效，
+     选中态就无从表达；实际选中值每次 refresh 后由 setChipChecked 统一重设。 -->
+<com.google.android.material.chip.Chip
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    style="@style/Widget.CodeTool.FileChip"
+    android:layout_width="wrap_content"
+    android:layout_height="wrap_content"
+    android:checkable="true"
+    app:checkedIconVisible="false" />

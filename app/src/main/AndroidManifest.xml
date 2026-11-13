@@ -1,0 +1,115 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
+
+    <!-- 终端保活：唤醒锁，防止锁屏后 CPU 挂起导致断网 -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <!-- 前台服务（终端会话） -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- 网络通信 -->
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <!-- 读写文件（rootfs / 脚本） -->
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE"
+        android:maxSdkVersion="32" />
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
+    <uses-permission android:name="android.permission.READ_MEDIA_FILES" />
+    <!-- 所有文件访问（Android 11+ 分区存储：否则共享存储里只能看到文件夹，看不到文件） -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <!-- 通知（Android 13+） -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 引导用户把电池优化设为「无限制」：锁屏后后台进程不被 Doze 冻结 -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <application
+        android:name=".CodeToolApp"
+        android:allowBackup="true"
+        android:icon="@mipmap/ic_launcher"
+        android:label="@string/app_name"
+        android:roundIcon="@mipmap/ic_launcher_round"
+        android:supportsRtl="true"
+        android:theme="@style/Theme.CodeTool"
+        android:largeHeap="true"
+        android:requestLegacyExternalStorage="true"
+        android:extractNativeLibs="true"
+        tools:targetApi="34">
+
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|screenLayout|smallestScreenSize|density|uiMode"
+            android:windowSoftInputMode="adjustResize">
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN" />
+                <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+        </activity>
+
+        <!-- 关于页（二级页面：标题栏 + 返回按钮，背景跟随主题） -->
+        <activity
+            android:name=".AboutActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
+        <!-- tawc compositor：全屏 SurfaceView 渲染容器 GUI 窗口 -->
+        <activity
+            android:name=".gui.TawcCompositorActivity"
+            android:exported="true"
+            android:launchMode="singleTask"
+            android:theme="@style/Theme.CodeTool.Compositor"
+            android:screenOrientation="sensorLandscape"
+            android:documentLaunchMode="intoExisting"
+            android:taskAffinity=""
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode"
+            android:windowSoftInputMode="stateHidden|adjustResize" />
+
+        <!-- 脚本编辑独立页面 -->
+        <activity
+            android:name=".ScriptEditActivity"
+            android:exported="false"
+            android:windowSoftInputMode="adjustResize"
+            android:configChanges="orientation|screenSize|keyboardHidden|keyboard|screenLayout|density|uiMode" />
+
+        <!-- 终端前台服务：持有 PARTIAL_WAKE_LOCK，锁屏不断网 -->
+        <service
+            android:name=".terminal.TerminalService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- rootfs 首次解压前台服务：首启自动解压 209M rootfs -->
+        <service
+            android:name=".runtime.RootfsInstallService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 后台任务保活前台服务：长时间任务期间持 wake lock + 常驻通知，
+             防止锁屏冻结后台进程导致引导/下载中断 -->
+        <service
+            android:name=".runtime.KeepAliveService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- rootfs 备份/恢复前台服务：tar 长时间任务期间持 wake lock + 进度通知，
+             防止锁屏中断留下坏归档/半恢复的 rootfs -->
+        <service
+            android:name=".runtime.RootfsBackupService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- FileProvider：让外部应用（文本编辑器等）能读取本应用文件（如日志 .log）。
+             authorities 用 ${applicationId}.fileprovider，避免多渠道/调试包冲突。 -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
+    </application>
+</manifest>
