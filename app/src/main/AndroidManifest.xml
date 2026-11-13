@@ -22,6 +22,8 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- 引导用户把电池优化设为「无限制」：锁屏后后台进程不被 Doze 冻结 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+    <!-- Shizuku：以 shell（adb）身份调用 API，无需 root -->
+    <uses-permission android:name="moe.shizuku.manager.permission.API_V23" />
 
     <application
         android:name=".CodeToolApp"
@@ -110,6 +112,17 @@
                 android:name="android.support.FILE_PROVIDER_PATHS"
                 android:resource="@xml/file_paths" />
         </provider>
+
+        <!-- Shizuku provider：Shizuku 13+ 要求应用声明此 provider 才能建立 binder 连接。
+             authorities 用 ${applicationId}.shizuku，permission 限定只有 Shizuku 管理器能绑定。 -->
+        <provider
+            android:name="rikka.shizuku.ShizukuProvider"
+            android:authorities="${applicationId}.shizuku"
+            android:multiprocess="false"
+            android:enabled="true"
+            android:exported="true"
+            android:permission="android.permission.INTERACT_ACROSS_USERS_FULL"
+            tools:ignore="ProtectedPermissions" />
 
     </application>
 </manifest>

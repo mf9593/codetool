@@ -36,6 +36,19 @@
                 android:textColor="?attr/colorOnSurface" />
 
             <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/modelTarget"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="8dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/modelBadge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"

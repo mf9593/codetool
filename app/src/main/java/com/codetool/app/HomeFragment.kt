@@ -24,7 +24,9 @@ import com.codetool.app.runtime.TawcrootRuntime
 import com.codetool.app.script.ScriptManager
 import com.codetool.app.task.TaskManager
 import com.codetool.app.terminal.TerminalService
+import com.codetool.app.util.ShizukuManager
 import com.codetool.app.util.UpdateUi
+import rikka.shizuku.Shizuku
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -48,6 +50,8 @@ class HomeFragment : Fragment() {
     private lateinit var tawcrootIcon: ImageView
     private lateinit var serviceIcon: ImageView
     private lateinit var aiStatusIcon: ImageView
+    private lateinit var shizukuText: TextView
+    private lateinit var shizukuIcon: ImageView
     private lateinit var progressBar: LinearProgressIndicator
     private lateinit var scriptFavList: android.widget.LinearLayout
     private lateinit var scriptFavEmpty: TextView
@@ -76,6 +80,30 @@ class HomeFragment : Fragment() {
         }
     }
 
+    /** 刷新 Shizuku 状态行：图形贴合语义（代码=运行时），颜色表达状态。 */
+    private fun updateShizukuStatus() {
+        if (!isAdded) return
+        val st = ShizukuManager.status(requireContext())
+        shizukuText.text = "Shizuku: ${st.label}"
+        val tone = when {
+            st.granted -> IconTone.OK
+            st.installed -> IconTone.NEUTRAL
+            else -> IconTone.ERROR
+        }
+        applyIcon(shizukuIcon, R.drawable.ic_code, tone)
+    }
+
+    /** Shizuku 授权结果回调：授权成功刷新状态，被拒提示。 */
+    private val shizukuPermListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode == ShizukuManager.REQUEST_CODE) {
+            val granted = grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED
+            if (!granted) {
+                Toast.makeText(requireContext(), "Shizuku 授权被拒绝", Toast.LENGTH_SHORT).show()
+            }
+            if (isAdded) updateShizukuStatus()
+        }
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -89,8 +117,23 @@ class HomeFragment : Fragment() {
         tawcrootIcon = v.findViewById(R.id.tawcrootIcon)
         serviceIcon = v.findViewById(R.id.serviceIcon)
         aiStatusIcon = v.findViewById(R.id.aiStatusIcon)
+        shizukuText = v.findViewById(R.id.shizukuText)
+        shizukuIcon = v.findViewById(R.id.shizukuIcon)
         progressBar = v.findViewById(R.id.progressBar)
         applyIcon(v.findViewById(R.id.pathIcon), R.drawable.ic_folder, IconTone.NEUTRAL)
+        // Shizuku：申请授权 + 刷新状态
+        v.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnShizukuAuth).setOnClickListener {
+            val st = ShizukuManager.status(requireContext())
+            when {
+                !st.installed -> Toast.makeText(requireContext(), "未安装 Shizuku 管理器，请先安装", Toast.LENGTH_SHORT).show()
+                !st.running -> Toast.makeText(requireContext(), "Shizuku 服务未运行，请打开 Shizuku 启动", Toast.LENGTH_SHORT).show()
+                st.granted -> Toast.makeText(requireContext(), "已授权，无需重复申请", Toast.LENGTH_SHORT).show()
+                else -> ShizukuManager.requestPermission()
+            }
+        }
+        v.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnShizukuRefresh).setOnClickListener {
+            updateShizukuStatus()
+        }
         scriptFavList = v.findViewById(R.id.scriptFavList)
         scriptFavEmpty = v.findViewById(R.id.scriptFavEmpty)
         pathFavList = v.findViewById(R.id.pathFavList)
@@ -101,6 +144,9 @@ class HomeFragment : Fragment() {
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         refreshStatus()
+        // Shizuku：注册授权结果回调 + 首次刷新状态行
+        ShizukuManager.addPermissionResultListener(shizukuPermListener)
+        updateShizukuStatus()
 
         // 只监听 rootfs 解压进度（备份/恢复入口已移到工具页，由那个页面自己收广播）
         val r = object : BroadcastReceiver() {
@@ -137,6 +183,7 @@ class HomeFragment : Fragment() {
     }
 
     override fun onDestroyView() {
+        ShizukuManager.removePermissionResultListener(shizukuPermListener)
         receiver?.let { requireContext().unregisterReceiver(it) }
         receiver = null
         super.onDestroyView()

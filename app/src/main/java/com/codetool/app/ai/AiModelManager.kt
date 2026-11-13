@@ -268,7 +268,7 @@ object AiModelManager {
 
     // ---------------- 写入各 CLI 原生配置（含 Base URL） ----------------
 
-    /** 写 mimo：auth.json（provider->{type,key,baseURL}）+ model.json（recent[0]）。 */
+    /** 写 mimo：auth.json（provider->{type,key,baseURL}）+ model.json（recent[0]）+ mimocode.jsonc（provider baseURL）。 */
     fun writeMimo(ctx: Context, m: Model): Boolean = runCatching {
         val auth = mimoAuth(ctx).apply { parentFile?.mkdirs() }
         val obj = if (auth.isFile) runCatching { JSONObject(auth.readText()) }.getOrDefault(JSONObject()) else JSONObject()
@@ -332,6 +332,27 @@ object AiModelManager {
         file.writeText(obj.toString(2))
         true
     }.getOrDefault(false)
+
+    /**
+     * 同步到 CLI：把每个目标（mimo / opencode）当前模型重新写入 CLI 原生配置。
+     * 用途：改了 baseURL / 修了写入逻辑 / 手动改过 JSON 后，一键让 CLI 配置和清单对齐。
+     * 返回 (成功目标数, 明细)。
+     */
+    fun syncAll(ctx: Context): Pair<Int, List<String>> {
+        val details = mutableListOf<String>()
+        var okCount = 0
+        for (target in listOf("mimo", "opencode")) {
+            val cur = listModels(ctx).find { it.target == target && it.current }
+            if (cur == null) {
+                details.add("$target：无当前模型，跳过")
+                continue
+            }
+            val ok = if (target == "mimo") writeMimo(ctx, cur) else writeOpencode(ctx, cur)
+            details.add("$target：${cur.name} ${if (ok) "✓" else "✗"}")
+            if (ok) okCount++
+        }
+        return okCount to details
+    }
 
     // ---------------- 版本：多源回退（规范：必须显示真实版本号） ----------------
 
@@ -447,6 +468,34 @@ object AiModelManager {
     /** 列表里显示服务商「显示名」而不是裸 provider id。 */
     fun providerLabel(ctx: Context, id: String): String =
         allProviders(ctx).find { it.id == id }?.label ?: id.ifEmpty { "未指定" }
+
+    // ---------------- 配置文件编辑器（核对/直接改原始 JSON，可手删模型） ----------------
+
+    /** 可直接编辑的配置文件清单：label 展示用，rel 是相对容器根的路径。 */
+    data class EditableConfig(val label: String, val rel: String)
+
+    fun listEditableConfigs(): List<EditableConfig> = listOf(
+        EditableConfig("AI 模型清单 (ai-models.json)", "files/ai-models.json"),
+        EditableConfig("mimo 模型 (model.json)", "root/.local/state/mimocode/model.json"),
+        EditableConfig("mimo 认证 (auth.json)", "root/.config/mimocode/auth.json"),
+        EditableConfig("mimo 主配置 (mimocode.jsonc)", "root/.config/mimocode/mimocode.jsonc"),
+        EditableConfig("opencode 配置 (opencode.json)", "root/.config/opencode/opencode.json"),
+    )
+
+    /** 读配置文件原文（容错：不存在/读失败返回 null）。 */
+    fun readConfigFile(ctx: Context, rel: String): String? = runCatching {
+        val f = f(ctx, rel)
+        if (f.isFile) f.readText() else null
+    }.getOrNull()
+
+    /** 写配置文件原文（编辑器保存用）。返回是否成功。 */
+    fun writeConfigFile(ctx: Context, rel: String, content: String): Boolean = runCatching {
+        val file = f(ctx, rel).apply { parentFile?.mkdirs() }
+        // 写前备份（.codetool.bak），避免改坏后无法回退
+        if (file.isFile) runCatching { file.copyTo(File(file.parentFile, file.name + ".codetool.bak"), overwrite = true) }
+        file.writeText(content)
+        true
+    }.getOrDefault(false)
 
     data class FetchResult(val models: List<String>, val error: String)
 

@@ -55,6 +55,8 @@ class AiModelsFragment : Fragment() {
             refresh()
         }
         v.findViewById<MaterialButton>(R.id.btnAiFetchModels).setOnClickListener { showFetchDialog() }
+        v.findViewById<MaterialButton>(R.id.btnAiConfig).setOnClickListener { showConfigEditor() }
+        v.findViewById<MaterialButton>(R.id.btnAiSync).setOnClickListener { syncToCli() }
         return v
     }
 
@@ -110,6 +112,7 @@ class AiModelsFragment : Fragment() {
             val btnCurrent = row.findViewById<MaterialButton>(R.id.btnModelCurrent)
             val btnEdit = row.findViewById<MaterialButton>(R.id.btnModelEdit)
             val btnDelete = row.findViewById<MaterialButton>(R.id.btnModelDelete)
+            val targetBadge = row.findViewById<MaterialTextView>(R.id.modelTarget)
 
             name.text = m.name
             // 状态用徽标放在标题右侧，颜色跟随主题，不混进标题文字
@@ -129,6 +132,23 @@ class AiModelsFragment : Fragment() {
                     badge.visibility = View.VISIBLE
                 }
                 else -> badge.visibility = View.GONE
+            }
+            // 目标徽标：mimo / opencode，颜色跟随主题，一眼看出模型属于哪个 CLI 配置
+            when (m.target) {
+                "opencode" -> {
+                    targetBadge.text = "opencode"
+                    targetBadge.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_oc)
+                    targetBadge.setTextColor(MaterialColors.getColor(
+                        ctx, com.google.android.material.R.attr.colorOnSecondaryContainer, Color.GRAY))
+                    targetBadge.visibility = View.VISIBLE
+                }
+                else -> {
+                    targetBadge.text = "mimo"
+                    targetBadge.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_mimo)
+                    targetBadge.setTextColor(MaterialColors.getColor(
+                        ctx, com.google.android.material.R.attr.colorOnPrimaryContainer, Color.GRAY))
+                    targetBadge.visibility = View.VISIBLE
+                }
             }
             meta.text = "目标 ${m.target}  ·  " +
                 if (m.apiType == AiModelManager.ApiType.RESPONSES) "Responses API" else "Chat Completions API"
@@ -213,7 +233,7 @@ class AiModelsFragment : Fragment() {
 
         existing?.let {
             etName.setText(it.name)
-            etName.isEnabled = false   // name+target 作为主键，编辑时不允许改名
+            etName.isEnabled = true   // 允许改名（保存时若改名会先删旧主键条目再存新名）
             etBaseUrl.setText(it.baseUrl)
             etModel.setText(it.modelId)
             etKey.setText(it.apiKey)
@@ -321,11 +341,71 @@ class AiModelsFragment : Fragment() {
                     toast("名称与模型 ID 必填")
                     return@setPositiveButton
                 }
+                // 改名：name+target 是主键，改了名要先删旧条目再存新名，并把 current 标记带过去
+                if (existing != null && existing.name != m.name) {
+                    val wasCurrent = existing.current
+                    AiModelManager.removeModel(ctx, existing.name, existing.target)
+                    if (wasCurrent) m.current = true
+                }
                 AiModelManager.upsertModel(ctx, m)
                 toast("已保存（点「设为当前」写入 CLI）")
                 refresh()
             }
             .setNegativeButton("取消", null).show()
+    }
+
+    /** 配置文件编辑器：选文件 → 查看/编辑原始 JSON → 保存（可手删模型、核对 baseURL）。 */
+    private fun showConfigEditor() {
+        val ctx = requireContext()
+        val configs = AiModelManager.listEditableConfigs()
+        val labels = configs.map { it.label }.toTypedArray()
+        var selected = 0
+        val v = layoutInflater.inflate(R.layout.dialog_ai_config, null)
+        val spFile = v.findViewById<Spinner>(R.id.spConfigFile)
+        val etContent = v.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etConfigContent)
+        val spAdapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_item, labels)
+        spAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spFile.adapter = spAdapter
+        fun load(idx: Int) {
+            selected = idx
+            etContent.setText(AiModelManager.readConfigFile(ctx, configs[idx].rel) ?: "（文件不存在或为空）")
+        }
+        load(0)
+        spFile.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(p: AdapterView<*>?, view: View?, pos: Int, id: Long) {
+                if (pos != selected) load(pos)
+            }
+            override fun onNothingSelected(p: AdapterView<*>?) {}
+        }
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle("配置文件（可直接编辑原始 JSON）")
+            .setView(v)
+            .setPositiveButton("保存") { _, _ ->
+                val rel = configs[selected].rel
+                val content = etContent.text?.toString().orEmpty()
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val ok = withContext(Dispatchers.IO) {
+                        AiModelManager.writeConfigFile(ctx, rel, content)
+                    }
+                    toast(if (ok) "已保存 ${configs[selected].label}（原文件备份为 .codetool.bak）" else "保存失败")
+                    if (ok) refresh()
+                }
+            }
+            .setNeutralButton("重载", null)
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 同步到 CLI：把每个目标的当前模型重新写入 CLI 原生配置（后台线程）。 */
+    private fun syncToCli() {
+        val ctx = requireContext()
+        viewLifecycleOwner.lifecycleScope.launch {
+            val (okCount, details) = withContext(Dispatchers.IO) {
+                AiModelManager.syncAll(ctx)
+            }
+            toast("已同步 $okCount 个目标：${details.joinToString("，")}")
+            if (isAdded) refresh()
+        }
     }
 
     /**

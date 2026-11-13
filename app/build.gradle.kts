@@ -70,6 +70,10 @@ dependencies {
     // 替换手搓的 LineNumberEditText（行号 desync / 滑动卡顿修不干净）。
     implementation("io.github.Rosemoe.sora-editor:editor:0.23.6")
 
+    // Shizuku：以 shell（adb）身份执行操作，无需 root。API v13.1.5（Maven Central）。
+    implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:provider:13.1.5")
+
     // Termux 终端视图（源码集成，无 proot，纯终端 UI + emulator）
     implementation(project(":terminal-emulator"))
     implementation(project(":terminal-view"))
