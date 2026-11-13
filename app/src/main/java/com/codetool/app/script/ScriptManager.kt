@@ -108,72 +108,71 @@ object ScriptManager {
         // 示例 1：不带参数
         run {
             val f = File(dir, "01-sysinfo.sh")
-            if (!f.exists()) {
-                f.writeText(
-                    "#!/bin/sh\n" +
-                        "#codetool: 系统信息\n" +
-                        "#codetool-desc: 查看内核 / 系统版本 / 内存 / 磁盘（不带参数示例）\n" +
-                        "echo \"==== 系统信息 ====\"\n" +
-                        "uname -a\n" +
-                        "cat /etc/os-release | head -3\n" +
-                        "free -h 2>/dev/null || echo '(无 free)'\n" +
-                        "df -h / | tail -1\n" +
-                        "uptime\n"
-                )
-                f.setExecutable(true)
-                count++
-            }
+            val content =
+                "#!/bin/sh\n" +
+                    "#codetool: 系统信息\n" +
+                    "#codetool-desc: 查看内核 / 系统版本 / 内存 / 磁盘（不带参数示例）\n" +
+                    "echo \"==== 系统信息 ====\"\n" +
+                    "uname -a\n" +
+                    "cat /etc/os-release | head -3\n" +
+                    "free -h 2>/dev/null || echo '(无 free)'\n" +
+                    "df -h / | tail -1\n" +
+                    "uptime\n"
+            if (writeExample(f, content)) count++
         }
-        // 示例 2：带参数输入框
+        // 示例 2：带参数输入框（提示填入 hello）
         run {
             val f = File(dir, "02-greet.sh")
-            if (!f.exists()) {
-                f.writeText(
-                    "#!/bin/sh\n" +
-                        "#codetool: 问候（带参数）\n" +
-                        "#codetool-desc: 带一个参数输入框的示例（名字）\n" +
-                        "#codetool-param: 名字（如 张三）\n" +
-                        "echo \"你好，\${1:-世界}！\"\n" +
-                        "echo \"今天是 \$(date '+%Y-%m-%d %H:%M:%S')\"\n"
-                )
-                f.setExecutable(true)
-                count++
-            }
+            val content =
+                "#!/bin/sh\n" +
+                    "#codetool: 问候（带参数）\n" +
+                    "#codetool-desc: 带一个参数输入框的示例（名字）\n" +
+                    "#codetool-param: 名字（如 hello）\n" +
+                    "echo \"你好，\${1:-世界}！\"\n" +
+                    "echo \"今天是 \$(date '+%Y-%m-%d %H:%M:%S')\"\n"
+            if (writeExample(f, content)) count++
         }
         // 示例 3：启动 opencode（带参数输入框）
         run {
             val f = File(dir, "04-opencode.sh")
-            if (!f.exists()) {
-                f.writeText(
-                    "#!/bin/sh\n" +
-                        "#codetool: 启动 opencode\n" +
-                        "#codetool-desc: 启动 opencode CLI，可指定工作目录与附加参数（如模型、提示词）\n" +
-                        "#codetool-param: 工作目录（可留空，默认主目录）\n" +
-                        "#codetool-param: opencode 附加参数（可留空，原样传给 opencode）\n" +
-                        "DIR=\"\${1:-}\"\n" +
-                        "ARGS=\"\${2:-}\"\n" +
-                        "\n" +
-                        "if [ -n \"\$DIR\" ]; then\n" +
-                        "  cd \"\$DIR\" 2>/dev/null || { echo \"目录不存在: \$DIR\"; exit 1; }\n" +
-                        "fi\n" +
-                        "\n" +
-                        "if ! command -v opencode >/dev/null 2>&1; then\n" +
-                        "  echo \"未找到 opencode，请先在终端安装：\"\n" +
-                        "  echo \"  curl -fsSL https://opencode.ai/install | bash\"\n" +
-                        "  exit 1\n" +
-                        "fi\n" +
-                        "\n" +
-                        "if [ -n \"\$ARGS\" ]; then\n" +
-                        "  exec opencode \$ARGS\n" +
-                        "else\n" +
-                        "  exec opencode\n" +
-                        "fi\n"
-                )
-                f.setExecutable(true)
-                count++
-            }
+            val content =
+                "#!/bin/sh\n" +
+                    "#codetool: 启动 opencode\n" +
+                    "#codetool-desc: 启动 opencode CLI，可指定工作目录与附加参数（如模型、提示词）\n" +
+                    "#codetool-param: 工作目录（可留空，默认主目录）\n" +
+                    "#codetool-param: opencode 附加参数（可留空，原样传给 opencode）\n" +
+                    "DIR=\"\${1:-}\"\n" +
+                    "ARGS=\"\${2:-}\"\n" +
+                    "\n" +
+                    "if [ -n \"\$DIR\" ]; then\n" +
+                    "  cd \"\$DIR\" 2>/dev/null || { echo \"目录不存在: \$DIR\"; exit 1; }\n" +
+                    "fi\n" +
+                    "\n" +
+                    "if ! command -v opencode >/dev/null 2>&1; then\n" +
+                    "  echo \"未找到 opencode，请先在终端安装：\"\n" +
+                    "  echo \"  curl -fsSL https://opencode.ai/install | bash\"\n" +
+                    "  exit 1\n" +
+                    "fi\n" +
+                    "\n" +
+                    "if [ -n \"\$ARGS\" ]; then\n" +
+                    "  exec opencode \$ARGS\n" +
+                    "else\n" +
+                    "  exec opencode\n" +
+                    "fi\n"
+            if (writeExample(f, content)) count++
         }
         return count
+    }
+
+    /**
+     * 写入示例脚本：不存在或内容与最新示例不一致时覆盖（保证 App 升级后示例同步到最新）。
+     * 返回是否实际写入。用户自建的非示例脚本不受影响。
+     */
+    private fun writeExample(f: File, content: String): Boolean {
+        if (f.exists() && runCatching { f.readText() }.getOrNull() == content) return false
+        f.writeText(content)
+        f.setExecutable(true)
+        return true
     }
 
     // ---------------- 内置本地脚本 ----------------
