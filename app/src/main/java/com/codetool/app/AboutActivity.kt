@@ -18,9 +18,12 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.updatePadding
 import com.codetool.app.theme.ThemeManager
+import com.codetool.app.util.UpdateUi
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.color.MaterialColors
+import kotlinx.coroutines.MainScope
+import kotlinx.coroutines.cancel
 
 /**
  * 关于页（二级页面）：独立 Activity，带标题栏 + 返回按钮。
@@ -31,6 +34,14 @@ import com.google.android.material.color.MaterialColors
  * 主题由 [ThemeManager.resolveStyle] 在 super.onCreate 前应用。
  */
 class AboutActivity : Activity() {
+
+    /** 普通 Activity 没有 lifecycleScope，自建并在 onDestroy 取消。 */
+    private val scope = MainScope()
+
+    override fun onDestroy() {
+        scope.cancel()
+        super.onDestroy()
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         // 必须在 super.onCreate 前应用当前主题（与 MainActivity 的 ThemeManager.apply 一致）
@@ -183,6 +194,54 @@ class AboutActivity : Activity() {
         }
         infoCard.addView(infoLayout)
 
+        // ─── 检查更新卡片（GitHub Releases）───
+        val updateCard = MaterialCardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).also { it.bottomMargin = dp(16) }
+            setRadius(dp(16).toFloat())
+            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
+        }
+        val updateRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+            isClickable = true
+            isFocusable = true
+            val ripple = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+            setBackgroundResource(ripple.resourceId)
+            setOnClickListener { UpdateUi.manualCheck(this@AboutActivity, scope) }
+        }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_refresh)
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+            setColorFilter(accent)
+        }.also { updateRow.addView(it) }
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).also { it.leftMargin = dp(12) }
+            addView(TextView(this@AboutActivity).apply {
+                text = "检查更新"
+                textSize = 14f
+                setTextColor(onSurface)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@AboutActivity).apply {
+                text = "当前 $versionName · 从 GitHub 检查"
+                textSize = 13f
+                setTextColor(onSurfaceVariant)
+            })
+        }.also { updateRow.addView(it) }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
+            setColorFilter(onSurfaceVariant)
+        }.also { updateRow.addView(it) }
+        updateCard.addView(updateRow)
+
         // ─── 开源项目卡片 ───
         val ossCard = MaterialCardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -287,15 +346,19 @@ class AboutActivity : Activity() {
         }.also { qqRow.addView(it) }
         qqCard.addView(qqRow)
 
-        // ─── 滚动容器：背景跟随主题 ───
+        // ─── 滚动容器：背景跟随主题（隐藏滚动条，内容超出仍可滑动）───
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             setBackgroundColor(bg)
             setPadding(dp(20), dp(20), dp(20), dp(28))
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            overScrollMode = android.view.View.OVER_SCROLL_NEVER
             addView(LinearLayout(this@AboutActivity).apply {
                 orientation = LinearLayout.VERTICAL
                 addView(headerCard)
                 addView(infoCard)
+                addView(updateCard)
                 addView(ossCard)
                 addView(qqCard)
             })

@@ -1,0 +1,817 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="light">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CodeTool — 手机上的 Linux 终端容器 · 锁屏熄屏不断网</title>
+<meta name="description" content="CodeTool：Android 上的 Linux 终端容器。基于 tawcroot 无 root 运行 Ubuntu 24.04，锁屏熄屏不断网，内置终端、脚本库、包管理、AI 模型、Skill / MCP 管理。GPL-3.0 开源。">
+<meta name="color-scheme" content="dark light">
+<meta property="og:title" content="CodeTool — 手机上的 Linux 终端容器">
+<meta property="og:description" content="锁屏熄屏不断网。无 root 运行 Ubuntu，内置终端、脚本、AI 模型、Skill / MCP 管理。">
+<meta property="og:type" content="website">
+<script>
+/* 主题初始化：URL 参数 > localStorage > 默认浅色（防闪烁，在渲染前执行） */
+(function(){
+  var t = null;
+  try{
+    var p = new URLSearchParams(location.search).get('theme');
+    if(p === 'light' || p === 'dark') t = p;
+    else t = localStorage.getItem('ct-theme');
+  }catch(e){}
+  if(!t) t = 'light';
+  document.documentElement.dataset.theme = t;
+})();
+</script>
+<style>
+/* ============ 设计变量：取自 App 主题（terminal 青色系） ============ */
+/* 深色 = 默认（对应 App 深色主题 colors.xml） */
+:root{
+  --bg:#0E1514;
+  --bg-deep:#0A100F;
+  --surface:#18211F;
+  --surface-2:#101816;
+  --line:rgba(77,208,225,.14);
+  --line-strong:rgba(77,208,225,.28);
+  --primary:#4DD0E1;
+  --primary-mid:#26A0B5;
+  --primary-deep:#006A78;
+  --on-primary:#00363D;
+  --text:#DEE4E2;
+  --muted:#83938F;
+  --muted-2:#BAC9C5;
+  --amber:#E8B45C;
+  --header-bg:rgba(14,21,20,.82);
+  --glow1:rgba(0,106,120,.32);
+  --glow2:rgba(77,208,225,.10);
+  --stat-bg:rgba(24,33,31,.5);
+  --win-bg:linear-gradient(180deg,rgba(77,208,225,.06),rgba(16,24,22,.4));
+  --shadow:rgba(0,0,0,.35);
+  --bar-bg:rgba(77,208,225,.08);
+  --btn-glow:rgba(77,208,225,.25);
+  --radius:16px;
+  --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Consolas,"Courier New",monospace;
+  --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",Roboto,sans-serif;
+}
+/* 浅色（对应 App 浅色主题 light_*） */
+[data-theme="light"]{
+  --bg:#F2FAFB;
+  --bg-deep:#E6EFF1;
+  --surface:#FFFFFF;
+  --surface-2:#FFFFFF;
+  --line:rgba(0,106,120,.15);
+  --line-strong:rgba(0,106,120,.32);
+  --primary:#006A78;
+  --primary-mid:#00798A;
+  --primary-deep:#00404A;
+  --on-primary:#FFFFFF;
+  --text:#171D1F;
+  --muted:#6F797D;
+  --muted-2:#3F484D;
+  --amber:#8A5300;
+  --header-bg:rgba(242,250,251,.85);
+  --glow1:rgba(0,106,120,.10);
+  --glow2:rgba(38,160,181,.07);
+  --stat-bg:rgba(255,255,255,.7);
+  --win-bg:linear-gradient(180deg,rgba(0,106,120,.07),rgba(255,255,255,.4));
+  --shadow:rgba(0,106,120,.15);
+  --bar-bg:rgba(0,106,120,.08);
+  --btn-glow:rgba(0,106,120,.28);
+}
+*{margin:0;padding:0;box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{
+  background:var(--bg);color:var(--text);
+  font-family:var(--sans);
+  line-height:1.7;
+  overflow-x:hidden;
+  transition:background-color .35s,color .35s;
+}
+::selection{background:rgba(38,160,181,.3)}
+a{color:var(--primary);text-decoration:none}
+.wrap{max-width:1100px;margin:0 auto;padding:0 24px}
+.mono{font-family:var(--mono)}
+
+/* ============ 顶部导航 ============ */
+header{
+  position:sticky;top:0;z-index:50;
+  background:var(--header-bg);
+  backdrop-filter:blur(12px);
+  border-bottom:1px solid var(--line);
+  transition:background-color .35s,border-color .35s;
+}
+.nav{display:flex;align-items:center;justify-content:space-between;height:64px;gap:12px}
+.brand{display:flex;align-items:center;gap:10px;color:var(--text);font-weight:700;font-size:18px}
+.brand svg{display:block}
+.nav-links{display:flex;align-items:center;gap:24px;font-size:14px}
+.nav-links a{color:var(--muted-2);transition:color .2s}
+.nav-links a:hover{color:var(--primary)}
+@media(max-width:640px){.nav-links a:not(.btn){display:none}}
+
+/* 主题切换按钮 */
+.theme-toggle{
+  flex:none;width:40px;height:40px;border-radius:12px;
+  display:flex;align-items:center;justify-content:center;
+  background:transparent;border:1px solid var(--line-strong);
+  color:var(--text);cursor:pointer;transition:all .2s;
+}
+.theme-toggle:hover{border-color:var(--primary);color:var(--primary)}
+.theme-toggle .i-sun{display:none}
+[data-theme="light"] .theme-toggle .i-sun{display:block}
+[data-theme="light"] .theme-toggle .i-moon{display:none}
+
+/* ============ 按钮 ============ */
+.btn{
+  display:inline-flex;align-items:center;gap:8px;
+  padding:10px 20px;border-radius:12px;
+  font-size:14px;font-weight:600;
+  border:1px solid var(--line-strong);
+  color:var(--text);background:transparent;
+  transition:all .2s;cursor:pointer;
+}
+.btn:hover{border-color:var(--primary);color:var(--primary)}
+/* GitHub 经典深色按钮：深/浅主题下都清晰 */
+.btn-github{
+  background:#24292F;color:#FFFFFF;border:1px solid #24292F;
+}
+.btn-github svg{fill:#FFFFFF}
+.btn-github:hover{
+  background:#1B1F24;border-color:#1B1F24;color:#FFFFFF;
+  box-shadow:0 6px 18px rgba(27,31,36,.4);
+}
+/* 主题主按钮 */
+.btn-primary{
+  background:var(--primary);color:var(--on-primary);
+  border:1px solid var(--primary);
+}
+.btn-primary:hover{
+  filter:brightness(1.1);color:var(--on-primary);
+  box-shadow:0 0 24px var(--btn-glow);
+}
+
+/* ============ Hero ============ */
+.hero{
+  position:relative;
+  padding:84px 0 90px;
+  background:
+    radial-gradient(700px 380px at 18% -6%,var(--glow1),transparent 62%),
+    radial-gradient(620px 420px at 92% 12%,var(--glow2),transparent 60%);
+  transition:background .35s;
+}
+.hero-grid{display:grid;grid-template-columns:1.06fr .94fr;gap:56px;align-items:center}
+@media(max-width:920px){.hero-grid{grid-template-columns:1fr;gap:48px}}
+.badges{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:22px}
+.badge{
+  font-family:var(--mono);font-size:12px;
+  padding:4px 12px;border-radius:999px;
+  border:1px solid var(--line-strong);color:var(--muted-2);
+}
+.badge.hot{color:var(--primary);border-color:var(--primary);background:var(--bar-bg)}
+h1{
+  font-size:clamp(34px,5vw,52px);
+  line-height:1.22;font-weight:800;
+  letter-spacing:.5px;margin-bottom:8px;
+}
+h1 .grad{
+  background:linear-gradient(92deg,var(--primary) 10%,var(--primary-mid) 60%,var(--primary) 95%);
+  -webkit-background-clip:text;background-clip:text;color:transparent;
+}
+.tagline{
+  font-size:clamp(16px,2vw,19px);color:var(--muted-2);
+  margin:14px 0 30px;max-width:34em;
+}
+.tagline b{color:var(--primary);font-weight:600}
+.cta{display:flex;flex-wrap:wrap;gap:14px;margin-bottom:38px}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;max-width:520px}
+@media(max-width:560px){.stats{grid-template-columns:repeat(2,1fr)}}
+.stat{
+  border:1px solid var(--line);border-radius:12px;
+  padding:10px 14px;background:var(--stat-bg);
+  transition:background-color .35s,border-color .35s;
+}
+.stat .v{font-family:var(--mono);font-size:19px;font-weight:700;color:var(--primary)}
+.stat .k{font-size:12px;color:var(--muted)}
+
+/* ============ 手机 + 终端 mockup（始终深色：它是一块终端屏幕） ============ */
+.phone-zone{display:flex;justify-content:center}
+.phone{
+  /* 作用域覆盖：浅色页面下终端依旧深色 */
+  --bg-deep:#0A100F;
+  --line:rgba(77,208,225,.14);
+  --line-strong:rgba(77,208,225,.28);
+  --primary:#4DD0E1;
+  --primary-mid:#26A0B5;
+  --text:#DEE4E2;
+  --muted:#83938F;
+  --amber:#E8B45C;
+  width:min(350px,88vw);
+  border-radius:40px;
+  background:var(--bg-deep);
+  border:1px solid var(--line-strong);
+  box-shadow:
+    0 0 0 8px rgba(10,16,15,.9),
+    0 0 0 9px var(--line),
+    0 30px 80px var(--shadow),
+    0 0 90px var(--glow1);
+  overflow:hidden;
+  transition:opacity .3s,box-shadow .35s;
+}
+.statusbar{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:12px 22px 6px;
+  font-family:var(--mono);font-size:12px;color:var(--muted);
+}
+.term-head{
+  display:flex;align-items:center;gap:7px;
+  padding:9px 16px;
+  border-bottom:1px solid var(--line);
+  background:rgba(24,33,31,.6);
+}
+.dot{width:10px;height:10px;border-radius:50%}
+.dot.r{background:#006A78}
+.dot.y{background:#26A0B5}
+.dot.g{background:#4DD0E1}
+.term-title{margin-left:8px;font-family:var(--mono);font-size:11.5px;color:var(--muted)}
+.term{
+  height:330px;
+  padding:16px 18px;
+  font-family:var(--mono);
+  font-size:12.5px;line-height:1.75;
+  overflow:hidden;
+  transition:filter .5s,opacity .5s;
+}
+.phone.locked .term{filter:brightness(.62) saturate(.6)}
+.t-cmd{color:var(--text);white-space:pre-wrap;word-break:break-all}
+.t-prompt{color:var(--primary);font-weight:700}
+.t-dim{color:var(--muted)}
+.t-ok{color:#7DDF9A}
+.t-info{color:var(--primary-mid)}
+.t-warn{color:var(--amber)}
+.cursor{
+  display:inline-block;width:8px;height:15px;
+  background:var(--primary);vertical-align:-2px;
+  animation:blink 1s steps(1) infinite;
+}
+@keyframes blink{50%{opacity:0}}
+.lock-pill{
+  display:flex;align-items:center;justify-content:center;gap:7px;
+  margin:0 16px 14px;padding:7px 0;
+  border-radius:10px;
+  font-size:12px;font-family:var(--mono);
+  border:1px solid var(--line);color:var(--muted);
+  transition:all .4s;
+}
+.lock-pill.on{
+  border-color:rgba(232,180,92,.5);color:var(--amber);
+  background:rgba(232,180,92,.06);
+}
+.phone-caption{
+  text-align:center;margin-top:26px;
+  font-size:13.5px;color:var(--muted);
+}
+.phone-caption b{color:var(--primary)}
+
+/* ============ 通用 section ============ */
+section{padding:76px 0;border-top:1px solid var(--line)}
+.sec-tag{
+  font-family:var(--mono);font-size:13px;color:var(--primary);
+  letter-spacing:2px;text-transform:uppercase;margin-bottom:10px;
+}
+h2{font-size:clamp(24px,3.4vw,34px);font-weight:800;margin-bottom:14px;letter-spacing:.5px}
+.sec-sub{color:var(--muted-2);max-width:44em;margin-bottom:44px}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .7s ease,transform .7s ease}
+.reveal.in{opacity:1;transform:none}
+@media(prefers-reduced-motion:reduce){
+  .reveal{opacity:1;transform:none;transition:none}
+  .cursor{animation:none}
+  html{scroll-behavior:auto}
+}
+
+/* ============ 痛点对比 ============ */
+.vs{display:grid;grid-template-columns:1fr 1fr;gap:22px}
+@media(max-width:780px){.vs{grid-template-columns:1fr}}
+.vs-card{
+  border-radius:var(--radius);
+  padding:26px 26px 22px;
+  border:1px solid var(--line);
+  background:var(--surface-2);
+  transition:background-color .35s,border-color .35s;
+}
+.vs-card.win{
+  border-color:var(--primary);
+  background:var(--win-bg);
+  box-shadow:0 0 40px var(--shadow);
+}
+.vs-card h3{font-size:17px;margin-bottom:6px;display:flex;align-items:center;gap:10px}
+.vs-card .who{font-family:var(--mono);font-size:12px;color:var(--muted)}
+.vs-card ul{list-style:none;margin-top:16px}
+.vs-card li{
+  display:flex;gap:10px;align-items:flex-start;
+  padding:7px 0;font-size:14px;color:var(--muted-2);
+}
+.vs-card.win li{color:var(--text)}
+.mark{flex:none;margin-top:5px;width:14px;height:14px;border-radius:50%;position:relative}
+.mark.no{background:rgba(255,107,97,.16)}
+.mark.no::before,.mark.no::after{
+  content:"";position:absolute;left:6.5px;top:3px;width:1.5px;height:8px;
+  background:#E0665B;border-radius:2px;
+}
+.mark.no::before{transform:rotate(45deg)}
+.mark.no::after{transform:rotate(-45deg)}
+.mark.yes{background:rgba(46,160,87,.16)}
+.mark.yes::before{
+  content:"";position:absolute;left:3.5px;top:4px;width:4px;height:7px;
+  border:solid #3FA35F;border-width:0 2px 2px 0;transform:rotate(42deg);border-radius:1px;
+}
+
+/* ============ 功能网格 ============ */
+.grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+@media(max-width:900px){.grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:600px){.grid{grid-template-columns:1fr}}
+.card{
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:24px 22px;background:var(--surface-2);
+  transition:transform .25s,border-color .25s,box-shadow .25s,background-color .35s;
+}
+.card:hover{transform:translateY(-4px);border-color:var(--line-strong);box-shadow:0 14px 40px var(--shadow)}
+.card .ic{
+  width:42px;height:42px;border-radius:11px;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--bar-bg);border:1px solid var(--line);
+  margin-bottom:14px;color:var(--primary);
+}
+.card h3{font-size:16.5px;margin-bottom:6px}
+.card p{font-size:13.5px;color:var(--muted)}
+.card .tag{margin-top:12px;display:inline-block;font-family:var(--mono);font-size:11px;color:var(--primary-mid);border:1px solid var(--line);padding:2px 8px;border-radius:6px}
+
+/* ============ 原理 / tawcroot ============ */
+.arch{
+  display:grid;grid-template-columns:1fr 1fr;gap:22px;align-items:stretch;
+}
+@media(max-width:820px){.arch{grid-template-columns:1fr}}
+.panel{
+  border:1px solid var(--line);border-radius:var(--radius);
+  padding:26px;background:var(--surface-2);
+  transition:background-color .35s,border-color .35s;
+}
+.panel h3{font-size:16px;margin-bottom:16px;display:flex;align-items:center;gap:10px}
+.panel h3 .r{margin-left:auto;font-family:var(--mono);font-size:12px;color:var(--muted);font-weight:400}
+.bench{display:flex;flex-direction:column;gap:12px}
+.bench-row{display:grid;grid-template-columns:88px 1fr 52px;gap:12px;align-items:center;font-size:13px}
+.bench-row .name{font-family:var(--mono);color:var(--muted-2)}
+.bar{height:10px;border-radius:6px;background:var(--bar-bg);overflow:hidden;position:relative}
+.bar i{position:absolute;inset:0 auto 0 0;border-radius:6px;background:linear-gradient(90deg,var(--primary-deep),var(--primary));width:0;transition:width 1.2s cubic-bezier(.2,.7,.2,1)}
+.bar i.slow{background:linear-gradient(90deg,#5A4636,var(--amber))}
+.bench-row .val{font-family:var(--mono);color:var(--text);text-align:right}
+.layers{display:flex;flex-direction:column;gap:8px}
+.layer{
+  border:1px solid var(--line);border-radius:10px;
+  padding:10px 16px;font-size:13px;
+  display:flex;justify-content:space-between;align-items:center;
+  background:var(--stat-bg);
+  transition:background-color .35s;
+}
+.layer b{font-weight:600}
+.layer .r{font-family:var(--mono);font-size:12px;color:var(--primary-mid)}
+.flow-note{margin-top:16px;font-size:12.5px;color:var(--muted);line-height:1.8}
+.flow-note code{font-family:var(--mono);color:var(--primary);background:var(--bar-bg);padding:1px 6px;border-radius:5px;font-size:12px}
+
+/* ============ 开源许可 ============ */
+.chips{display:flex;flex-wrap:wrap;gap:10px;justify-content:center;margin-top:8px}
+.chip{
+  font-family:var(--mono);font-size:12.5px;
+  border:1px solid var(--line);border-radius:999px;
+  padding:7px 16px;color:var(--muted-2);
+  background:var(--surface-2);transition:all .2s;
+}
+.chip:hover{color:var(--primary);border-color:var(--primary)}
+.chip b{color:var(--primary);font-weight:600}
+.license-cta{text-align:center;margin-top:34px}
+.license-cta p{color:var(--muted);font-size:13.5px;margin-bottom:18px}
+
+/* ============ footer ============ */
+footer{
+  border-top:1px solid var(--line);
+  padding:44px 0 54px;background:var(--bg-deep);
+  transition:background-color .35s,border-color .35s;
+}
+.foot{display:flex;flex-wrap:wrap;justify-content:space-between;gap:20px;align-items:center}
+.foot p{font-size:13px;color:var(--muted)}
+.foot .links{display:flex;gap:22px;font-size:13px}
+.disclaim{margin-top:22px;font-size:12px;color:var(--muted);max-width:60em;line-height:1.8;opacity:.8}
+</style>
+</head>
+<body>
+
+<!-- ================= 导航 ================= -->
+<header>
+  <div class="wrap nav">
+    <a class="brand" href="#top" aria-label="CodeTool">
+      <svg width="30" height="30" viewBox="0 0 108 108" fill="none">
+        <rect x="28" y="34" width="52" height="40" rx="10" stroke="#4DD0E1" stroke-width="5"/>
+        <line x1="28" y1="47" x2="80" y2="47" stroke="#A8D6DD" stroke-width="3"/>
+        <circle cx="36" cy="40.5" r="2.6" fill="#006A78"/>
+        <circle cx="43" cy="40.5" r="2.6" fill="#26A0B5"/>
+        <circle cx="50" cy="40.5" r="2.6" fill="#4DD0E1"/>
+        <path d="M39 54 L48 59 L39 64" stroke="#4DD0E1" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M54 69.5 L71 69.5" stroke="#4DD0E1" stroke-width="6.5" stroke-linecap="round"/>
+      </svg>
+      CodeTool
+    </a>
+    <nav class="nav-links">
+      <a href="#why">为什么</a>
+      <a href="#features">功能</a>
+      <a href="#how">原理</a>
+      <a href="#license">开源</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="切换深浅色主题" title="切换深浅色主题">
+        <svg class="i-moon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/></svg>
+        <svg class="i-sun" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/></svg>
+      </button>
+      <a class="btn btn-github" href="https://github.com/mf9593/codetool" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        GitHub
+      </a>
+    </nav>
+  </div>
+</header>
+
+<!-- ================= Hero ================= -->
+<main id="top">
+<div class="hero">
+  <div class="wrap hero-grid">
+    <div>
+      <div class="badges">
+        <span class="badge hot">v2.0.0</span>
+        <span class="badge">GPL-3.0 开源</span>
+        <span class="badge">Android 8.0+ · arm64</span>
+        <span class="badge">无需 root</span>
+      </div>
+      <h1>手机上的<br><span class="grad">Linux 终端容器</span></h1>
+      <p class="tagline">
+        锁屏熄屏<b>不断网</b>。基于 <b>tawcroot</b> 无 root 运行 Ubuntu 24.04，
+        内置终端、脚本库、包管理、AI 模型与 Skill / MCP 管理 ——
+        把一台 Android 手机变成随身的开发机。
+      </p>
+      <div class="cta">
+        <a class="btn btn-github" href="https://github.com/mf9593/codetool" target="_blank" rel="noopener">
+          <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+          源码仓库
+        </a>
+        <a class="btn btn-primary" href="https://github.com/mf9593/codetool/releases" target="_blank" rel="noopener">下载 APK</a>
+      </div>
+      <div class="stats">
+        <div class="stat"><div class="v">0</div><div class="k">root 权限要求</div></div>
+        <div class="stat"><div class="v">+45%</div><div class="k">比 PRoot 更快</div></div>
+        <div class="stat"><div class="v">50MB</div><div class="k">APK 体积</div></div>
+        <div class="stat"><div class="v">24/7</div><div class="k">熄屏在线</div></div>
+      </div>
+    </div>
+
+    <div>
+      <div class="phone-zone">
+        <div class="phone" id="phone">
+          <div class="statusbar"><span id="clock">23:47</span><span>CodeTool</span><span id="battery">▮ 87%</span></div>
+          <div class="term-head">
+            <span class="dot r"></span><span class="dot y"></span><span class="dot g"></span>
+            <span class="term-title">bash — ubuntu-noble-aarch64</span>
+          </div>
+          <div class="term" id="term"></div>
+          <div class="lock-pill" id="lockPill">
+            <svg id="lockIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><rect x="5" y="11" width="14" height="9" rx="2"/><path d="M8 11V7a4 4 0 0 1 8 0v4"/></svg>
+            <span id="lockText">前台运行中</span>
+          </div>
+        </div>
+      </div>
+      <p class="phone-caption">屏幕熄了，<b>连接没断</b> —— 长任务整夜挂机下载、编译、跑模型</p>
+    </div>
+  </div>
+</div>
+
+<!-- ================= 为什么 ================= -->
+<section id="why">
+  <div class="wrap reveal">
+    <div class="sec-tag">// WHY</div>
+    <h2>别的终端 App，锁屏就「失联」</h2>
+    <p class="sec-sub">
+      常见终端 App 锁屏约一分钟后，系统进入深度休眠：CPU 挂起、前台服务被冻结、长连接超时。
+      CodeTool 用前台服务持有 WakeLock + WifiLock，把这条链路彻底守住。
+    </p>
+    <div class="vs">
+      <div class="vs-card">
+        <h3>普通终端 App</h3>
+        <div class="who mono">$ ordinary-terminal</div>
+        <ul>
+          <li><span class="mark no"></span>锁屏 1 分钟后 CPU 深度挂起</li>
+          <li><span class="mark no"></span>WiFi 无线电进低功耗，长连接超时</li>
+          <li><span class="mark no"></span>git clone / apt / ssh 半路断掉</li>
+          <li><span class="mark no"></span>唤醒后回到满是报错的终端</li>
+        </ul>
+      </div>
+      <div class="vs-card win">
+        <h3>CodeTool</h3>
+        <div class="who mono">$ codetool</div>
+        <ul>
+          <li><span class="mark yes"></span>PARTIAL_WAKE_LOCK 锁屏保 CPU</li>
+          <li><span class="mark yes"></span>WifiLock 保无线电商速活跃</li>
+          <li><span class="mark yes"></span>会话引用计数，结束自动释放不费电</li>
+          <li><span class="mark yes"></span>整夜挂机，早上回来一切照旧</li>
+        </ul>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 功能 ================= -->
+<section id="features">
+  <div class="wrap reveal">
+    <div class="sec-tag">// FEATURES</div>
+    <h2>五个页面，一台随身开发机</h2>
+    <p class="sec-sub">首页状态、终端、工具、文件管理、日志 —— 常用能力一屏直达，低频操作收进工具页。</p>
+    <div class="grid">
+      <div class="card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 17l6-5-6-5"/><line x1="12" y1="19" x2="20" y2="19"/></svg></div>
+        <h3>真·终端</h3>
+        <p>Termux 终端视图 + 多标签会话，直接进入 Ubuntu rootfs 的 bash，支持 xterm 转义序列与外部键盘。</p>
+        <span class="tag">tawcroot runtime</span>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2L3 14h7l-1 8 10-12h-7l1-8z"/></svg></div>
+        <h3>脚本库</h3>
+        <p>可视化添加 / 编辑 / 运行脚本，参数按脚本记忆、下次自动回填；一键安装 Android 构建环境。</p>
+        <span class="tag">params memory</span>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 9h10M7 13h6"/></svg></div>
+        <h3>包管理</h3>
+        <p>apt update / upgrade / 搜索 / 安装非交互执行；Chrome、Firefox 一键装进容器，APK 保持轻量。</p>
+        <span class="tag">apt · 50MB APK</span>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg></div>
+        <h3>AI 模型</h3>
+        <p>多模型配置、服务商下拉、自定义 OpenAI 兼容端点、Responses API，测试连接就地反馈。</p>
+        <span class="tag">openai-compatible</span>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/><path d="M9 12l2 2 4-4"/></svg></div>
+        <h3>Skill / MCP</h3>
+        <p>统一扫描 MiMo Code、OpenCode、Claude、Codex 的 Skill 目录；MCP 合并双 CLI 配置、兼容 JSONC、带启停开关。</p>
+        <span class="tag">multi-CLI aware</span>
+      </div>
+      <div class="card">
+        <div class="ic"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg></div>
+        <h3>文件与备份</h3>
+        <p>文件管理器浏览编辑容器内外文件，内置代码编辑器；rootfs 打包 / 恢复放工具页，防误触。</p>
+        <span class="tag">editor · backup</span>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 原理 ================= -->
+<section id="how">
+  <div class="wrap reveal">
+    <div class="sec-tag">// UNDER THE HOOD</div>
+    <h2>不靠 PRoot，也不靠 root</h2>
+    <p class="sec-sub">
+      容器由 tawcroot 提供：单进程模拟 chroot 的 syscall，不隔离 netns，与 App 共享 loopback，
+      性能显著优于 PRoot。GUI 由 tawc Wayland 合成器输出到独立 Activity。
+    </p>
+    <div class="arch">
+      <div class="panel">
+        <h3>运行时开销对比<span class="r">相对 PRoot</span></h3>
+        <div class="bench">
+          <div class="bench-row">
+            <span class="name">tawcroot</span>
+            <span class="bar"><i data-w="55"></i></span>
+            <span class="val">≈ −45%</span>
+          </div>
+          <div class="bench-row">
+            <span class="name">PRoot</span>
+            <span class="bar"><i class="slow" data-w="100"></i></span>
+            <span class="val">基线</span>
+          </div>
+          <div class="bench-row">
+            <span class="name">root 手机</span>
+            <span class="bar"><i data-w="30"></i></span>
+            <span class="val">需 root</span>
+          </div>
+        </div>
+        <p class="flow-note" style="margin-top:22px">
+          tawcroot 单进程、无 ptrace 往返；不隔离网络栈，容器内 <code>127.0.0.1</code> 直通 App 侧服务。
+        </p>
+      </div>
+      <div class="panel">
+        <h3>分层架构</h3>
+        <div class="layers">
+          <div class="layer"><b>Android App</b><span class="r">Kotlin · Material 3</span></div>
+          <div class="layer"><b>TerminalService</b><span class="r">WakeLock + WifiLock</span></div>
+          <div class="layer"><b>tawcroot</b><span class="r">syscall 翻译 · 无 root</span></div>
+          <div class="layer"><b>Ubuntu 24.04 rootfs</b><span class="r">aarch64 · arm64</span></div>
+          <div class="layer"><b>tawc Wayland 合成器</b><span class="r">GUI · 文件桥</span></div>
+        </div>
+        <p class="flow-note">
+          容器 ↔ App 通过共享目录文件桥通信（请求 / 响应 JSON），调试走标准 Chrome DevTools Protocol，不另造 IPC。
+        </p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ================= 开源 ================= -->
+<section id="license">
+  <div class="wrap reveal">
+    <div class="sec-tag" style="text-align:center">// OPEN SOURCE</div>
+    <h2 style="text-align:center">站在开源的肩膀上</h2>
+    <p class="sec-sub" style="margin-left:auto;margin-right:auto;text-align:center">
+      CodeTool 以 GPL-3.0 发布，随附完整的第三方许可声明 —— 每一个被复用的项目都保留其原始协议与出处。
+    </p>
+    <div class="chips">
+      <a class="chip" href="https://github.com/taowen/tawc" target="_blank" rel="noopener"><b>tawc</b> · GPL-3.0</a>
+      <a class="chip" href="https://github.com/termux/termux-app" target="_blank" rel="noopener"><b>Termux</b> · Apache-2.0</a>
+      <a class="chip" href="https://github.com/termux/proot-distro" target="_blank" rel="noopener"><b>proot-distro</b> · GPL-3.0</a>
+      <a class="chip" href="https://github.com/Rosemoe/sora-editor" target="_blank" rel="noopener"><b>sora-editor</b> · LGPL-2.1</a>
+      <a class="chip" href="https://github.com/material-components/material-components-android" target="_blank" rel="noopener"><b>Material</b> · Apache-2.0</a>
+      <a class="chip" href="https://github.com/JetBrains/kotlin" target="_blank" rel="noopener"><b>Kotlin</b> · Apache-2.0</a>
+      <a class="chip" href="https://gitlab.freedesktop.org/xkeyboard-config/xkeyboard-config" target="_blank" rel="noopener"><b>xkeyboard-config</b> · MIT</a>
+    </div>
+    <div class="license-cta">
+      <p>全部组件与源码地址见仓库中的 <a href="https://github.com/mf9593/codetool/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">THIRD_PARTY_NOTICES.md</a></p>
+      <a class="btn btn-github" href="https://github.com/mf9593/codetool" target="_blank" rel="noopener">
+        <svg width="16" height="16" viewBox="0 0 16 16"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
+        去 GitHub 看源码
+      </a>
+    </div>
+  </div>
+</section>
+</main>
+
+<!-- ================= footer ================= -->
+<footer>
+  <div class="wrap">
+    <div class="foot">
+      <div class="brand" style="font-size:16px">
+        <svg width="24" height="24" viewBox="0 0 108 108" fill="none">
+          <rect x="28" y="34" width="52" height="40" rx="10" stroke="#4DD0E1" stroke-width="5"/>
+          <path d="M39 54 L48 59 L39 64" stroke="#4DD0E1" stroke-width="6.5" stroke-linecap="round" stroke-linejoin="round"/>
+          <path d="M54 69.5 L71 69.5" stroke="#4DD0E1" stroke-width="6.5" stroke-linecap="round"/>
+        </svg>
+        CodeTool
+      </div>
+      <div class="links">
+        <a href="https://github.com/mf9593/codetool" target="_blank" rel="noopener">GitHub</a>
+        <a href="https://github.com/mf9593/codetool/blob/main/THIRD_PARTY_NOTICES.md" target="_blank" rel="noopener">第三方声明</a>
+        <a href="https://github.com/mf9593/codetool/blob/main/docs/devlog/README.md" target="_blank" rel="noopener">开发记录</a>
+      </div>
+      <p>© 2026 CodeTool · GPL-3.0</p>
+    </div>
+    <p class="disclaim">
+      本项目与 Google、Termux、Ubuntu、Canonical 无隶属关系。Chrome / Firefox 由用户在应用内自行安装，APK 不包含其二进制或商标授权。
+      「快约 45%」为 tawcroot 上游公开基准的相对值，实际表现因设备与负载而异。
+    </p>
+  </div>
+</footer>
+
+<script>
+/* ============ 主题切换 ============ */
+(function(){
+  var root = document.documentElement;
+  var meta = document.querySelector('meta[name="color-scheme"]');
+  var btn = document.getElementById('themeToggle');
+  if(!btn) return;
+  btn.addEventListener('click', function(){
+    var next = root.dataset.theme === 'light' ? 'dark' : 'light';
+    root.dataset.theme = next;
+    if(meta) meta.content = next;
+    try{ localStorage.setItem('ct-theme', next); }catch(e){}
+  });
+})();
+</script>
+<script>
+/* ============ 终端打字动画：讲「熄屏不断网」的故事 ============ */
+(function(){
+  var term = document.getElementById('term');
+  var phone = document.getElementById('phone');
+  var lockPill = document.getElementById('lockPill');
+  var lockText = document.getElementById('lockText');
+  var clock = document.getElementById('clock');
+  var reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  var SCENARIO = [
+    {t:'cmd',   s:'codetool start'},
+    {t:'out',   s:'[tawcroot] rootfs: ubuntu-noble-aarch64 ... ok', c:'t-dim'},
+    {t:'out',   s:'[service] PARTIAL_WAKE_LOCK · WifiLock ... held', c:'t-ok'},
+    {t:'blank'},
+    {t:'cmd',   s:'ping -c 3 example.com'},
+    {t:'lock'},
+    {t:'out',   s:'PING example.com (93.184.216.34): 56 data bytes', c:'t-info'},
+    {t:'out',   s:'64 bytes: icmp_seq=0 ttl=56 time=38.1 ms'},
+    {t:'out',   s:'64 bytes: icmp_seq=1 ttl=56 time=41.7 ms'},
+    {t:'out',   s:'64 bytes: icmp_seq=2 ttl=56 time=37.9 ms'},
+    {t:'out',   s:'--- 3 packets, 0.0% loss ---', c:'t-warn'},
+    {t:'blank'},
+    {t:'cmd',   s:'git clone https://github.com/torvalds/linux'},
+    {t:'out',   s:"Cloning into 'linux'...", c:'t-info'},
+    {t:'out',   s:'remote: Enumerating objects: 8857942, done.', c:'t-dim'},
+    {t:'out',   s:'Receiving objects:  38% (3366018/8857942)', c:'t-dim'},
+    {t:'unlock'},
+    {t:'out',   s:'Receiving objects: 100% (8857942/8857942), done.', c:'t-ok'},
+    {t:'blank'},
+    {t:'cmd',   s:'echo 熄屏一整夜，任务还在跑'},
+    {t:'out',   s:'熄屏一整夜，任务还在跑', c:'t-warn'}
+  ];
+
+  function sleep(ms){return new Promise(function(r){setTimeout(r,ms)})}
+
+  /* 光标独立成行，永远在 term 末尾 */
+  function newCursorLine(){
+    var line = document.createElement('div');
+    line.className = 't-cmd';
+    line.innerHTML = '<span class="cursor"></span>';
+    term.appendChild(line);
+    return line;
+  }
+  /* 在光标行上方插入即时输出 */
+  function printOut(text, cls){
+    var line = document.createElement('div');
+    line.className = cls || 't-cmd';
+    line.textContent = text;
+    term.insertBefore(line, term.lastElementChild);
+  }
+  function scroll(){term.scrollTop = term.scrollHeight}
+
+  function lock(on){
+    phone.classList.toggle('locked', on);
+    lockPill.classList.toggle('on', on);
+    lockText.textContent = on ? '已锁屏 · 网络仍在运行' : '前台运行中';
+  }
+
+  async function run(){
+    while(true){
+      term.innerHTML = '';
+      var line = newCursorLine();
+      lock(false);
+      for(var i=0;i<SCENARIO.length;i++){
+        var step = SCENARIO[i];
+        if(step.t === 'blank'){
+          printOut(' ');
+          scroll(); await sleep(300);
+          continue;
+        }
+        if(step.t === 'lock'){ lock(true); scroll(); await sleep(900); continue; }
+        if(step.t === 'unlock'){ lock(false); await sleep(500); continue; }
+        if(step.t === 'cmd'){
+          /* 命令行：$ + 逐字输入 */
+          line.insertAdjacentHTML('afterbegin','<span class="t-prompt">$ </span>');
+          var cursor = line.querySelector('.cursor');
+          if(reduce){
+            cursor.insertAdjacentText('beforebegin', step.s);
+          } else {
+            for(var j=0;j<step.s.length;j++){
+              cursor.insertAdjacentText('beforebegin', step.s[j]);
+              scroll(); await sleep(24);
+            }
+          }
+          await sleep(220);
+          line = newCursorLine();
+          scroll();
+          continue;
+        }
+        if(step.t === 'out'){
+          printOut(step.s, step.c);
+          scroll(); await sleep(150);
+        }
+      }
+      await sleep(4200);
+    }
+  }
+  run();
+
+  /* 时钟走字：熄屏时快进到早上 07:12，制造「过了一夜」的叙事 */
+  var t = 23*60+47;
+  setInterval(function(){
+    if(phone.classList.contains('locked') && t < 7*60+12 + 8*60){ t += 27; }
+    else { t += 1; }
+    var m = t % (24*60);
+    var h = Math.floor(m/60), mm = m%60;
+    clock.textContent = (h<10?'0':'')+h+':'+(mm<10?'0':'')+mm;
+  }, 1000);
+})();
+
+/* ============ 滚动 reveal + 进度条 ============ */
+(function(){
+  var io = new IntersectionObserver(function(es){
+    es.forEach(function(e){
+      if(e.isIntersecting){
+        e.target.classList.add('in');
+        e.target.querySelectorAll('.bar i').forEach(function(b){
+          b.style.width = b.dataset.w + '%';
+        });
+        io.unobserve(e.target);
+      }
+    });
+  }, {threshold:.15});
+  document.querySelectorAll('.reveal').forEach(function(n){io.observe(n)});
+})();
+</script>
+</body>
+</html>

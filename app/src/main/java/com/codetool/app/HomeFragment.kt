@@ -24,6 +24,7 @@ import com.codetool.app.runtime.TawcrootRuntime
 import com.codetool.app.script.ScriptManager
 import com.codetool.app.task.TaskManager
 import com.codetool.app.terminal.TerminalService
+import com.codetool.app.util.UpdateUi
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -131,6 +132,8 @@ class HomeFragment : Fragment() {
         super.onResume()
         refreshStatus()
         refreshFavorites()
+        // 应用内更新：静默检查 GitHub 最新 Release（6 小时一次，仅发现新版本时弹窗）
+        UpdateUi.autoCheck(this)
     }
 
     override fun onDestroyView() {

@@ -23,6 +23,8 @@
 - **MCP**：合并 MiMo Code / OpenCode 配置，兼容 JSONC（注释、尾逗号），保留 `headers` / `environment` 等未知字段，带启停开关
 - **备份**：rootfs 打包 / 恢复（放工具页，避免首页误触）
 
+关于页另有 **检查更新**：一键从 GitHub Releases 检查最新版本，支持国内镜像下载。
+
 ## 核心原理
 
 ACSIDE 等终端 App 锁屏约 1 分钟后，系统进入 deep suspend，CPU 挂起、前台服务被冻结，长连接随之中断。
