@@ -83,6 +83,8 @@ object UpdateChecker {
         for (i in 0 until arr.length()) {
             val o = arr.getJSONObject(i)
             if (o.optBoolean("draft", true)) continue
+            // 只认正式（stable）发布：预发行 / beta 不作为更新候选
+            if (o.optBoolean("prerelease", false)) continue
             val tag = o.optString("tag_name")
             if (tag.isEmpty()) continue
             val rel = Release(
