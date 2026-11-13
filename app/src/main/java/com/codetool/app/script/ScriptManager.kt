@@ -140,6 +140,39 @@ object ScriptManager {
                 count++
             }
         }
+        // 示例 3：启动 opencode（带参数输入框）
+        run {
+            val f = File(dir, "04-opencode.sh")
+            if (!f.exists()) {
+                f.writeText(
+                    "#!/bin/sh\n" +
+                        "#codetool: 启动 opencode\n" +
+                        "#codetool-desc: 启动 opencode CLI，可指定工作目录与附加参数（如模型、提示词）\n" +
+                        "#codetool-param: 工作目录（可留空，默认主目录）\n" +
+                        "#codetool-param: opencode 附加参数（可留空，原样传给 opencode）\n" +
+                        "DIR=\"\${1:-}\"\n" +
+                        "ARGS=\"\${2:-}\"\n" +
+                        "\n" +
+                        "if [ -n \"\$DIR\" ]; then\n" +
+                        "  cd \"\$DIR\" 2>/dev/null || { echo \"目录不存在: \$DIR\"; exit 1; }\n" +
+                        "fi\n" +
+                        "\n" +
+                        "if ! command -v opencode >/dev/null 2>&1; then\n" +
+                        "  echo \"未找到 opencode，请先在终端安装：\"\n" +
+                        "  echo \"  curl -fsSL https://opencode.ai/install | bash\"\n" +
+                        "  exit 1\n" +
+                        "fi\n" +
+                        "\n" +
+                        "if [ -n \"\$ARGS\" ]; then\n" +
+                        "  exec opencode \$ARGS\n" +
+                        "else\n" +
+                        "  exec opencode\n" +
+                        "fi\n"
+                )
+                f.setExecutable(true)
+                count++
+            }
+        }
         return count
     }
 

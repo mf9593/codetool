@@ -3,7 +3,7 @@ package com.codetool.app.util
 import android.util.Log
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
+import org.json.JSONArray
 import java.net.HttpURLConnection
 import java.net.URL
 
@@ -17,16 +17,19 @@ object UpdateChecker {
 
     private const val TAG = "UpdateChecker"
     private const val REPO = "mf9593/codetool"
-    private const val API = "https://api.github.com/repos/$REPO/releases/latest"
+    // 用列表而非 /latest：/latest 不包含预发行（prerelease）版本，
+    // 项目当前以预发行状态发布，列表接口才能识别。
+    private const val API = "https://api.github.com/repos/$REPO/releases?per_page=10"
     private const val API_PROXY = "https://gh-proxy.com/$API"
 
     data class Release(
-        val tag: String,          // 如 v2.0.1
+        val tag: String,          // 如 v2.0.0
         val title: String,        // release 名称
         val notes: String,        // 更新说明（body）
         val pageUrl: String,      // release 页面
         val apkUrl: String?,      // APK 直链（无资产时为 null）
         val apkSizeMb: Double?,   // APK 大小（MB）
+        val isPrerelease: Boolean, // 预发行状态
     )
 
     sealed interface Result {
@@ -75,26 +78,41 @@ object UpdateChecker {
     }
 
     private fun parse(body: String): Release? {
-        val o = JSONObject(body)
-        val tag = o.optString("tag_name").ifEmpty { return null }
-        val title = o.optString("name").ifEmpty { tag }
-        val notes = o.optString("body")
-        val page = o.optString("html_url")
-        var apkUrl: String? = null
-        var sizeMb: Double? = null
-        val assets = o.optJSONArray("assets")
-        if (assets != null) {
-            for (i in 0 until assets.length()) {
-                val a = assets.getJSONObject(i)
-                if (a.optString("name").endsWith(".apk", ignoreCase = true)) {
-                    apkUrl = a.optString("browser_download_url")
-                    val bytes = a.optLong("size", -1)
-                    if (bytes > 0) sizeMb = bytes / 1024.0 / 1024.0
-                    break
+        val arr = JSONArray(body)
+        var best: Release? = null
+        for (i in 0 until arr.length()) {
+            val o = arr.getJSONObject(i)
+            if (o.optBoolean("draft", true)) continue
+            val tag = o.optString("tag_name")
+            if (tag.isEmpty()) continue
+            val rel = Release(
+                tag = tag,
+                title = o.optString("name").ifEmpty { tag },
+                notes = o.optString("body"),
+                pageUrl = o.optString("html_url"),
+                apkUrl = null,
+                apkSizeMb = null,
+                isPrerelease = o.optBoolean("prerelease", false),
+            ).let { r ->
+                var apk: String? = null
+                var sizeMb: Double? = null
+                val assets = o.optJSONArray("assets")
+                if (assets != null) {
+                    for (j in 0 until assets.length()) {
+                        val a = assets.getJSONObject(j)
+                        if (a.optString("name").endsWith(".apk", ignoreCase = true)) {
+                            apk = a.optString("browser_download_url")
+                            val bytes = a.optLong("size", -1)
+                            if (bytes > 0) sizeMb = bytes / 1024.0 / 1024.0
+                            break
+                        }
+                    }
                 }
+                r.copy(apkUrl = apk, apkSizeMb = sizeMb)
             }
+            if (best == null || compareVersions(rel.tag, best.tag) > 0) best = rel
         }
-        return Release(tag, title, notes, page, apkUrl, sizeMb)
+        return best
     }
 
     /**

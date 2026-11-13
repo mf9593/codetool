@@ -89,7 +89,7 @@ object UpdateUi {
             setPadding(pad, 0, pad, 0)
         }
         val builder = MaterialAlertDialogBuilder(activity)
-            .setTitle("发现新版本 ${rel.tag}")
+            .setTitle(if (rel.isPrerelease) "发现预发行版本 ${rel.tag}" else "发现新版本 ${rel.tag}")
             .setMessage(msg)
             .setView(ignore)
             .setPositiveButton("去下载") { _, _ ->
