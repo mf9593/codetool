@@ -48,6 +48,12 @@
   --shadow:rgba(0,0,0,.35);
   --bar-bg:rgba(77,208,225,.08);
   --btn-glow:rgba(77,208,225,.25);
+  /* GitHub 按钮（深色主题：GitHub 深色按钮） */
+  --gh-bg:#21262D;
+  --gh-fg:#C9D1D9;
+  --gh-border:#30363D;
+  --gh-hover:#30363D;
+  --gh-shadow:rgba(0,0,0,.35);
   --radius:16px;
   --mono:ui-monospace,"SF Mono","Cascadia Code","JetBrains Mono",Consolas,"Courier New",monospace;
   --sans:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","HarmonyOS Sans SC","Microsoft YaHei",Roboto,sans-serif;
@@ -76,6 +82,12 @@
   --shadow:rgba(0,106,120,.15);
   --bar-bg:rgba(0,106,120,.08);
   --btn-glow:rgba(0,106,120,.28);
+  /* GitHub 按钮（浅色主题：GitHub 浅色按钮，避免一整块黑） */
+  --gh-bg:#F6F8FA;
+  --gh-fg:#24292F;
+  --gh-border:#D0D7DE;
+  --gh-hover:#EEF1F4;
+  --gh-shadow:rgba(0,106,120,.15);
 }
 *{margin:0;padding:0;box-sizing:border-box}
 html{scroll-behavior:smooth}
@@ -129,14 +141,14 @@ header{
   transition:all .2s;cursor:pointer;
 }
 .btn:hover{border-color:var(--primary);color:var(--primary)}
-/* GitHub 经典深色按钮：深/浅主题下都清晰 */
+/* GitHub 风格按钮：随主题（浅色=白底深字描边，深色=GitHub 深色），高对比、非整块黑 */
 .btn-github{
-  background:#24292F;color:#FFFFFF;border:1px solid #24292F;
+  background:var(--gh-bg);color:var(--gh-fg);border:1px solid var(--gh-border);
 }
-.btn-github svg{fill:#FFFFFF}
+.btn-github svg{fill:var(--gh-fg)}
 .btn-github:hover{
-  background:#1B1F24;border-color:#1B1F24;color:#FFFFFF;
-  box-shadow:0 6px 18px rgba(27,31,36,.4);
+  background:var(--gh-hover);border-color:var(--gh-border);color:var(--gh-fg);
+  box-shadow:0 6px 18px var(--gh-shadow);
 }
 /* 主题主按钮 */
 .btn-primary{
