@@ -78,10 +78,6 @@ class TerminalFragment : Fragment() {
             val main = context as? MainActivity
             main?.runOnUiThread {
                 main.switchToTerminal()
-                android.widget.Toast.makeText(
-                    context, "正在准备脚本: $name（首次需复制构建包，可能较慢）",
-                    android.widget.Toast.LENGTH_SHORT
-                ).show()
             }
 
             // 复制脚本进容器（后台）——★ 必须复制完成后才发命令：

@@ -3,6 +3,7 @@ package com.codetool.app.ai
 import android.content.Context
 import com.codetool.app.runtime.RootfsManager
 import com.codetool.app.runtime.TawcrootRuntime
+import com.codetool.app.util.Jsonc
 import org.json.JSONArray
 import org.json.JSONObject
 import java.io.File
@@ -167,6 +168,8 @@ object AiModelManager {
     private fun mimoBin(ctx: Context) = f(ctx, "root/.mimocode/bin/mimo")
     private fun mimoAuth(ctx: Context) = f(ctx, "root/.local/share/mimocode/auth.json")
     private fun mimoModel(ctx: Context) = f(ctx, "root/.local/state/mimocode/model.json")
+    /** mimo 主配置（JSONC）：自定义 provider 的 baseURL 要写进 provider.<id>.options.baseURL。 */
+    private fun mimoConfig(ctx: Context) = f(ctx, "root/.config/mimocode/mimocode.jsonc")
     private fun opencodeBins(ctx: Context) = listOf(
         "root/.opencode/bin/opencode", "usr/local/bin/opencode",
         "root/.local/bin/opencode", "usr/bin/opencode",
@@ -284,6 +287,26 @@ object AiModelManager {
         mo.put("favorite", mo.optJSONArray("favorite") ?: JSONArray())
         mo.put("variant", mo.optJSONObject("variant") ?: JSONObject())
         mf.writeText(mo.toString(2))
+
+        // 关键：mimo 列模型时按 provider.<id>.options.baseURL 取 API 地址（和 opencode
+        // 的 opencode.json 同构）。只写 auth.json 的 baseURL 不够——实测 mimo 认得 provider
+        // 却拿不到地址，模型列表为空。这里把 baseURL 也写进 mimocode.jsonc（JSONC 安全写）。
+        if (m.baseUrl.isNotEmpty() && m.provider.isNotEmpty()) {
+            val cfg = mimoConfig(ctx).apply { parentFile?.mkdirs() }
+            val raw = if (cfg.isFile) runCatching { cfg.readText() }.getOrNull() else null
+            val parsed = when {
+                raw.isNullOrBlank() -> Jsonc.Parsed(JSONObject(), false)
+                else -> Jsonc.parse(raw)
+            }
+            if (parsed != null) {
+                val obj = parsed.obj
+                val providers = obj.optJSONObject("provider") ?: JSONObject().also { obj.put("provider", it) }
+                val p = providers.optJSONObject(m.provider) ?: JSONObject().also { providers.put(m.provider, it) }
+                val options = p.optJSONObject("options") ?: JSONObject().also { p.put("options", it) }
+                options.put("baseURL", m.baseUrl)
+                cfg.writeText(obj.toString(2) + "\n")
+            }
+        }
         true
     }.getOrDefault(false)
 

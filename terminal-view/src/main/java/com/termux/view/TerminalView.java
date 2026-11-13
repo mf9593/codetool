@@ -391,7 +391,12 @@ public final class TerminalView extends View {
                     if (mClient.readShiftKey())
                         codePoint = Character.toUpperCase(codePoint);
 
-                    boolean ctrlHeld = false;
+                    // 粘性 Ctrl（快捷键条）对输入法提交的文本也要生效：软键盘经
+                    // commitText → sendTextToTerminal，不能只依赖下游 inputCodePoint
+                    // 的二次 readControlKey()（部分输入法在 composing/commit 边沿会让
+                    // 该读取失效）。这里像上面 Shift 一样显式读一次，ctrlHeld=true 后
+                    // inputCodePoint 会把字母组合成 Ctrl+字母并回调消费、复位粘性键。
+                    boolean ctrlHeld = mClient.readControlKey();
                     if (codePoint <= 31 && codePoint != 27) {
                         if (codePoint == '\n') {
                             // The AOSP keyboard and descendants seems to send \n as text when the enter key is pressed,
