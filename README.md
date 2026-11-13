@@ -4,6 +4,8 @@
 
 基于 [tawcroot](https://github.com/taowen/tawc/tree/main/tawcroot)（无 root、非 proot）运行 Ubuntu 24.04 aarch64 rootfs，并复用 Termux 的终端模拟器渲染。
 
+**宣传页**：<https://mf9593.github.io/codetool/>（源码在 `docs/`，开启 GitHub Pages 后由 `main` 分支 `/docs` 目录托管）
+
 ## 特性
 
 | 页面 | 功能 |
