@@ -43,7 +43,7 @@ object AiModelManager {
         // 小米 MiMo 与商汤 SenseNova 是两家不同服务商，各自独立地址，不能合并。
         Provider("mimo", "小米 MiMo", "https://api.xiaomimimo.com/v1",
             listOf("mimo-v2-flash", "mimo-v2-pro")),
-        Provider("sensenova", "商汤 SenseNova", "https://api.sensenova.cn/v1",
+        Provider("sensenova", "商汤 SenseNova", "https://token.sensenova.cn/v1",
             listOf("deepseek-v4.1-flash", "SenseNova-V6-Turbo")),
         Provider("deepseek", "DeepSeek", "https://api.deepseek.com/v1",
             listOf("deepseek-chat", "deepseek-reasoner")),
