@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 运行内存图标：内存条（横条 + 上方颗粒 + 两端金手指）。填充白色，颜色由代码 tint。 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp" android:height="24dp"
+    android:viewportWidth="24" android:viewportHeight="24">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M2,8h20v7H2z M4,5h2v3H4z M8,5h2v3H8z M12,5h2v3h-2z M16,5h2v3h-2z M4,15h2v4H4z M8,15h2v4H8z M12,15h2v4h-2z M16,15h2v4h-2z" />
+</vector>

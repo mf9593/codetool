@@ -29,6 +29,8 @@ import com.codetool.app.util.UpdateUi
 import rikka.shizuku.Shizuku
 import com.google.android.material.progressindicator.LinearProgressIndicator
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -52,6 +54,10 @@ class HomeFragment : Fragment() {
     private lateinit var aiStatusIcon: ImageView
     private lateinit var shizukuText: TextView
     private lateinit var shizukuIcon: ImageView
+    private lateinit var cpuText: TextView
+    private lateinit var cpuIcon: ImageView
+    private lateinit var memText: TextView
+    private lateinit var memIcon: ImageView
     private lateinit var progressBar: LinearProgressIndicator
     private lateinit var scriptFavList: android.widget.LinearLayout
     private lateinit var scriptFavEmpty: TextView
@@ -104,6 +110,89 @@ class HomeFragment : Fragment() {
         }
     }
 
+    // ---------------- CPU / 运行内存实时监听 ----------------
+
+    /** 上一次 /proc/stat 采样（[idle, total]），用于按帧间差值算使用率，不必额外 sleep。 */
+    private var lastCpu: LongArray? = null
+
+    private fun startResourceMonitor() {
+        viewLifecycleOwner.lifecycleScope.launch {
+            while (isActive && isAdded) {
+                val cpu = withContext(Dispatchers.IO) { cpuPercent() }
+                val mem = withContext(Dispatchers.IO) { memLabel() }
+                if (isAdded) {
+                    if (cpu >= 0) {
+                        cpuText.text = "CPU: $cpu%"
+                        applyIcon(cpuIcon, R.drawable.ic_cpu,
+                            if (cpu >= 80) IconTone.ERROR else if (cpu >= 50) IconTone.NEUTRAL else IconTone.OK)
+                    } else {
+                        cpuText.text = "CPU: —%（采样中）"
+                    }
+                    memText.text = "内存: $mem"
+                    applyIcon(memIcon, R.drawable.ic_ram, IconTone.OK)
+                }
+                delay(2000)
+            }
+        }
+    }
+
+    /** 读 /proc/stat 首行（全核聚合），返回 [idle+iowait, total]。 */
+    private fun readCpu(): LongArray {
+        val line = java.io.File("/proc/stat").bufferedReader().use { it.readLine() }
+        val parts = line.split(Regex("\\s+")).filter { it.isNotEmpty() }.drop(1).map { it.toLongOrNull() ?: 0L }
+        val idle = parts.getOrElse(3) { 0L } + parts.getOrElse(4) { 0L } // idle + iowait
+        return longArrayOf(idle, parts.sum())
+    }
+
+    /** 用帧间差值算 CPU 使用率；首帧无基准返回 -1。 */
+    private fun cpuPercent(): Int {
+        val cur = readCpu()
+        val last = lastCpu
+        lastCpu = cur
+        if (last == null) return -1
+        val totalD = cur[1] - last[1]
+        if (totalD <= 0) return 0
+        val idleD = cur[0] - last[0]
+        return ((1.0 - idleD.toDouble() / totalD) * 100).toInt().coerceIn(0, 100)
+    }
+
+    /**
+     * 运行内存：读 /proc/meminfo 的 MemAvailable（内核计算的真实可用，已排除无法回收的
+     * cache，比"看着多但含虚拟/缓存"的总量准）和 MemTotal。返回 "可用 X / 共 Y"。
+     */
+    private fun memLabel(): String {
+        var avail = 0L
+        var total = 0L
+        runCatching {
+            java.io.File("/proc/meminfo").bufferedReader().use { r ->
+                r.forEachLine { l ->
+                    when {
+                        l.startsWith("MemTotal:") -> total = l.split(Regex("\\s+")).getOrNull(1)?.toLongOrNull() ?: 0L
+                        l.startsWith("MemAvailable:") -> avail = l.split(Regex("\\s+")).getOrNull(1)?.toLongOrNull() ?: 0L
+                    }
+                }
+            }
+        }
+        if (total <= 0) return "未知"
+        // 若内核无 MemAvailable（极老内核），退回 MemFree
+        if (avail <= 0) {
+            runCatching {
+                java.io.File("/proc/meminfo").bufferedReader().use { r ->
+                    r.forEachLine { l ->
+                        if (l.startsWith("MemFree:")) avail = l.split(Regex("\\s+")).getOrNull(1)?.toLongOrNull() ?: 0L
+                    }
+                }
+            }
+        }
+        return "可用 ${formatKb(avail)} / 共 ${formatKb(total)}"
+    }
+
+    /** KB → 人类可读（GB 保留 1 位，不足 1G 显示 MB）。 */
+    private fun formatKb(kb: Long): String = when {
+        kb >= 1024 * 1024 -> String.format(java.util.Locale.US, "%.1fG", kb / 1024.0 / 1024.0)
+        else -> "${kb / 1024}M"
+    }
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -119,8 +208,14 @@ class HomeFragment : Fragment() {
         aiStatusIcon = v.findViewById(R.id.aiStatusIcon)
         shizukuText = v.findViewById(R.id.shizukuText)
         shizukuIcon = v.findViewById(R.id.shizukuIcon)
+        cpuText = v.findViewById(R.id.cpuText)
+        cpuIcon = v.findViewById(R.id.cpuIcon)
+        memText = v.findViewById(R.id.memText)
+        memIcon = v.findViewById(R.id.memIcon)
         progressBar = v.findViewById(R.id.progressBar)
         applyIcon(v.findViewById(R.id.pathIcon), R.drawable.ic_folder, IconTone.NEUTRAL)
+        applyIcon(cpuIcon, R.drawable.ic_cpu, IconTone.NEUTRAL)
+        applyIcon(memIcon, R.drawable.ic_ram, IconTone.NEUTRAL)
         // Shizuku：申请授权 + 刷新状态
         v.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnShizukuAuth).setOnClickListener {
             val st = ShizukuManager.status(requireContext())
@@ -147,6 +242,8 @@ class HomeFragment : Fragment() {
         // Shizuku：注册授权结果回调 + 首次刷新状态行
         ShizukuManager.addPermissionResultListener(shizukuPermListener)
         updateShizukuStatus()
+        // CPU / 运行内存实时监听（view 销毁时随 lifecycleScope 自动取消）
+        startResourceMonitor()
 
         // 只监听 rootfs 解压进度（备份/恢复入口已移到工具页，由那个页面自己收广播）
         val r = object : BroadcastReceiver() {
