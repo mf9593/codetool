@@ -34,6 +34,7 @@ object ShizukuBridge {
     private var userService: IShizukuUserService? = null
     private var connection: ServiceConnection? = null
     private var serviceArgs: Shizuku.UserServiceArgs? = null
+    private var appContext: Context? = null
 
     /** 请求/响应目录（Android 侧真实路径；容器里对应 /usr/share/tawc/shizuku/...）。 */
     fun dirs(ctx: Context): Pair<File, File> {
@@ -45,6 +46,7 @@ object ShizukuBridge {
     /** 启动监听。常驻，App 进程存活期间一直监听。 */
     fun start(ctx: Context) {
         if (observer != null) return
+        appContext = ctx.applicationContext
         val (req, res) = dirs(ctx)
         // 清掉上次残留的过期响应，避免新请求误读
         runCatching {
@@ -84,7 +86,47 @@ object ShizukuBridge {
                 val out = execViaShizuku(cmd)
                 respond(out.first, out.second)
             }
+            // 截屏 / UI dump：shell 写 /data/local/tmp（可写），App 再拷进 share 供容器读
+            // （shell 的 SELinux context u:r:shell:s0 不能直接写 App dataDir/share）
+            "screenshot" -> {
+                val tmp = "/data/local/tmp/codetool-shot.png"
+                val cmd = "screencap -p $tmp"
+                val out = execViaShizuku(cmd)
+                if (!out.first || !out.second.startsWith("exit=0")) {
+                    respond(false, "截屏失败：${out.second}"); return
+                }
+                copyTmpToShare(tmp, "shot.png", respond)
+            }
+            "ui_dump" -> {
+                val tmp = "/data/local/tmp/codetool-ui.xml"
+                val cmd = "uiautomator dump $tmp"
+                val out = execViaShizuku(cmd)
+                if (!out.first || !out.second.startsWith("exit=0")) {
+                    respond(false, "UI dump 失败：${out.second}"); return
+                }
+                copyTmpToShare(tmp, "ui.xml", respond)
+            }
             else -> respond(false, "未知操作：$action")
+        }
+    }
+
+    /**
+     * 把 /data/local/tmp 里的中转文件拷进 share/shizuku/ 供容器读，用 App 自己的
+     * uid（能读写自己的 dataDir/share）。成功后删掉中转文件。
+     */
+    private fun copyTmpToShare(tmpPath: String, name: String, respond: (Boolean, String) -> Unit) {
+        val ctx = appContext ?: run { respond(false, "桥未启动"); return }
+        val dirs = dirs(ctx)
+        val dest = File(dirs.second.parentFile, name)   // share/shizuku/<name>
+        val src = File(tmpPath)
+        runCatching {
+            dest.delete()
+            src.copyTo(dest, overwrite = true)
+            src.delete()
+        }.onSuccess {
+            respond(true, "已生成：${dest.absolutePath}（容器内 /usr/share/tawc/shizuku/$name）")
+        }.onFailure {
+            respond(false, "中转拷贝失败：${it.message}")
         }
     }
 

@@ -301,30 +301,19 @@ def shizuku_exec(a):
 
 
 def shizuku_screenshot():
-    # 截屏写到共享目录，容器可直接读；app 侧以 shell 身份执行 screencap
-    out_container = SHIZUKU_BRIDGE + "/shot.png"
-    # Android 侧路径 = app dataDir/share/shizuku/shot.png；容器路径如上
-    cmd = "screencap -p /data/data/com.codetool.app/share/shizuku/shot.png"
-    r = shizuku_exec_raw(cmd)
+    # 走专用 screenshot action：shell 截屏到 /data/local/tmp，app 拷进 share 供容器读
+    r = bridge_request("screenshot", timeout=35, bridge=SHIZUKU_BRIDGE)
     if not r.get("ok"):
         return "截屏失败：%s" % r.get("message", "未知错误")
-    msg = r.get("message", "")
-    if not msg.startswith("exit=0"):
-        return "截屏失败：%s" % msg
-    return "截图已保存：%s（PNG）。" % out_container
+    return "截图已保存：%s（PNG，容器内可直接读）。" % r.get("message", "").split("：")[-1]
 
 
 def shizuku_ui_dump():
-    xml_container = SHIZUKU_BRIDGE + "/ui.xml"
-    cmd = ("uiautomator dump /data/data/com.codetool.app/share/shizuku/ui.xml "
-           "&& echo OK")
-    r = shizuku_exec_raw(cmd)
+    # 走专用 ui_dump action：uiautomator dump 到 /data/local/tmp，app 拷进 share
+    r = bridge_request("ui_dump", timeout=35, bridge=SHIZUKU_BRIDGE)
     if not r.get("ok"):
         return "UI dump 失败：%s" % r.get("message", "未知错误")
-    msg = r.get("message", "")
-    if "OK" not in msg:
-        return "UI dump 失败：%s" % msg
-    return "控件树已导出：%s（XML）。" % xml_container
+    return "控件树已导出：%s（XML，容器内可直接读）。" % r.get("message", "").split("：")[-1]
 
 
 def call_tool(name, a):

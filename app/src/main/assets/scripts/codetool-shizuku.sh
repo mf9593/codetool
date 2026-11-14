@@ -60,21 +60,31 @@ case "$cmd" in
         ;;
     screenshot)
         out="${2:-/tmp/ct-shot.png}"
-        request "exec" ',"cmd":"screencap -p /data/data/com.codetool.app/share/shizuku/shot.png"' >/dev/null
-        if [ -f "$BRIDGE/shot.png" ]; then
-            cp -f "$BRIDGE/shot.png" "$out" 2>/dev/null && echo "截图已保存：$out" || echo "拷贝失败：$BRIDGE/shot.png → $out"
-        else
-            echo "截屏失败：$BRIDGE/shot.png 未生成（是否已授权？）"
-        fi
+        r=$(request "screenshot")
+        msg=$(printf '%s' "$r" | json_message)
+        case "$msg" in
+            *shot.png*)
+                if [ -f "$BRIDGE/shot.png" ]; then
+                    cp -f "$BRIDGE/shot.png" "$out" 2>/dev/null && echo "截图已保存：$out" || echo "已生成 $BRIDGE/shot.png，但拷到 $out 失败"
+                else
+                    echo "已生成但未找到 $BRIDGE/shot.png"
+                fi ;;
+            *) echo "${msg:-$r}" ;;
+        esac
         ;;
     uidump)
         out="${2:-/tmp/ct-ui.xml}"
-        request "exec" ',"cmd":"uiautomator dump /data/data/com.codetool.app/share/shizuku/ui.xml"' >/dev/null
-        if [ -f "$BRIDGE/ui.xml" ]; then
-            cp -f "$BRIDGE/ui.xml" "$out" 2>/dev/null && echo "控件树已导出：$out" || echo "拷贝失败：$BRIDGE/ui.xml → $out"
-        else
-            echo "UI dump 失败：$BRIDGE/ui.xml 未生成（界面是否 stable？是否已授权？）"
-        fi
+        r=$(request "ui_dump")
+        msg=$(printf '%s' "$r" | json_message)
+        case "$msg" in
+            *ui.xml*)
+                if [ -f "$BRIDGE/ui.xml" ]; then
+                    cp -f "$BRIDGE/ui.xml" "$out" 2>/dev/null && echo "控件树已导出：$out" || echo "已生成 $BRIDGE/ui.xml，但拷到 $out 失败"
+                else
+                    echo "已生成但未找到 $BRIDGE/ui.xml"
+                fi ;;
+            *) echo "${msg:-$r}" ;;
+        esac
         ;;
     help|*)
         echo "用法: codetool-shizuku {status|exec '<命令>'|screenshot [路径]|uidump [路径]}"
