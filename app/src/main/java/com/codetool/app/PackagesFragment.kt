@@ -90,18 +90,24 @@ class PackagesFragment : Fragment() {
                 runInTerminal(
                     "安装星火商店",
                     "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
+                        "export DEBIAN_FRONTEND=noninteractive\n" +
                         "cd /tmp && rm -f spark-store.deb\n" +
-                        "wget -L -O spark-store.deb 'https://gitee.com/spark-store-project/spark-store/releases/download/5.3.2/spark-store_5.3.2_arm64.deb'\n" +
-                        "if dpkg-deb -I spark-store.deb >/dev/null 2>&1; then\n" +
+                        "echo '=== 下载星火商店 deb ==='\n" +
+                        "( set -e\n" +
+                        "  wget -L -O spark-store.deb 'https://gitee.com/spark-store-project/spark-store/releases/download/5.3.2/spark-store_5.3.2_arm64.deb'\n" +
+                        "  dpkg-deb -I spark-store.deb >/dev/null 2>&1 || { echo '[ERROR] deb 文件下载损坏或无效'; exit 1; }\n" +
                         "  echo '[OK] deb 文件有效，开始安装'\n" +
                         "  apt-get update\n" +
-                        "  apt-get install -yf ./spark-store.deb\n" +
-                        "  echo '星火商店安装完成：spark-store'\n" +
-                        "else\n" +
-                        "  echo '[ERROR] deb 文件下载损坏或无效'\n" +
-                        "  ls -la spark-store.deb\n" +
-                        "  file spark-store.deb\n" +
-                        "fi"
+                        "  echo '=== 安装（若提示 apt 锁被占会自动重试）==='\n" +
+                        "  for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15; do\n" +
+                        "    if apt-get install -yf ./spark-store.deb; then echo '[OK] 安装成功'; break; fi\n" +
+                        "    echo '本次安装未成功（可能 apt 锁被占），2 秒后重试…'\n" +
+                        "    sleep 2\n" +
+                        "  done\n" +
+                        ") || echo '[ERROR] 星火商店安装中断，看上方报错'\n" +
+                        "echo ''\n" +
+                        "echo '=== 安装结果（真实自检）==='\n" +
+                        "command -v spark-store >/dev/null 2>&1 && echo '[OK] spark-store 已可用' || echo '[ERROR] spark-store 未装上，看上方报错（apt 锁/网络）'"
                 )
             }
         }

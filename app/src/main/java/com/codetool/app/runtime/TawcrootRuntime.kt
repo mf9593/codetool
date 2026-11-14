@@ -88,7 +88,11 @@ class TawcrootRuntime private constructor(private val context: Context) {
             "/proc:/proc",
             "/sys:/sys",
             "/dev:/dev",
-            shareDir().absolutePath + ":/usr/share/tawc"
+            shareDir().absolutePath + ":/usr/share/tawc",
+            // Android 共享存储：让容器内能访问宿主 Download/ 等项目目录（路径保持一致，
+            // 用户填 /storage/emulated/0/... 在容器里同样可用）。App 有所有文件访问权限，
+            // proot bind 后容器内可读写这些目录。
+            "/storage/emulated/0:/storage/emulated/0"
         )
         return buildList {
             add(binaryPath)
