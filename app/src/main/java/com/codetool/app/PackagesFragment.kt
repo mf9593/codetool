@@ -118,7 +118,7 @@ class PackagesFragment : Fragment() {
                     "  [ -s /etc/apt/trusted.gpg.d/apm.gpg ] || { echo '[ERROR] GPG 密钥下载失败（空文件，网络问题）'; exit 1; }\n" +
                     "  echo 'deb [signed-by=/etc/apt/trusted.gpg.d/apm.gpg] https://d.spark-app.store/apm-deb-source /' > /etc/apt/sources.list.d/apm.list\n" +
                     "  apt-get update\n" +
-                    "  apt-get install -y amber-pm\n" +
+                    "  apt-get install -y apm\n" +
                     ") || echo '[ERROR] APM 安装中断，看上方报错（GPG 密钥/网络）'\n" +
                     "echo ''\n" +
                     "echo '=== 安装结果（真实自检）==='\n" +
