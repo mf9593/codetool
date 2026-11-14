@@ -446,17 +446,26 @@ object AiModelManager {
     /**
      * 同步到 CLI：把每个目标（mimo / opencode）当前模型重新写入 CLI 原生配置。
      * 用途：改了 baseURL / 修了写入逻辑 / 手动改过 JSON 后，一键让 CLI 配置和清单对齐。
+     * 可指定只同步某些目标（mimo / opencode），默认两个都同步。
      * 返回 (成功目标数, 明细)。
      */
-    fun syncAll(ctx: Context): Pair<Int, List<String>> {
+    fun syncAll(ctx: Context, targets: List<String> = listOf("mimo", "opencode")): Pair<Int, List<String>> {
         val details = mutableListOf<String>()
         var okCount = 0
-        for (target in listOf("mimo", "opencode")) {
-            val cur = listModels(ctx).find { it.target == target && it.current }
+        for (target in targets) {
+            var cur = listModels(ctx).find { it.target == target && it.current }
             android.util.Log.w("AiSync", "syncAll target=$target cur=${cur?.name} key=${cur?.apiKey?.take(8)} baseUrl=${cur?.baseUrl}")
             if (cur == null) {
-                details.add("$target：无当前模型，跳过")
-                continue
+                // 该目标没选当前模型：自动把第一个已启用模型设为当前再同步，避免"跳过"让用户困惑。
+                val fallback = listModels(ctx).firstOrNull { it.target == target && it.enabled }
+                if (fallback == null) {
+                    details.add("$target：无已启用模型，跳过")
+                    continue
+                }
+                setCurrent(ctx, fallback.name, target)
+                cur = listModels(ctx).find { it.target == target && it.current }
+                details.add("$target：自动选中 ${fallback.name}")
+                if (cur == null) continue
             }
             val ok = if (target == "mimo") writeMimo(ctx, cur) else writeOpencode(ctx, cur)
             android.util.Log.w("AiSync", "syncAll target=$target ok=$ok authAfter=${mimoAuth(ctx).takeIf { it.isFile }?.readText()?.take(80)}")

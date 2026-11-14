@@ -356,16 +356,28 @@ class AiModelsFragment : Fragment() {
             .setNegativeButton("取消", null).show()
     }
 
-    /** 同步到 CLI：把每个目标的当前模型重新写入 CLI 原生配置（后台线程）。 */
+    /** 同步到 CLI：弹窗选目标（mimo / opencode / 都同步），把所选目标的当前模型写入 CLI 原生配置（后台线程）。 */
     private fun syncToCli() {
         val ctx = requireContext()
-        viewLifecycleOwner.lifecycleScope.launch {
-            val (okCount, details) = withContext(Dispatchers.IO) {
-                AiModelManager.syncAll(ctx)
+        val targets = arrayOf("同步到 mimo", "同步到 opencode", "两个都同步")
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle("同步到 CLI")
+            .setItems(targets) { _, which ->
+                val syncTargets = when (which) {
+                    0 -> listOf("mimo")
+                    1 -> listOf("opencode")
+                    else -> listOf("mimo", "opencode")
+                }
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val (okCount, details) = withContext(Dispatchers.IO) {
+                        AiModelManager.syncAll(ctx, syncTargets)
+                    }
+                    toast("已同步 $okCount 个目标：${details.joinToString("，")}")
+                    if (isAdded) refresh()
+                }
             }
-            toast("已同步 $okCount 个目标：${details.joinToString("，")}")
-            if (isAdded) refresh()
-        }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     /**
