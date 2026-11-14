@@ -779,6 +779,39 @@ class MainActivity : AppCompatActivity() {
         switchRow.addView(autoRefreshSwitch)
         container.addView(switchRow)
 
+        // ---- 容器挂载目录 ----
+        container.addView(android.widget.TextView(this).apply {
+            text = "容器挂载目录"
+            textSize = 16f
+            setPadding(0, dp(16), 0, dp(4))
+        })
+        container.addView(android.widget.TextView(this).apply {
+            text = "选择 Android 共享存储挂载进容器的范围（改动后需重启终端服务生效）"
+            textSize = 12f
+            setTextColor(getColor(android.R.color.darker_gray))
+            setPadding(0, 0, 0, dp(6))
+        })
+        val mountOptions = listOf(
+            AppSettings.MountMode.DOWNLOAD to "仅 Download（推荐）",
+            AppSettings.MountMode.FULL to "整个共享存储",
+            AppSettings.MountMode.NONE to "不挂载",
+        )
+        val currentMount = AppSettings.mountMode(this)
+        val radioGroup = android.widget.RadioGroup(this).apply { orientation = android.widget.RadioGroup.VERTICAL }
+        for ((mode, label) in mountOptions) {
+            val rb = android.widget.RadioButton(this).apply {
+                text = label
+                textSize = 15f
+                setPadding(dp(8), dp(6), dp(8), dp(6))
+                isChecked = currentMount == mode
+            }
+            rb.setOnCheckedChangeListener { _, checked ->
+                if (checked) AppSettings.setMountMode(this@MainActivity, mode)
+            }
+            radioGroup.addView(rb)
+        }
+        container.addView(radioGroup)
+
         dialog.setContentView(container)
         dialog.show()
     }

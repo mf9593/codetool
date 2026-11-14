@@ -2,6 +2,7 @@ package com.codetool.app.runtime
 
 import android.content.Context
 import android.util.Log
+import com.codetool.app.util.AppSettings
 import java.io.File
 
 /**
@@ -84,16 +85,21 @@ class TawcrootRuntime private constructor(private val context: Context) {
      */
     fun buildLaunchCommand(rootfsDir: File): Array<String> {
         ensureGuiBridge(rootfsDir)
-        val binds = listOf(
-            "/proc:/proc",
-            "/sys:/sys",
-            "/dev:/dev",
-            shareDir().absolutePath + ":/usr/share/tawc",
-            // Android 共享存储：让容器内能访问宿主 Download/ 等项目目录（路径保持一致，
-            // 用户填 /storage/emulated/0/... 在容器里同样可用）。App 有所有文件访问权限，
-            // proot bind 后容器内可读写这些目录。
-            "/storage/emulated/0:/storage/emulated/0"
-        )
+        // Android 共享存储挂载：按终端设置里的「挂载目录」选项决定挂什么。
+        // 默认仅 Download（最小暴露）；可选整个共享存储或不挂载。路径保持一致，
+        // 用户填 /storage/emulated/0/Download/... 在容器里同样可用。
+        val storageBind = when (AppSettings.mountMode(context)) {
+            AppSettings.MountMode.FULL -> "/storage/emulated/0:/storage/emulated/0"
+            AppSettings.MountMode.DOWNLOAD -> "/storage/emulated/0/Download:/storage/emulated/0/Download"
+            else -> null  // NONE：不挂载
+        }
+        val binds = buildList {
+            add("/proc:/proc")
+            add("/sys:/sys")
+            add("/dev:/dev")
+            add(shareDir().absolutePath + ":/usr/share/tawc")
+            if (storageBind != null) add(storageBind)
+        }
         return buildList {
             add(binaryPath)
             add("-r"); add(rootfsDir.absolutePath)

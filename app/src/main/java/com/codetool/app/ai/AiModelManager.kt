@@ -383,6 +383,23 @@ object AiModelManager {
                 val p = providers.optJSONObject(m.provider) ?: JSONObject().also { providers.put(m.provider, it) }
                 val options = p.optJSONObject("options") ?: JSONObject().also { p.put("options", it) }
                 options.put("baseURL", m.baseUrl)
+                // 自定义模型声明：mimo 列模型读静态 registry，registry 没收录的自定义模型
+                // （如 sensenova-6.8-flash）不会显示。显式声明进 provider.<id>.models.<modelId>，
+                // 与 opencode.json 同构，让 mimo 绕过 registry 直接认这个模型。
+                val models = p.optJSONObject("models") ?: JSONObject()
+                val mo = JSONObject()
+                mo.put("id", m.modelId)
+                mo.put("name", m.name.substringAfter('/').ifEmpty { m.modelId })
+                mo.put("reasoning", true)
+                mo.put("tool_call", true)
+                mo.put("temperature", true)
+                mo.put("attachment", true)
+                mo.put("limit", JSONObject().put("context", 262144).put("output", 65536))
+                mo.put("cost", JSONObject().put("input", 0).put("output", 0).put("cache_read", 0))
+                models.put(m.modelId, mo)
+                p.put("models", models)
+                providers.put(m.provider, p)
+                obj.put("provider", providers)
                 cfg.writeText(jsonPretty(obj) + "\n")
             }
         }

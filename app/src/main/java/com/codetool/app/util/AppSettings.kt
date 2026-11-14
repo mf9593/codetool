@@ -13,6 +13,7 @@ object AppSettings {
     private const val KEY_LOG_AUTO_REFRESH = "log_auto_refresh"
     private const val KEY_BATTERY_PROMPTED = "battery_prompted"
     private const val KEY_ONBOARDING_DONE = "onboarding_done"
+    private const val KEY_MOUNT_MODE = "mount_mode"
 
     /** 默认终端字号（dp）。Termux 默认 14，这里调大。 */
     const val DEFAULT_FONT_SIZE = 16
@@ -60,5 +61,21 @@ object AppSettings {
     fun setOnboardingDone(context: Context) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
+    }
+
+    /** 容器挂载 Android 共享存储的模式。 */
+    object MountMode {
+        const val DOWNLOAD = "download"   // 仅 Download（默认，最小暴露）
+        const val FULL = "full"           // 整个共享存储 /storage/emulated/0
+        const val NONE = "none"           // 不挂载
+    }
+
+    fun mountMode(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_MOUNT_MODE, MountMode.DOWNLOAD) ?: MountMode.DOWNLOAD
+
+    fun setMountMode(context: Context, mode: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_MOUNT_MODE, mode).apply()
     }
 }
