@@ -202,8 +202,73 @@ object AiModelManager {
 
     fun removeModel(ctx: Context, name: String, target: String) {
         val list = listModels(ctx)
+        val removed = list.firstOrNull { it.name == name && it.target == target }
         list.removeAll { it.name == name && it.target == target }
         saveModels(ctx, list)
+        // 自动清理：该 provider 在此 target 下已无其它模型时，把 CLI 原生配置里的
+        // provider 段一并清掉（writeMimo/writeOpencode 只写不删，不清会残留）。
+        if (removed != null) {
+            val provider = removed.provider
+            if (provider.isNotEmpty() && list.none { it.target == target && it.provider == provider }) {
+                cleanupProvider(ctx, target, provider)
+            }
+        }
+    }
+
+    /**
+     * 从 CLI 原生配置里摘掉一个 provider 的残留（清前备份 .codetool.bak）。
+     * 只删 provider 段本身 + mimo 的 auth key 段，**保留 mcp 等其它字段**。
+     * mimo：mimocode.jsonc 的 provider.<id>（JSONC 安全写）+ auth.json 的 <id>。
+     * opencode：opencode.json 的 provider.<id>（纯 JSON）。
+     */
+    private fun cleanupProvider(ctx: Context, target: String, provider: String) {
+        if (target == "mimo") {
+            // mimocode.jsonc：用 Jsonc 解析（保注释/容错），删 provider.<id> 后写回
+            val cfg = mimoConfig(ctx)
+            if (cfg.isFile) {
+                val raw = runCatching { cfg.readText() }.getOrNull().orEmpty()
+                val parsed = Jsonc.parse(raw) ?: return
+                val providers = parsed.obj.optJSONObject("provider") ?: return
+                if (providers.has(provider)) {
+                    backupFile(cfg)
+                    providers.remove(provider)
+                    if (providers.length() == 0) parsed.obj.remove("provider")
+                    runCatching { cfg.writeText(parsed.obj.toString(2) + "\n") }
+                }
+            }
+            // auth.json：删 provider 的 key 段（纯 JSON）
+            val auth = mimoAuth(ctx)
+            if (auth.isFile) {
+                runCatching {
+                    val obj = JSONObject(auth.readText())
+                    if (obj.has(provider)) {
+                        backupFile(auth)
+                        obj.remove(provider)
+                        auth.writeText(obj.toString(2))
+                    }
+                }
+            }
+        } else {
+            // opencode.json：删 provider.<id>（纯 JSON）
+            val file = opencodeCfg(ctx)
+            if (file.isFile) {
+                runCatching {
+                    val obj = JSONObject(file.readText())
+                    val providers = obj.optJSONObject("provider") ?: return@runCatching
+                    if (providers.has(provider)) {
+                        backupFile(file)
+                        providers.remove(provider)
+                        if (providers.length() == 0) obj.remove("provider")
+                        file.writeText(obj.toString(2))
+                    }
+                }
+            }
+        }
+    }
+
+    /** 删改 CLI 配置前备份原文件为 <name>.codetool.bak（覆盖旧备份）。 */
+    private fun backupFile(f: File) {
+        runCatching { f.copyTo(File(f.parentFile, f.name + ".codetool.bak"), overwrite = true) }
     }
 
     /** 设为当前：同 target 内其它清 current，本条置 current，并写入对应 CLI 原生配置。 */

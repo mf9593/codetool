@@ -173,7 +173,7 @@ class AiModelsFragment : Fragment() {
             btnDelete.setOnClickListener {
                 MaterialAlertDialogBuilder(ctx)
                     .setTitle("删除模型")
-                    .setMessage("删除「${m.name}」？只删清单，不改 CLI 现有配置。")
+                    .setMessage("删除「${m.name}」？若这是「${m.provider}」在此目标下最后一个模型，会一并清理 CLI 配置里的 ${m.provider} 段（清前备份 .codetool.bak）。")
                     .setPositiveButton("删除") { _, _ ->
                         AiModelManager.removeModel(ctx, m.name, m.target)
                         refresh()
