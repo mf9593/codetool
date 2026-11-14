@@ -59,6 +59,9 @@ class MainActivity : AppCompatActivity() {
     private val MENU_CLEAR = 700
     private val MENU_ABOUT = 750
 
+    /** 首次启动用户协议页的请求码。 */
+    private val REQUEST_AGREEMENT = 900
+
     /** 当前页位置（用于键盘切换按钮的显隐）。 */
     private var currentPage = 0
 
@@ -122,19 +125,28 @@ class MainActivity : AppCompatActivity() {
 
         requestPermissionsIfNeeded()
 
-        // 首次启动强制用户协议：未同意当前版本 → 弹不可关闭弹窗，不同意则退出。
-        // 放在 rootfs 自动解压等重操作之前，未同意不干活。
+        // 首次启动强制用户协议：未同意当前版本 → 进全屏协议页（勾选 + 下一步）。
+        // 放在 rootfs 自动解压等重操作之前，未同意不干活。RESULT_OK=同意；RESULT_CANCELED=不同意（退出）。
         if (!UserAgreement.isAccepted(this)) {
-            UserAgreement.showFirstLaunchDialog(
-                this,
-                onAccepted = { maybeAutoInstallRootfs() },
-                onDeclined = { finishAffinity() },
-            )
-            return  // 未同意前不继续初始化（不自动解压 rootfs）
+            AgreementActivity.startFirstLaunch(this, REQUEST_AGREEMENT)
+            return  // 未同意前不继续初始化（不自动解压 rootfs）；结果在 onActivityResult 处理
         }
 
         // 首次启动自动解压 rootfs（如果还没就绪）
         maybeAutoInstallRootfs()
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == REQUEST_AGREEMENT) {
+            if (resultCode == RESULT_OK) {
+                // 已同意：继续正常初始化（自动解压 rootfs 等）
+                maybeAutoInstallRootfs()
+            } else {
+                // 不同意：退出 App
+                finishAffinity()
+            }
+        }
     }
 
     override fun onResume() {

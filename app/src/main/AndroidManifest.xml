@@ -56,6 +56,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
+        <!-- 用户协议全屏页：首次启动强制「勾选同意 + 下一步」；关于页查看模式隐藏操作栏 -->
+        <activity
+            android:name=".AgreementActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
         <!-- 崩溃报告页：独立 :crash 进程运行，主进程崩溃退出后仍能展示崩溃日志 -->
         <activity
             android:name=".CrashReportActivity"

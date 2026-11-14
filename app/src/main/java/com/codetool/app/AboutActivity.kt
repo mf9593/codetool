@@ -259,7 +259,7 @@ class AboutActivity : Activity() {
             val ripple = android.util.TypedValue()
             context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
             setBackgroundResource(ripple.resourceId)
-            setOnClickListener { UserAgreement.showViewerDialog(this@AboutActivity) }
+            setOnClickListener { AgreementActivity.startView(this@AboutActivity) }
         }
         ImageView(this).apply {
             setImageResource(R.drawable.ic_info)
@@ -407,6 +407,7 @@ class AboutActivity : Activity() {
                 addView(headerCard)
                 addView(infoCard)
                 addView(updateCard)
+                addView(agreementCard)
                 addView(ossCard)
                 addView(qqCard)
             })

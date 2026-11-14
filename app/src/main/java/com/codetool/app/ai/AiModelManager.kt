@@ -405,6 +405,20 @@ object AiModelManager {
             val options = pObj.optJSONObject("options") ?: JSONObject()
             options.put("baseURL", m.baseUrl)
             pObj.put("options", options)
+            // 自定义模型声明：显式声明能力，opencode 直接认这个模型并进选择器，
+            // 不依赖其静态 models.json 注册表是否收录（解决「provider 有、注册表没有 → 不显示」）。
+            val models = pObj.optJSONObject("models") ?: JSONObject()
+            val mo = JSONObject()
+            mo.put("id", m.modelId)
+            mo.put("name", m.name.substringAfter('/').ifEmpty { m.modelId })
+            mo.put("reasoning", true)
+            mo.put("tool_call", true)
+            mo.put("temperature", true)
+            mo.put("attachment", true)
+            mo.put("limit", JSONObject().put("context", 262144).put("output", 65536))
+            mo.put("cost", JSONObject().put("input", 0).put("output", 0).put("cache_read", 0))
+            models.put(m.modelId, mo)
+            pObj.put("models", models)
             providers.put(m.provider, pObj)
             obj.put("provider", providers)
         }

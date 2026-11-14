@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 用户协议全屏页：首次启动强制同意（勾选 + 下一步）；关于页查看时隐藏底部操作栏。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?android:attr/colorBackground">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/agreementToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        app:title="用户协议与免责声明"
+        app:titleTextColor="?attr/colorOnSurface" />
+
+    <ScrollView
+        android:id="@+id/agreementScroll"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <TextView
+            android:id="@+id/agreementText"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:padding="20dp"
+            android:textSize="15sp"
+            android:lineSpacingMultiplier="1.4"
+            android:textColor="?attr/colorOnSurface" />
+    </ScrollView>
+
+    <!-- 底部操作栏：勾选同意 + 下一步（查看模式时整块隐藏） -->
+    <LinearLayout
+        android:id="@+id/agreementActions"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="?attr/colorSurface"
+        android:elevation="8dp">
+
+        <com.google.android.material.checkbox.MaterialCheckBox
+            android:id="@+id/agreementCheck"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="我已阅读并同意以上《用户协议与免责声明》"
+            android:textSize="14sp"
+            android:textColor="?attr/colorOnSurface" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/agreementNext"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="8dp"
+            android:text="下一步"
+            android:enabled="false"
+            app:icon="@drawable/ic_chevron_right"
+            app:iconGravity="textEnd" />
+    </LinearLayout>
+</LinearLayout>
