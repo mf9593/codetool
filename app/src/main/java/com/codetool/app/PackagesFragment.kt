@@ -109,17 +109,20 @@ class PackagesFragment : Fragment() {
             runInTerminal(
                 "安装 APM",
                 "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
+                    "export DEBIAN_FRONTEND=noninteractive\n" +
+                    "dpkg --configure -a\n" +
                     "mkdir -p /etc/apt/trusted.gpg.d\n" +
-                    "wget -q -O /etc/apt/trusted.gpg.d/apm.gpg 'https://gitee.com/amber-ce/amber-pm/raw/master/src/etc/apt/trusted.gpg.d/apm.gpg'\n" +
-                    "if [ ${'$'}? -ne 0 ]; then\n" +
-                    "  echo '[ERROR] GPG 密钥下载失败'\n" +
-                    "  echo '  请前往 https://gitee.com/amber-ce/amber-pm/releases 手动下载 deb 安装'\n" +
-                    "  exit 1\n" +
-                    "fi\n" +
-                    "echo 'deb [signed-by=/etc/apt/trusted.gpg.d/apm.gpg] https://d.spark-app.store/apm-deb-source /' > /etc/apt/sources.list.d/apm.list\n" +
-                    "apt-get update\n" +
-                    "apt-get install -y amber-pm\n" +
-                    "echo 'APM 安装完成'\n" +
+                    "echo '=== 下载 APM GPG 密钥 ==='\n" +
+                    "( set -e\n" +
+                    "  wget -q -O /etc/apt/trusted.gpg.d/apm.gpg 'https://gitee.com/amber-ce/amber-pm/raw/master/src/etc/apt/trusted.gpg.d/apm.gpg'\n" +
+                    "  [ -s /etc/apt/trusted.gpg.d/apm.gpg ] || { echo '[ERROR] GPG 密钥下载失败（空文件，网络问题）'; exit 1; }\n" +
+                    "  echo 'deb [signed-by=/etc/apt/trusted.gpg.d/apm.gpg] https://d.spark-app.store/apm-deb-source /' > /etc/apt/sources.list.d/apm.list\n" +
+                    "  apt-get update\n" +
+                    "  apt-get install -y amber-pm\n" +
+                    ") || echo '[ERROR] APM 安装中断，看上方报错（GPG 密钥/网络）'\n" +
+                    "echo ''\n" +
+                    "echo '=== 安装结果（真实自检）==='\n" +
+                    "command -v apm >/dev/null 2>&1 && echo '[OK] APM 已可用：apm' || echo '[ERROR] APM 未装上，看上方报错（gitee 密钥下载或 apt 源）'\n" +
                     "echo '用法：apm install <包名> 安装应用'\n" +
                     "echo '网页商店：https://erotica.spark-app.store/arm64-apm/'"
             )
