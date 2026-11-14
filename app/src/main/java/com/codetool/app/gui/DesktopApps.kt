@@ -122,6 +122,14 @@ object DesktopApps {
     fun browserInstalled(context: Context): Boolean =
         apps.firstOrNull { it.id == "chrome" }?.let { isInstalled(context, it) } ?: false
 
+    /** Firefox 是否已装进 rootfs。 */
+    fun firefoxInstalled(context: Context): Boolean =
+        apps.firstOrNull { it.id == "firefox" }?.let { isInstalled(context, it) } ?: false
+
+    /** 星火商店是否已装进 rootfs。 */
+    fun sparkStoreInstalled(context: Context): Boolean =
+        resolveBinary(context, "spark-store") != null
+
     // .desktop 里这些 Exec 需要终端/不值得单独列，跳过。
     private val SKIP_EXEC = setOf("true", "false", "exit", "x-terminal-emulator")
     // 终端程序、以及在 tawcroot 容器里必然起不来的 GUI（无 systemd/portal/session）：

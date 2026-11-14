@@ -48,7 +48,7 @@ class PackagesFragment : Fragment() {
                 "安装 opencode",
                 "command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y curl ca-certificates; }\n" +
                     "echo '=== 1/2 官方脚本安装 opencode ==='\n" +
-                    "curl -fsSL https://opencode.ai/install | bash\n" +
+                    "curl -fsSL https://opencode.ai/v2/install | bash\n" +
                     "if ! command -v opencode >/dev/null 2>&1; then\n" +
                     "  echo '=== 2/2 脚本安装失败，回退 npm 安装 ==='\n" +
                     "  command -v npm >/dev/null 2>&1 || { apt-get update && apt-get install -y npm nodejs; }\n" +
@@ -174,13 +174,19 @@ class PackagesFragment : Fragment() {
         refreshBrowserStatus()
     }
 
-    /** 浏览器是「不预装、包管理一键装」：两个按钮各自实时反映 rootfs 里是否已装。 */
+    /** 浏览器/星火都是「不预装、包管理一键装」：按钮各自实时反映 rootfs 里是否已装。 */
     private fun refreshBrowserStatus() {
+        val ctx = requireContext()
         val chrome = view?.findViewById<MaterialButton>(R.id.btnChromeInstall) ?: return
-        val firefox = view?.findViewById<MaterialButton>(R.id.btnFirefoxInstall) ?: return
-        val installed = com.codetool.app.gui.DesktopApps.browserInstalled(requireContext())
-        chrome.text = if (installed) "Chrome 已安装 · 点此重装" else "安装 Chrome（Google 官方版）"
-        firefox.text = if (installed) "Firefox 已安装 · 点此重装" else "安装 Firefox（Mozilla 官方版）"
+        val firefox = view?.findViewById<MaterialButton>(R.id.btnFirefoxInstall)
+        val spark = view?.findViewById<MaterialButton>(R.id.btnSpark)
+        val da = com.codetool.app.gui.DesktopApps
+        chrome.text = if (da.browserInstalled(ctx)) "Chrome 已安装 · 点此重装"
+                      else "安装 Chrome（Google 官方版）"
+        firefox?.text = if (da.firefoxInstalled(ctx)) "Firefox 已安装 · 点此重装"
+                        else "安装 Firefox（Mozilla 官方版）"
+        spark?.text = if (da.sparkStoreInstalled(ctx)) "启动星火商店"
+                      else "安装星火商店"
     }
 
     /** 把命令发到当前终端标签，并切到终端页显示执行过程。 */
