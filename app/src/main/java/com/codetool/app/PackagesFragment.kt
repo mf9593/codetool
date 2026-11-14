@@ -58,23 +58,52 @@ class PackagesFragment : Fragment() {
                     com.codetool.app.ai.AiModelManager.FIX_PATH_SCRIPT
             )
         }
-        v.findViewById<MaterialButton>(R.id.btnSparkInstall).setOnClickListener {
-            runInTerminal(
-                "安装星火商店",
-                "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
-                    "cd /tmp && rm -f spark-store.deb\n" +
-                    "wget -L -O spark-store.deb 'https://gitee.com/spark-store-project/spark-store/releases/download/5.3.2/spark-store_5.3.2_arm64.deb'\n" +
-                    "if dpkg-deb -I spark-store.deb >/dev/null 2>&1; then\n" +
-                    "  echo '[OK] deb 文件有效，开始安装'\n" +
-                    "  apt-get update\n" +
-                    "  apt-get install -yf ./spark-store.deb\n" +
-                    "  echo '星火商店安装完成：spark-store'\n" +
-                    "else\n" +
-                    "  echo '[ERROR] deb 文件下载损坏或无效'\n" +
-                    "  ls -la spark-store.deb\n" +
-                    "  file spark-store.deb\n" +
-                    "fi"
-            )
+        v.findViewById<MaterialButton>(R.id.btnSpark).setOnClickListener {
+            val ctx = requireContext()
+            // 自适应：已装 spark-store → 启动；未装 → 先安装
+            val installed = com.codetool.app.gui.DesktopApps.resolveBinary(
+                ctx, "spark-store") != null
+            if (installed) {
+                // 启动：先开合成器，再强制 Wayland + 软件渲染（修复黑屏/崩溃）
+                try {
+                    ctx.startActivity(
+                        Intent(ctx, TawcCompositorActivity::class.java)
+                            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    )
+                } catch (_: Throwable) {
+                }
+                Handler(Looper.getMainLooper()).postDelayed({
+                    TerminalFragment.sendCommand(
+                        ctx,
+                        "echo '--- 启动星火商店（Wayland + 软件渲染）---'\n" +
+                            "unset XKB_CONFIG_ROOT TAWC_XKB_CONFIG_ROOT\n" +
+                            "export WAYLAND_DISPLAY=/usr/share/tawc/wayland-0\n" +
+                            "export XDG_RUNTIME_DIR=/tmp\n" +
+                            "export LIBGL_ALWAYS_SOFTWARE=1\n" +
+                            "export GALLIUM_DRIVER=llvmpipe\n" +
+                            "export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe\n" +
+                            "export ELECTRON_ENABLE_LOGGING=1\n" +
+                            "spark-store --ozone-platform=wayland --disable-gpu\n"
+                    )
+                }, 3500L)
+            } else {
+                runInTerminal(
+                    "安装星火商店",
+                    "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
+                        "cd /tmp && rm -f spark-store.deb\n" +
+                        "wget -L -O spark-store.deb 'https://gitee.com/spark-store-project/spark-store/releases/download/5.3.2/spark-store_5.3.2_arm64.deb'\n" +
+                        "if dpkg-deb -I spark-store.deb >/dev/null 2>&1; then\n" +
+                        "  echo '[OK] deb 文件有效，开始安装'\n" +
+                        "  apt-get update\n" +
+                        "  apt-get install -yf ./spark-store.deb\n" +
+                        "  echo '星火商店安装完成：spark-store'\n" +
+                        "else\n" +
+                        "  echo '[ERROR] deb 文件下载损坏或无效'\n" +
+                        "  ls -la spark-store.deb\n" +
+                        "  file spark-store.deb\n" +
+                        "fi"
+                )
+            }
         }
         v.findViewById<MaterialButton>(R.id.btnApmInstall).setOnClickListener {
             runInTerminal(
@@ -134,36 +163,6 @@ class PackagesFragment : Fragment() {
                     "echo '=== 安装结果（真实自检）==='\n" +
                     "command -v firefox >/dev/null 2>&1 && echo \"[OK] Firefox 已可用：$(firefox --version 2>/dev/null)\" || echo '[WARN] Firefox 未装上（不影响内置浏览器）'\n" +
                     "echo '装好后：终端点「显示」打开 GUI；工具 → MCP 页可查看浏览器状态'"
-            )
-        }
-        // 启动星火商店：先开合成器，再强制 Wayland + 软件渲染（修复黑屏/崩溃）
-        v.findViewById<MaterialButton>(R.id.btnSparkLaunch).setOnClickListener {
-            val ctx = requireContext()
-            // 1. 打开合成器窗口：native compositor 启动后才会有 wayland-0 socket
-            try {
-                ctx.startActivity(
-                    Intent(ctx, TawcCompositorActivity::class.java)
-                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                )
-            } catch (_: Throwable) {
-            }
-            // 2. 等待 compositor socket 就绪（3.5s），再发启动命令
-            Handler(Looper.getMainLooper()).postDelayed(
-                {
-                    TerminalFragment.sendCommand(
-                        ctx,
-                        "echo '--- 启动星火商店（Wayland + 软件渲染）---'\n" +
-                            "unset XKB_CONFIG_ROOT TAWC_XKB_CONFIG_ROOT\n" +
-                            "export WAYLAND_DISPLAY=/usr/share/tawc/wayland-0\n" +
-                            "export XDG_RUNTIME_DIR=/tmp\n" +
-                            "export LIBGL_ALWAYS_SOFTWARE=1\n" +
-                            "export GALLIUM_DRIVER=llvmpipe\n" +
-                            "export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe\n" +
-                            "export ELECTRON_ENABLE_LOGGING=1\n" +
-                            "spark-store --ozone-platform=wayland --disable-gpu\n"
-                    )
-                },
-                3500L
             )
         }
         refreshBrowserStatus()
