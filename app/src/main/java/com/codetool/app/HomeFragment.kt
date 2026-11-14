@@ -91,7 +91,7 @@ class HomeFragment : Fragment() {
             st.installed -> IconTone.NEUTRAL
             else -> IconTone.ERROR
         }
-        applyIcon(shizukuIcon, R.drawable.ic_code, tone)
+        applyIcon(shizukuIcon, R.drawable.ic_terminal, tone)
     }
 
     /** Shizuku 授权结果回调：授权成功刷新状态，被拒提示。 */
@@ -309,7 +309,7 @@ class HomeFragment : Fragment() {
             applyIcon(rootfsIcon, R.drawable.ic_storage, snapshot.rootfsTone)
             pathText.text = "路径: $path"
             tawcrootText.text = "tawcroot: $tawLabel"
-            applyIcon(tawcrootIcon, R.drawable.ic_code, tawTone)
+            applyIcon(tawcrootIcon, R.drawable.ic_container, tawTone)
             serviceText.text = "终端服务: $svcLabel"
             applyIcon(serviceIcon, svcIcon, svcTone)
             aiStatusText.text = "AI: ${snapshot.aiLabel}"

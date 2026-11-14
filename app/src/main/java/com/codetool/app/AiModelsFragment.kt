@@ -55,7 +55,9 @@ class AiModelsFragment : Fragment() {
             refresh()
         }
         v.findViewById<MaterialButton>(R.id.btnAiFetchModels).setOnClickListener { showFetchDialog() }
-        v.findViewById<MaterialButton>(R.id.btnAiConfig).setOnClickListener { showConfigEditor() }
+        v.findViewById<MaterialButton>(R.id.btnAiConfig).setOnClickListener {
+            startActivity(android.content.Intent(requireContext(), ConfigEditorActivity::class.java))
+        }
         v.findViewById<MaterialButton>(R.id.btnAiSync).setOnClickListener { syncToCli() }
         return v
     }
@@ -352,48 +354,6 @@ class AiModelsFragment : Fragment() {
                 refresh()
             }
             .setNegativeButton("取消", null).show()
-    }
-
-    /** 配置文件编辑器：选文件 → 查看/编辑原始 JSON → 保存（可手删模型、核对 baseURL）。 */
-    private fun showConfigEditor() {
-        val ctx = requireContext()
-        val configs = AiModelManager.listEditableConfigs()
-        val labels = configs.map { it.label }.toTypedArray()
-        var selected = 0
-        val v = layoutInflater.inflate(R.layout.dialog_ai_config, null)
-        val spFile = v.findViewById<Spinner>(R.id.spConfigFile)
-        val etContent = v.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etConfigContent)
-        val spAdapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_item, labels)
-        spAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
-        spFile.adapter = spAdapter
-        fun load(idx: Int) {
-            selected = idx
-            etContent.setText(AiModelManager.readConfigFile(ctx, configs[idx].rel) ?: "（文件不存在或为空）")
-        }
-        load(0)
-        spFile.onItemSelectedListener = object : AdapterView.OnItemSelectedListener {
-            override fun onItemSelected(p: AdapterView<*>?, view: View?, pos: Int, id: Long) {
-                if (pos != selected) load(pos)
-            }
-            override fun onNothingSelected(p: AdapterView<*>?) {}
-        }
-        MaterialAlertDialogBuilder(ctx)
-            .setTitle("配置文件（可直接编辑原始 JSON）")
-            .setView(v)
-            .setPositiveButton("保存") { _, _ ->
-                val rel = configs[selected].rel
-                val content = etContent.text?.toString().orEmpty()
-                viewLifecycleOwner.lifecycleScope.launch {
-                    val ok = withContext(Dispatchers.IO) {
-                        AiModelManager.writeConfigFile(ctx, rel, content)
-                    }
-                    toast(if (ok) "已保存 ${configs[selected].label}（原文件备份为 .codetool.bak）" else "保存失败")
-                    if (ok) refresh()
-                }
-            }
-            .setNeutralButton("重载", null)
-            .setNegativeButton("取消", null)
-            .show()
     }
 
     /** 同步到 CLI：把每个目标的当前模型重新写入 CLI 原生配置（后台线程）。 */

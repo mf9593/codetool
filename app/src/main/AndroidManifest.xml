@@ -63,6 +63,12 @@
             android:process=":crash"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
+        <!-- 配置文件编辑器（全屏页：大空间编辑 JSON，比弹窗好编辑） -->
+        <activity
+            android:name=".ConfigEditorActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
         <!-- tawc compositor：全屏 SurfaceView 渲染容器 GUI 窗口 -->
         <activity
             android:name=".gui.TawcCompositorActivity"
