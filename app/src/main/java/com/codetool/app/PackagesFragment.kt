@@ -102,8 +102,9 @@ class PackagesFragment : Fragment() {
                 "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
                     "command -v gpg >/dev/null 2>&1 || apt-get install -y gnupg\n" +
                     "export DEBIAN_FRONTEND=noninteractive\n" +
-                    "echo '=== 0/2 修复上次可能中断的 dpkg 状态 ==='\n" +
+                    "echo '=== 0/2 修复上次中断残留 + 清理容器跑不了的 snapd ==='\n" +
                     "dpkg --configure -a\n" +
+                    "dpkg -l snapd >/dev/null 2>&1 && { echo '移除 snapd（容器不支持，会让 dpkg 报错）'; dpkg --remove --force-depends snapd 2>/dev/null; dpkg --configure -a; }\n" +
                     "echo '=== 1/2 安装 Google Chrome (arm64 官方版) ==='\n" +
                     "( set -e\n" +
                     "  wget -qO- https://dl.google.com/linux/linux_signing_key.pub | gpg --batch --yes --dearmor -o /usr/share/keyrings/google-chrome.gpg\n" +
@@ -120,9 +121,9 @@ class PackagesFragment : Fragment() {
                     "  apt-get update && apt-get install -y firefox\n" +
                     ") || echo '[ERROR] Firefox 安装中断，看上方报错'\n" +
                     "echo ''\n" +
-                    "echo '=== 安装结果 ==='\n" +
-                    "command -v google-chrome >/dev/null 2>&1 && echo '[OK] Chrome 已可用：google-chrome' || echo '[ERROR] Chrome 未装上，请检查上方 apt 报错（大陆网络可能需要代理）'\n" +
-                    "command -v firefox >/dev/null 2>&1 && echo '[OK] Firefox 已可用' || echo '[WARN] Firefox 未装上（不影响内置浏览器）'\n" +
+                    "echo '=== 安装结果（真实自检）==='\n" +
+                    "command -v google-chrome >/dev/null 2>&1 && echo \"[OK] Chrome 已可用：$(google-chrome --version 2>/dev/null)\" || echo '[ERROR] Chrome 未装上，请检查上方 apt 报错（大陆网络可能需要代理）'\n" +
+                    "command -v firefox >/dev/null 2>&1 && echo \"[OK] Firefox 已可用：$(firefox --version 2>/dev/null)\" || echo '[WARN] Firefox 未装上（不影响内置浏览器）'\n" +
                     "echo '装好后：终端点「显示」打开 GUI；工具 → MCP 页可查看浏览器状态'"
             )
         }
