@@ -408,11 +408,13 @@ object AiModelManager {
         var okCount = 0
         for (target in listOf("mimo", "opencode")) {
             val cur = listModels(ctx).find { it.target == target && it.current }
+            android.util.Log.w("AiSync", "syncAll target=$target cur=${cur?.name} key=${cur?.apiKey?.take(8)} baseUrl=${cur?.baseUrl}")
             if (cur == null) {
                 details.add("$target：无当前模型，跳过")
                 continue
             }
             val ok = if (target == "mimo") writeMimo(ctx, cur) else writeOpencode(ctx, cur)
+            android.util.Log.w("AiSync", "syncAll target=$target ok=$ok authAfter=${mimoAuth(ctx).takeIf { it.isFile }?.readText()?.take(80)}")
             details.add("$target：${cur.name} ${if (ok) "✓" else "✗"}")
             if (ok) okCount++
         }
