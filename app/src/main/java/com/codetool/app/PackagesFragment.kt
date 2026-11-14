@@ -103,6 +103,7 @@ class PackagesFragment : Fragment() {
                     "command -v gpg >/dev/null 2>&1 || apt-get install -y gnupg\n" +
                     "echo '=== 1/2 安装 Google Chrome (arm64 官方版) ==='\n" +
                     "( set -e\n" +
+                    "  export DEBIAN_FRONTEND=noninteractive\n" +
                     "  wget -qO- https://dl.google.com/linux/linux_signing_key.pub | gpg --batch --yes --dearmor -o /usr/share/keyrings/google-chrome.gpg\n" +
                     "  [ -s /usr/share/keyrings/google-chrome.gpg ] || { echo '[ERROR] Chrome 密钥下载失败（网络问题）'; exit 1; }\n" +
                     "  echo 'deb [signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main' > /etc/apt/sources.list.d/google-chrome.list\n" +
@@ -111,6 +112,7 @@ class PackagesFragment : Fragment() {
                     "echo ''\n" +
                     "echo '=== 2/2 安装 Mozilla Firefox (arm64 官方版) ==='\n" +
                     "( set -e\n" +
+                    "  export DEBIAN_FRONTEND=noninteractive\n" +
                     "  install -d -m 0755 /etc/apt/keyrings\n" +
                     "  wget -qO- https://packages.mozilla.org/apt/repo-signing-key.gpg | tee /etc/apt/keyrings/packages.mozilla.org.asc >/dev/null\n" +
                     "  echo 'deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main' > /etc/apt/sources.list.d/mozilla.list\n" +
