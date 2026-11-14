@@ -95,17 +95,18 @@ class PackagesFragment : Fragment() {
                     "echo '网页商店：https://erotica.spark-app.store/arm64-apm/'"
             )
         }
-        // 安装浏览器：Google Chrome + Mozilla Firefox（官方 arm64）
-        v.findViewById<MaterialButton>(R.id.btnBrowserInstall).setOnClickListener {
+        // 安装浏览器：Chrome / Firefox 拆成两个独立按钮，共用前置修复段
+        val browserPrereq = "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
+            "command -v gpg >/dev/null 2>&1 || apt-get install -y gnupg\n" +
+            "export DEBIAN_FRONTEND=noninteractive\n" +
+            "echo '=== 0/1 修复上次中断残留 + 清理容器跑不了的 snapd ==='\n" +
+            "dpkg --configure -a\n" +
+            "dpkg -l snapd >/dev/null 2>&1 && { echo '移除 snapd（容器不支持，会让 dpkg 报错）'; dpkg --remove --force-depends snapd 2>/dev/null; dpkg --configure -a; }\n"
+        v.findViewById<MaterialButton>(R.id.btnChromeInstall).setOnClickListener {
             runInTerminal(
-                "安装浏览器",
-                "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
-                    "command -v gpg >/dev/null 2>&1 || apt-get install -y gnupg\n" +
-                    "export DEBIAN_FRONTEND=noninteractive\n" +
-                    "echo '=== 0/2 修复上次中断残留 + 清理容器跑不了的 snapd ==='\n" +
-                    "dpkg --configure -a\n" +
-                    "dpkg -l snapd >/dev/null 2>&1 && { echo '移除 snapd（容器不支持，会让 dpkg 报错）'; dpkg --remove --force-depends snapd 2>/dev/null; dpkg --configure -a; }\n" +
-                    "echo '=== 1/2 安装 Google Chrome (arm64 官方版) ==='\n" +
+                "安装 Chrome",
+                browserPrereq +
+                    "echo '=== 1/1 安装 Google Chrome (arm64 官方版) ==='\n" +
                     "( set -e\n" +
                     "  wget -qO- https://dl.google.com/linux/linux_signing_key.pub | gpg --batch --yes --dearmor -o /usr/share/keyrings/google-chrome.gpg\n" +
                     "  [ -s /usr/share/keyrings/google-chrome.gpg ] || { echo '[ERROR] Chrome 密钥下载失败（网络问题）'; exit 1; }\n" +
@@ -113,7 +114,16 @@ class PackagesFragment : Fragment() {
                     "  apt-get update && apt-get install -y google-chrome-stable\n" +
                     ") || echo '[ERROR] Chrome 安装中断，看上方报错'\n" +
                     "echo ''\n" +
-                    "echo '=== 2/2 安装 Mozilla Firefox (arm64 官方版) ==='\n" +
+                    "echo '=== 安装结果（真实自检）==='\n" +
+                    "command -v google-chrome >/dev/null 2>&1 && echo \"[OK] Chrome 已可用：$(google-chrome --version 2>/dev/null)\" || echo '[ERROR] Chrome 未装上，请检查上方 apt 报错（大陆网络可能需要代理）'\n" +
+                    "echo '装好后：终端点「显示」打开 GUI；工具 → MCP 页可查看浏览器状态'"
+            )
+        }
+        v.findViewById<MaterialButton>(R.id.btnFirefoxInstall).setOnClickListener {
+            runInTerminal(
+                "安装 Firefox",
+                browserPrereq +
+                    "echo '=== 1/1 安装 Mozilla Firefox (arm64 官方版) ==='\n" +
                     "( set -e\n" +
                     "  install -d -m 0755 /etc/apt/keyrings\n" +
                     "  wget -qO- https://packages.mozilla.org/apt/repo-signing-key.gpg | tee /etc/apt/keyrings/packages.mozilla.org.asc >/dev/null\n" +
@@ -122,7 +132,6 @@ class PackagesFragment : Fragment() {
                     ") || echo '[ERROR] Firefox 安装中断，看上方报错'\n" +
                     "echo ''\n" +
                     "echo '=== 安装结果（真实自检）==='\n" +
-                    "command -v google-chrome >/dev/null 2>&1 && echo \"[OK] Chrome 已可用：$(google-chrome --version 2>/dev/null)\" || echo '[ERROR] Chrome 未装上，请检查上方 apt 报错（大陆网络可能需要代理）'\n" +
                     "command -v firefox >/dev/null 2>&1 && echo \"[OK] Firefox 已可用：$(firefox --version 2>/dev/null)\" || echo '[WARN] Firefox 未装上（不影响内置浏览器）'\n" +
                     "echo '装好后：终端点「显示」打开 GUI；工具 → MCP 页可查看浏览器状态'"
             )
@@ -166,12 +175,13 @@ class PackagesFragment : Fragment() {
         refreshBrowserStatus()
     }
 
-    /** 浏览器是「不预装、包管理一键装」：按钮实时反映 rootfs 里是否已装 Chrome。 */
+    /** 浏览器是「不预装、包管理一键装」：两个按钮各自实时反映 rootfs 里是否已装。 */
     private fun refreshBrowserStatus() {
-        val b = view?.findViewById<MaterialButton>(R.id.btnBrowserInstall) ?: return
+        val chrome = view?.findViewById<MaterialButton>(R.id.btnChromeInstall) ?: return
+        val firefox = view?.findViewById<MaterialButton>(R.id.btnFirefoxInstall) ?: return
         val installed = com.codetool.app.gui.DesktopApps.browserInstalled(requireContext())
-        b.text = if (installed) "浏览器已安装（Chrome）· 点此重装"
-        else "安装浏览器（Chrome / Firefox）"
+        chrome.text = if (installed) "Chrome 已安装 · 点此重装" else "安装 Chrome（Google 官方版）"
+        firefox.text = if (installed) "Firefox 已安装 · 点此重装" else "安装 Firefox（Mozilla 官方版）"
     }
 
     /** 把命令发到当前终端标签，并切到终端页显示执行过程。 */
