@@ -124,10 +124,9 @@ class MainActivity : AppCompatActivity() {
             supportActionBar?.title = titles[0]
         }
 
-        requestPermissionsIfNeeded()
-
         // 首次启动强制用户协议：未同意当前版本 → 进全屏协议页（勾选 + 下一步）。
         // 放在 rootfs 自动解压等重操作之前，未同意不干活。RESULT_OK=同意；RESULT_CANCELED=不同意（退出）。
+        // 注意：权限申请（通知/所有文件/电池）统一放到引导页之后，避免协议一同意就冒出系统权限弹窗。
         if (!UserAgreement.isAccepted(this)) {
             AgreementActivity.startFirstLaunch(this, REQUEST_AGREEMENT)
             return  // 未同意前不继续初始化（不自动解压 rootfs）；结果在 onActivityResult 处理
@@ -139,7 +138,13 @@ class MainActivity : AppCompatActivity() {
             return  // 引导未完成前不初始化；结果在 onActivityResult 处理
         }
 
-        // 首次启动自动解压 rootfs（如果还没就绪）
+        // 协议已同意 + 引导已完成 → 正常初始化（含权限申请）
+        onFullyOnboarded()
+    }
+
+    /** 协议 + 引导都完成后才走：申请权限 → 自动解压 rootfs。 */
+    private fun onFullyOnboarded() {
+        requestPermissionsIfNeeded()
         maybeAutoInstallRootfs()
     }
 
@@ -148,11 +153,11 @@ class MainActivity : AppCompatActivity() {
         when (requestCode) {
             REQUEST_AGREEMENT -> {
                 if (resultCode == RESULT_OK) {
-                    // 已同意协议 → 进引导页（若未完成）
+                    // 已同意协议 → 进引导页（若未完成）；都完成则正常初始化
                     if (!AppSettings.onboardingDone(this)) {
                         OnboardingActivity.start(this, REQUEST_ONBOARD)
                     } else {
-                        maybeAutoInstallRootfs()
+                        onFullyOnboarded()
                     }
                 } else {
                     finishAffinity()  // 不同意协议：退出
@@ -160,7 +165,7 @@ class MainActivity : AppCompatActivity() {
             }
             REQUEST_ONBOARD -> {
                 if (resultCode == RESULT_OK) {
-                    maybeAutoInstallRootfs()  // 引导完成：继续正常初始化
+                    onFullyOnboarded()  // 引导完成：申请权限 + 正常初始化
                 } else {
                     finishAffinity()  // 引导页返回：退出（未授权不进主页）
                 }
