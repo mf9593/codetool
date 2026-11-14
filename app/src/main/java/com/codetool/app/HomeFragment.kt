@@ -309,7 +309,7 @@ class HomeFragment : Fragment() {
             applyIcon(rootfsIcon, R.drawable.ic_storage, snapshot.rootfsTone)
             pathText.text = "路径: $path"
             tawcrootText.text = "tawcroot: $tawLabel"
-            applyIcon(tawcrootIcon, R.drawable.ic_container, tawTone)
+            applyIcon(tawcrootIcon, R.drawable.ic_monitor, tawTone)
             serviceText.text = "终端服务: $svcLabel"
             applyIcon(serviceIcon, svcIcon, svcTone)
             aiStatusText.text = "AI: ${snapshot.aiLabel}"
