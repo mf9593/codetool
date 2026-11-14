@@ -69,7 +69,8 @@ class TerminalFragment : Fragment() {
         fun runScript(context: android.content.Context, file: java.io.File, name: String, vararg args: String) {
             val containerPath = "/root/.codetool-scripts/${file.name}"
             val cmd = buildString {
-                append("sh ").append(containerPath)
+                // 路径必须加单引号：脚本文件名可能含空格（如「启动 mimocode.sh」），不加会被 sh 拆词报 No such file
+                append("sh '").append(containerPath).append("'")
                 for (a in args) if (a.isNotEmpty()) append(" '").append(a.replace("'", "'\\''")).append("'")
                 append("\n")
             }
