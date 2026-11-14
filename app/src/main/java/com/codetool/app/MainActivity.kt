@@ -61,6 +61,7 @@ class MainActivity : AppCompatActivity() {
 
     /** 首次启动用户协议页的请求码。 */
     private val REQUEST_AGREEMENT = 900
+    private val REQUEST_ONBOARD = 901
 
     /** 当前页位置（用于键盘切换按钮的显隐）。 */
     private var currentPage = 0
@@ -132,19 +133,37 @@ class MainActivity : AppCompatActivity() {
             return  // 未同意前不继续初始化（不自动解压 rootfs）；结果在 onActivityResult 处理
         }
 
+        // 协议已同意 → 首次进入引导页（电池无限制 + 通知前台保活，两项授权后下一步）。
+        if (!AppSettings.onboardingDone(this)) {
+            OnboardingActivity.start(this, REQUEST_ONBOARD)
+            return  // 引导未完成前不初始化；结果在 onActivityResult 处理
+        }
+
         // 首次启动自动解压 rootfs（如果还没就绪）
         maybeAutoInstallRootfs()
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode == REQUEST_AGREEMENT) {
-            if (resultCode == RESULT_OK) {
-                // 已同意：继续正常初始化（自动解压 rootfs 等）
-                maybeAutoInstallRootfs()
-            } else {
-                // 不同意：退出 App
-                finishAffinity()
+        when (requestCode) {
+            REQUEST_AGREEMENT -> {
+                if (resultCode == RESULT_OK) {
+                    // 已同意协议 → 进引导页（若未完成）
+                    if (!AppSettings.onboardingDone(this)) {
+                        OnboardingActivity.start(this, REQUEST_ONBOARD)
+                    } else {
+                        maybeAutoInstallRootfs()
+                    }
+                } else {
+                    finishAffinity()  // 不同意协议：退出
+                }
+            }
+            REQUEST_ONBOARD -> {
+                if (resultCode == RESULT_OK) {
+                    maybeAutoInstallRootfs()  // 引导完成：继续正常初始化
+                } else {
+                    finishAffinity()  // 引导页返回：退出（未授权不进主页）
+                }
             }
         }
     }

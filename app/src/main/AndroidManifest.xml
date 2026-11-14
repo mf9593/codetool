@@ -62,6 +62,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
+        <!-- 首次进入引导页：电池无限制 + 通知前台保活，两项授权后下一步 -->
+        <activity
+            android:name=".OnboardingActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
         <!-- 崩溃报告页：独立 :crash 进程运行，主进程崩溃退出后仍能展示崩溃日志 -->
         <activity
             android:name=".CrashReportActivity"

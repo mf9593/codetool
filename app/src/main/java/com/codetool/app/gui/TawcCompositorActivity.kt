@@ -1083,7 +1083,7 @@ open class TawcCompositorActivity : Activity() {
             text = when {
                 busy -> "安装中…"
                 installed -> ""
-                else -> "未装：工具→包管理 一键安装"
+                else -> "未安装"
             }
             textSize = 10f
             setTextColor(if (installed) cOnSurfaceVariant else cPrimary)

@@ -313,7 +313,7 @@ class HomeFragment : Fragment() {
             serviceText.text = "终端服务: $svcLabel"
             applyIcon(serviceIcon, svcIcon, svcTone)
             aiStatusText.text = "AI: ${snapshot.aiLabel}"
-            applyIcon(aiStatusIcon, R.drawable.ic_chat, snapshot.aiTone)
+            applyIcon(aiStatusIcon, R.drawable.ic_ai_model, snapshot.aiTone)
 
             // 进度条显示/隐藏
             when (val st = rootfs.state) {

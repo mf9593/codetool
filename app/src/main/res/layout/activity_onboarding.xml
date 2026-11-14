@@ -1,0 +1,75 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 首次进入引导页：电池无限制 + 通知前台保活，两项都授权后「下一步」才可用。 -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:background="?android:attr/colorBackground">
+
+    <com.google.android.material.appbar.MaterialToolbar
+        android:id="@+id/onboardToolbar"
+        android:layout_width="match_parent"
+        android:layout_height="?attr/actionBarSize"
+        android:background="?attr/colorSurface"
+        app:title="推荐设置"
+        app:titleTextColor="?attr/colorOnSurface" />
+
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:padding="20dp">
+
+            <TextView
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="为了让终端、容器和 AI 助手在锁屏后依然稳定运行，建议开启以下两项权限。"
+                android:textSize="15sp"
+                android:lineSpacingMultiplier="1.35"
+                android:textColor="?attr/colorOnSurface"
+                android:layout_marginBottom="20dp" />
+
+            <!-- 权限卡片由代码动态填充（onboardCards 容器） -->
+            <LinearLayout
+                android:id="@+id/onboardCards"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical" />
+        </LinearLayout>
+    </ScrollView>
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp"
+        android:background="?attr/colorSurface"
+        android:elevation="8dp">
+
+        <TextView
+            android:id="@+id/onboardHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="请先完成以上两项授权"
+            android:textSize="12sp"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:gravity="center"
+            android:layout_marginBottom="8dp" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/onboardNext"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:text="下一步"
+            android:enabled="false"
+            app:icon="@drawable/ic_chevron_right"
+            app:iconGravity="textEnd" />
+    </LinearLayout>
+</LinearLayout>
