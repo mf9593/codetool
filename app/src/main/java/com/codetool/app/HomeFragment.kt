@@ -91,7 +91,7 @@ class HomeFragment : Fragment() {
             st.installed -> IconTone.NEUTRAL
             else -> IconTone.ERROR
         }
-        applyIcon(shizukuIcon, R.drawable.ic_terminal, tone)
+        applyIcon(shizukuIcon, R.drawable.ic_wireless, tone)
     }
 
     /** Shizuku 授权结果回调：授权成功刷新状态，被拒提示。 */
@@ -313,7 +313,7 @@ class HomeFragment : Fragment() {
             serviceText.text = "终端服务: $svcLabel"
             applyIcon(serviceIcon, svcIcon, svcTone)
             aiStatusText.text = "AI: ${snapshot.aiLabel}"
-            applyIcon(aiStatusIcon, R.drawable.ic_ai, snapshot.aiTone)
+            applyIcon(aiStatusIcon, R.drawable.ic_chat, snapshot.aiTone)
 
             // 进度条显示/隐藏
             when (val st = rootfs.state) {

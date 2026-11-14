@@ -47,15 +47,31 @@ class AgreementActivity : Activity() {
         if (viewMode) {
             actions.visibility = View.GONE
         } else {
+            val scroll = findViewById<ScrollView>(R.id.agreementScroll)
             val check = findViewById<CheckBox>(R.id.agreementCheck)
             val next = findViewById<MaterialButton>(R.id.agreementNext)
             next.isEnabled = false
+            // 强制阅读：未滑动到正文底部前，勾选框禁用（避免未读就同意）。
+            check.isEnabled = false
+            check.alpha = 0.5f
+            scroll.viewTreeObserver.addOnScrollChangedListener { checkReachedBottom(scroll, check) }
+            scroll.post { checkReachedBottom(scroll, check) }  // 正文不足一屏时兜底放行
             check.setOnCheckedChangeListener { _, isChecked -> next.isEnabled = isChecked }
             next.setOnClickListener {
                 UserAgreement.markAccepted(this)
                 setResult(RESULT_OK)
                 finish()
             }
+        }
+    }
+
+    /** 正文是否已滚动到底（留 2px 容差）。到底则启用勾选框。 */
+    private fun checkReachedBottom(scroll: ScrollView, check: CheckBox) {
+        if (check.isEnabled) return
+        val diff = scroll.getChildAt(0).height - scroll.height - scroll.scrollY
+        if (diff <= 2) {
+            check.isEnabled = true
+            check.alpha = 1f
         }
     }
 
