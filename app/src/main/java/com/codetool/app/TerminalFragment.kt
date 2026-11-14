@@ -716,17 +716,19 @@ class TerminalFragment : Fragment() {
             Triple("RIGHT", "", R.drawable.ic_key_right),
             Triple("END", "END", 0), Triple("PGDN", "PGDN", 0)
         )
-        // 面板二 第一行：F1-F6 + 退格
+        // 面板二 第一行：CLI 符号 + 常用组合键（@ $ 管道 波浪 + ^P ^X ^C ^V）
         val row3 = listOf(
-            Triple("F1", "F1", 0), Triple("F2", "F2", 0), Triple("F3", "F3", 0),
-            Triple("F4", "F4", 0), Triple("F5", "F5", 0), Triple("F6", "F6", 0),
-            Triple("BS", "BS", 0)
+            Triple("AT", "@", 0), Triple("DOLLAR", "\$", 0), Triple("PIPE", "|", 0),
+            Triple("TILDE", "~", 0),
+            Triple("CTRL_P", "^P", 0), Triple("CTRL_X", "^X", 0),
+            Triple("CTRL_C", "^C", 0), Triple("CTRL_V", "^V", 0)
         )
-        // 面板二 第二行：F7-F12 + FN
+        // 面板二 第二行：补充 CLI 高频组合键（行首/行尾/删行/删词/清屏/EOF/挂起）
         val row4 = listOf(
-            Triple("F7", "F7", 0), Triple("F8", "F8", 0), Triple("F9", "F9", 0),
-            Triple("F10", "F10", 0), Triple("F11", "F11", 0), Triple("F12", "F12", 0),
-            Triple("FN", "FN", 0)
+            Triple("CTRL_A", "^A", 0), Triple("CTRL_E", "^E", 0),
+            Triple("CTRL_U", "^U", 0), Triple("CTRL_K", "^K", 0),
+            Triple("CTRL_W", "^W", 0), Triple("CTRL_L", "^L", 0),
+            Triple("CTRL_D", "^D", 0), Triple("CTRL_Z", "^Z", 0)
         )
         val pages = listOf(listOf(row1, row2), listOf(row3, row4))
 
@@ -807,6 +809,11 @@ class TerminalFragment : Fragment() {
 
     /** 计算按键字节序列（含 ctrl/alt/shift/fn 修饰）。 */
     private fun keySequence(key: String, ctrl: Boolean, alt: Boolean, shift: Boolean, fn: Boolean): ByteArray {
+        // CLI 一键组合键（^P/^C/^X…）：无论粘性修饰键状态如何，直接发控制码，不受干扰
+        if (key.startsWith("CTRL_") && key.length == 6) {
+            val c = key[5]
+            if (c in 'A'..'Z') return byteArrayOf((c - 'A' + 1).toByte())
+        }
         // ENTER / ESC / TAB 等控制键不受 shift 影响（直接发原序列）
         val base = when (key) {
             "ESC" -> "\u001b"
@@ -845,6 +852,20 @@ class TerminalFragment : Fragment() {
             "DOLLAR" -> "$"
             "ASTERISK" -> "*"
             "TILDE" -> "~"
+            "AT" -> "@"
+            // CLI 组合键：直接发控制码（letter - 'a' + 1），一键生效，不走粘性修饰
+            "CTRL_A" -> "\u0001"
+            "CTRL_C" -> "\u0003"
+            "CTRL_D" -> "\u0004"
+            "CTRL_E" -> "\u0005"
+            "CTRL_K" -> "\u000b"
+            "CTRL_L" -> "\u000c"
+            "CTRL_P" -> "\u0010"
+            "CTRL_U" -> "\u0015"
+            "CTRL_V" -> "\u0016"
+            "CTRL_W" -> "\u0017"
+            "CTRL_X" -> "\u0018"
+            "CTRL_Z" -> "\u001a"
             else -> if (key.length == 1 && key[0] in '0'..'9') key else ""
         }
         // FN 修饰（与 termux keyboard 一致）：
