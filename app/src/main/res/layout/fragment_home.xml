@@ -171,106 +171,18 @@
                         android:text="AI: 检测中…" />
                 </LinearLayout>
 
-                <!-- CPU 使用率 / 运行内存（真实可用，排除虚拟内存）实时监听 -->
+                <!-- Shizuku：以 shell（adb）身份运行，无需 root（点击申请授权） -->
                 <LinearLayout
+                    android:id="@+id/shizukuRow"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
                     android:orientation="horizontal"
                     android:gravity="center_vertical"
-                    android:baselineAligned="false">
-
-                    <ImageView
-                        android:id="@+id/cpuIcon"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/ic_cpu"
-                        android:contentDescription="@null" />
-
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/cpuText"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="8dp"
-                        android:fontFamily="monospace"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:text="CPU: 检测中…" />
-                </LinearLayout>
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="8dp"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:baselineAligned="false">
-
-                    <ImageView
-                        android:id="@+id/memIcon"
-                        android:layout_width="20dp"
-                        android:layout_height="20dp"
-                        android:scaleType="fitCenter"
-                        android:src="@drawable/ic_ram"
-                        android:contentDescription="@null" />
-
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/memText"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="8dp"
-                        android:fontFamily="monospace"
-                        android:textAppearance="?attr/textAppearanceBodySmall"
-                        android:text="内存: 检测中…" />
-                </LinearLayout>
-
-                <com.google.android.material.progressindicator.LinearProgressIndicator
-                    android:id="@+id/progressBar"
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:layout_marginTop="12dp"
-                    android:visibility="gone"
-                    app:indicatorColor="?attr/colorPrimary"
-                    app:trackColor="?attr/colorSurfaceVariant"
-                    app:trackCornerRadius="4dp"
-                    app:trackThickness="6dp" />
-
-            </LinearLayout>
-        </com.google.android.material.card.MaterialCardView>
-
-        <!-- ===== Shizuku：以 shell（adb）身份运行，无需 root ===== -->
-        <com.google.android.material.textview.MaterialTextView
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="32dp"
-            android:text="Shizuku"
-            android:textAppearance="?attr/textAppearanceTitleMedium"
-            android:textColor="?attr/colorOnSurface" />
-
-        <com.google.android.material.card.MaterialCardView
-            android:id="@+id/shizukuCard"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            app:cardCornerRadius="16dp"
-            app:cardElevation="0dp"
-            app:strokeWidth="1dp"
-            app:strokeColor="?attr/colorSurfaceVariant">
-
-            <LinearLayout
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="vertical"
-                android:padding="16dp">
-
-                <LinearLayout
-                    android:layout_width="match_parent"
-                    android:layout_height="wrap_content"
-                    android:orientation="horizontal"
-                    android:gravity="center_vertical"
-                    android:baselineAligned="false">
+                    android:baselineAligned="false"
+                    android:clickable="true"
+                    android:focusable="true"
+                    android:background="?attr/selectableItemBackground">
 
                     <ImageView
                         android:id="@+id/shizukuIcon"
@@ -291,29 +203,17 @@
                         android:text="Shizuku: 检测中…" />
                 </LinearLayout>
 
-                <LinearLayout
+                <com.google.android.material.progressindicator.LinearProgressIndicator
+                    android:id="@+id/progressBar"
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
-                    android:orientation="horizontal"
-                    android:baselineAligned="false">
+                    android:visibility="gone"
+                    app:indicatorColor="?attr/colorPrimary"
+                    app:trackColor="?attr/colorSurfaceVariant"
+                    app:trackCornerRadius="4dp"
+                    app:trackThickness="6dp" />
 
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnShizukuAuth"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:text="申请授权" />
-
-                    <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnShizukuRefresh"
-                        style="?attr/materialButtonOutlinedStyle"
-                        android:layout_width="0dp"
-                        android:layout_height="wrap_content"
-                        android:layout_weight="1"
-                        android:layout_marginStart="12dp"
-                        android:text="刷新状态" />
-                </LinearLayout>
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 

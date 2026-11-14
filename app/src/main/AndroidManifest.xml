@@ -56,6 +56,13 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
+        <!-- 崩溃报告页：独立 :crash 进程运行，主进程崩溃退出后仍能展示崩溃日志 -->
+        <activity
+            android:name=".CrashReportActivity"
+            android:exported="false"
+            android:process=":crash"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
         <!-- tawc compositor：全屏 SurfaceView 渲染容器 GUI 窗口 -->
         <activity
             android:name=".gui.TawcCompositorActivity"

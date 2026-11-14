@@ -3,6 +3,7 @@ package com.codetool.app.util
 import android.content.Context
 import android.content.Intent
 import android.util.Log
+import com.codetool.app.CrashReportActivity
 import java.io.File
 import java.io.PrintWriter
 import java.io.StringWriter
@@ -40,12 +41,25 @@ object CrashLogger {
             try {
                 val file = writeCrash(thread, throwable)
                 Log.e(TAG, "crash captured -> ${file?.absolutePath}", throwable)
+                // 启动崩溃报告页（独立 :crash 进程），主进程随后退出也不影响它显示
+                val ctx = context
+                if (ctx != null) {
+                    val intent = Intent(ctx, CrashReportActivity::class.java).apply {
+                        addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TASK or
+                                Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        )
+                    }
+                    ctx.startActivity(intent)
+                }
             } catch (e: Exception) {
-                Log.e(TAG, "crash logger failed", e)
+                Log.e(TAG, "show crash page failed", e)
             } finally {
-                // 交给系统默认处理器（仍会崩溃退出，但日志已落盘）
-                defaultHandler?.uncaughtException(thread, throwable)
-                // 若没有默认处理器，自己退出
+                // 给崩溃页（独立进程）一点启动时间，再结束崩溃的主进程。
+                // 不再调用 defaultHandler：避免系统「应用已停止」弹窗和崩溃页打架。
+                try { Thread.sleep(200) } catch (_: InterruptedException) {}
+                android.os.Process.killProcess(android.os.Process.myPid())
                 exitProcess(2)
             }
         }
@@ -85,8 +99,16 @@ object CrashLogger {
         }
     }
 
-    /** 最近一次崩溃的文本内容（供 UI 读取）。 */
-    fun lastCrashText(): String? = lastCrashFile?.takeIf { it.exists() }?.readText()
+    /** 最近一次崩溃的文本内容（供 UI 读取）。
+     *  崩溃页运行在独立 :crash 进程，内存里的 lastCrashFile 为空，
+     *  所以这里直接从 files/crash/ 读时间戳最新的那份崩溃文件。 */
+    fun lastCrashText(): String? {
+        val ctx = context ?: return null
+        val dir = File(ctx.filesDir, "crash")
+        val latest = dir.listFiles { f -> f.name.startsWith("crash-") }?.maxByOrNull { it.name }
+            ?: return lastCrashFile?.takeIf { it.exists() }?.readText()
+        return runCatching { latest.readText() }.getOrNull()
+    }
 }
 
 /** 版本信息小工具。 */

@@ -66,6 +66,12 @@ class MainActivity : AppCompatActivity() {
         // 应用当前主题（必须在 setContentView 前；换主题后 recreate 时全局生效）
         ThemeManager.apply(this)
         super.onCreate(savedInstanceState)
+        // 崩溃页自检：仅 debug 构建 + 显式 extra 才触发，正常使用永不命中。
+        // 用法：adb shell am start -n com.codetool.app/.MainActivity --ez codetool_debug_crash true
+        val isDebug = (applicationInfo.flags and android.content.pm.ApplicationInfo.FLAG_DEBUGGABLE) != 0
+        if (isDebug && intent?.getBooleanExtra("codetool_debug_crash", false) == true) {
+            throw IllegalStateException("崩溃页自检（debug 构建专用，验证防闪退机制）")
+        }
         // 沉浸式 edge-to-edge：内容延伸到系统栏下，手动处理 insets
         WindowCompat.setDecorFitsSystemWindows(window, false)
         setContentView(R.layout.activity_main)
