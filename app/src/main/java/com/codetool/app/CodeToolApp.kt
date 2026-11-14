@@ -18,6 +18,9 @@ class CodeToolApp : Application() {
         // 崩溃日志必须在最前面，捕获所有闪退
         CrashLogger.init(this)
         createChannels()
+        // Shizuku 桥常驻：监听容器请求，让 AI 模型以 shell 身份调试 App（不依赖 GUI）
+        // 只建目录 + 起 FileObserver，很轻；bind user-service 推迟到首个请求才做。
+        com.codetool.app.shizuku.ShizukuBridge.start(this)
     }
 
     private fun createChannels() {

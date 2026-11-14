@@ -143,6 +143,8 @@ class TawcrootRuntime private constructor(private val context: Context) {
             val share = File(rootfsDir, "usr/share/tawc").apply { mkdirs() }
             // 浏览器桥挂载点（真实目录由 BrowserBridge 在 Android 侧 dataDir/share 下创建）
             File(share, "browser").mkdirs()
+            // Shizuku 桥挂载点（真实目录由 ShizukuBridge 在 Android 侧 dataDir/share 下创建）
+            File(share, "shizuku").mkdirs()
 
             val profileDir = File(rootfsDir, "etc/profile.d").apply { mkdirs() }
             val profile = File(profileDir, "codetool-wayland.sh")
@@ -177,6 +179,18 @@ class TawcrootRuntime private constructor(private val context: Context) {
                 mcp.parentFile?.mkdirs()
                 mcp.writeText(mcpScript)
                 mcp.setExecutable(true, false)
+            }
+
+            // 注入 codetool-shizuku：容器内 CLI / AI 模型以 shell 身份调试 App 的统一入口。
+            // 单一来源 assets/scripts/codetool-shizuku.sh，内容变化自动覆盖。
+            val shizuku = File(rootfsDir, "usr/local/bin/codetool-shizuku")
+            val shizukuScript = runCatching {
+                context.assets.open("scripts/codetool-shizuku.sh").bufferedReader().use { it.readText() }
+            }.getOrNull()
+            if (shizukuScript != null && (!shizuku.exists() || shizuku.readText() != shizukuScript)) {
+                shizuku.parentFile?.mkdirs()
+                shizuku.writeText(shizukuScript)
+                shizuku.setExecutable(true, false)
             }
 
             // 模型能力「默认就绪」：容器一启动就把内置 skill 与 MCP server 写进 CLI

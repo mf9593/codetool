@@ -25,6 +25,7 @@ import urllib.request
 import uuid
 
 BRIDGE = "/usr/share/tawc/browser"
+SHIZUKU_BRIDGE = "/usr/share/tawc/shizuku"
 CDP = "http://127.0.0.1:9222"
 HEADLESS_PROFILE = "/tmp/codetool-headless"
 
@@ -86,13 +87,35 @@ TOOLS = [
         "description": "查看内置浏览器 MCP 的能力与使用前提（需要先在 app 终端点「显示」打开 GUI 合成器）。",
         "inputSchema": {"type": "object", "properties": {}},
     },
+    {
+        "name": "shizuku_status",
+        "description": "检查 Shizuku 调试桥是否可用：桥目录是否存在、app 是否已授权 Shizuku（shell 身份）。调用其它 shizuku_* 工具前先用它确认；未授权时返回申请指引。",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "shizuku_exec",
+        "description": "通过 Shizuku 以 shell（adb，uid 2000）身份在 Android 设备上执行命令并返回输出。用于调试 App：dumpsys 查状态、dumpsys window 查前台、pm/am 管理应用组件、settings 查系统设置、logcat 看日志等。无需 root，无需无线调试。命令经 sh -c 执行，内部 30s 超时。",
+        "inputSchema": {"type": "object", "properties": {
+            "cmd": {"type": "string", "description": "要执行的 shell 命令，如 'dumpsys activity top'、'dumpsys window | grep mCurrentFocus'、'logcat -d -t 100'"}
+        }, "required": ["cmd"]},
+    },
+    {
+        "name": "shizuku_screenshot",
+        "description": "通过 Shizuku 截取当前 Android 屏幕（screencap），PNG 保存到共享目录，返回容器内可读的路径。用于看 App 实际界面——比无线调试截图方便，不需要连 adb。",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "shizuku_ui_dump",
+        "description": "通过 Shizuku 用 uiautomator dump 导出当前界面的控件树（XML），返回容器内可读的路径。用于精确获取 App 界面上每个控件的文字、坐标、resource-id，定位 UI 元素比看截图更准。",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
 ]
 
 
 # ---------- 文件桥：请求 Android 侧拉起 Chrome ----------
 
-def bridge_request(action, timeout=20, **kw):
-    req_dir, res_dir = BRIDGE + "/requests", BRIDGE + "/responses"
+def bridge_request(action, timeout=20, bridge=BRIDGE, **kw):
+    req_dir, res_dir = bridge + "/requests", bridge + "/responses"
     if not os.path.isdir(req_dir):
         return {"ok": False, "message": "桥目录不存在：请先在 app 终端点「显示」打开 GUI 合成器"}
     os.makedirs(res_dir, exist_ok=True)
@@ -111,7 +134,7 @@ def bridge_request(action, timeout=20, **kw):
             os.remove(out)
             return data
         time.sleep(0.1)
-    return {"ok": False, "message": "超时：app 侧未响应（请先打开 GUI 合成器）"}
+    return {"ok": False, "message": "超时：app 侧未响应"}
 
 
 # ---------- CDP（标准 HTTP 端点） ----------
@@ -246,8 +269,74 @@ def tool_eval(a):
         return "执行失败：%s（浏览器是否已打开？CDP 端口 9222 是否就绪？）" % e
 
 
+# ---------- Shizuku 调试工具（以 shell 身份调试 App，无需 root / 无线调试） ----------
+
+def shizuku_status():
+    if not os.path.isdir(SHIZUKU_BRIDGE + "/requests"):
+        return ("Shizuku 桥不可用：共享目录 %s 不存在。\n"
+                "请先在 app 终端里启动过一次容器（桥随 App 常驻，不用开 GUI）。" % SHIZUKU_BRIDGE)
+    # 授权状态由 app 侧在执行时校验，这里只确认桥目录就绪
+    r = shizuku_exec_raw("id")
+    if not r.get("ok"):
+        return "Shizuku 桥目录就绪，但执行失败：%s\n提示：%s" % (
+            r.get("message", "未知错误"),
+            "请在 app 首页点「Shizuku」行申请授权（以 shell 身份运行）。")
+    last = r.get("message", "").splitlines()[-1] if r.get("message") else ""
+    return "Shizuku 调试桥可用。%s" % last
+
+
+def shizuku_exec_raw(cmd, timeout=35):
+    """底层：通过 Shizuku 桥执行 cmd，返回 {ok, message}。message 含 exit=N + 输出。"""
+    return bridge_request("exec", timeout=timeout, bridge=SHIZUKU_BRIDGE, cmd=cmd)
+
+
+def shizuku_exec(a):
+    cmd = (a.get("cmd") or "").strip()
+    if not cmd:
+        return "缺少 cmd"
+    r = shizuku_exec_raw(cmd)
+    if not r.get("ok"):
+        return "Shizuku 执行失败：%s" % r.get("message", "未知错误")
+    return r.get("message", "")
+
+
+def shizuku_screenshot():
+    # 截屏写到共享目录，容器可直接读；app 侧以 shell 身份执行 screencap
+    out_container = SHIZUKU_BRIDGE + "/shot.png"
+    # Android 侧路径 = app dataDir/share/shizuku/shot.png；容器路径如上
+    cmd = "screencap -p /data/data/com.codetool.app/share/shizuku/shot.png"
+    r = shizuku_exec_raw(cmd)
+    if not r.get("ok"):
+        return "截屏失败：%s" % r.get("message", "未知错误")
+    msg = r.get("message", "")
+    if not msg.startswith("exit=0"):
+        return "截屏失败：%s" % msg
+    return "截图已保存：%s（PNG）。" % out_container
+
+
+def shizuku_ui_dump():
+    xml_container = SHIZUKU_BRIDGE + "/ui.xml"
+    cmd = ("uiautomator dump /data/data/com.codetool.app/share/shizuku/ui.xml "
+           "&& echo OK")
+    r = shizuku_exec_raw(cmd)
+    if not r.get("ok"):
+        return "UI dump 失败：%s" % r.get("message", "未知错误")
+    msg = r.get("message", "")
+    if "OK" not in msg:
+        return "UI dump 失败：%s" % msg
+    return "控件树已导出：%s（XML）。" % xml_container
+
+
 def call_tool(name, a):
     try:
+        if name == "shizuku_status":
+            return shizuku_status()
+        if name == "shizuku_exec":
+            return shizuku_exec(a)
+        if name == "shizuku_screenshot":
+            return shizuku_screenshot()
+        if name == "shizuku_ui_dump":
+            return shizuku_ui_dump()
         if name == "browser_status":
             return tool_status()
         if name == "browser_open":

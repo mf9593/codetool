@@ -6,6 +6,9 @@ plugins {
 android {
     namespace = "com.codetool.app"
     compileSdk = 36
+    // build-tools 34/36 的 aidl/aapt2 是 x86_64 或脚本，本机 aarch64 跑不了；
+    // 37.0.0 是 aarch64 原生二进制，AIDL 编译要用它（AGP 默认挑 34.0.0）。
+    buildToolsVersion = "37.0.0"
 
     defaultConfig {
         applicationId = "com.codetool.app"
@@ -45,6 +48,8 @@ android {
 
     buildFeatures {
         viewBinding = true
+        // Shizuku user-service 用 AIDL 定义执行接口（IShizukuUserService.aidl）
+        aidl = true
     }
 }
 

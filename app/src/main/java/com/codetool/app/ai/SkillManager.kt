@@ -193,15 +193,63 @@ browser_dom 或 browser_eval 检查渲染结果 → browser_screenshot 看视觉
 发现问题改代码 → 重开验证。
 """.trimIndent()
 
-    /** 首次写入内置 skill；旧版内置内容自愈升级，写回原位置、不新增副本。 */
+    private const val SHIZUKU_DESC =
+        "用 Shizuku 以 shell 身份调试 Android App：截屏、导出界面控件树、跑 dumpsys/logcat/pm 等命令，比无线调试方便，无需连 adb。"
+
+    private val SHIZUKU_BODY = """
+# 用 Shizuku 调试 Android App（截屏 / 界面树 / shell 命令）
+
+这个 app 内置了 Shizuku 桥，能让你以 **shell（adb，uid 2000）** 身份在 Android 设备上执行命令、
+**截屏**、**导出界面控件树**，用来调试正在运行的 App。**比无线调试方便**——不需要用户连 adb、
+不需要 `adb connect`，直接调工具即可。
+
+## 前置（每次先确认）
+1. 调 `shizuku_status()` 检查桥是否可用、app 是否已授权 Shizuku。
+2. 若未授权，告诉用户：到 app **首页点「Shizuku」那一行**申请授权（以 shell 身份运行），
+   授权后重试。**不要**让用户去连无线调试。
+3. 桥目录不存在时，提示用户在 app 终端里启动过一次容器（桥随 App 常驻，不用开 GUI）。
+
+## 通过 MCP 工具（推荐）
+- `shizuku_status()`：前置检查——桥目录 + 授权状态。
+- `shizuku_exec(cmd)`：以 shell 身份执行任意命令并返回输出。常用：
+  - `dumpsys activity top` — 当前前台 Activity / 栈顶
+  - `dumpsys window | grep mCurrentFocus` — 当前焦点窗口（判断哪个界面在前台）
+  - `dumpsys package <pkg>` — 查某应用的版本、权限、组件
+  - `logcat -d -t 200` — 最近 200 行日志（排查崩溃 / 报错）
+  - `pm list packages | grep <关键字>` — 查包名
+  - `am start -n <pkg>/<activity>` — 启动某界面（调试用）
+  - `settings get global <key>` / `settings put ...` — 查/改系统设置
+- `shizuku_screenshot()`：截取当前屏幕，返回容器内 PNG 路径（直接看界面长什么样）。
+- `shizuku_ui_dump()`：导出当前界面控件树 XML，返回容器内路径（精确拿每个控件的
+  文字 / 坐标 / resource-id，定位 UI 元素比看截图准）。
+
+## 典型调试流程
+shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿控件树定位元素 →
+`shizuku_exec("dumpsys activity top")` 确认前台 → `shizuku_exec("logcat -d -t 200")` 看日志 →
+定位问题。看截图用截图路径，查控件用 ui_dump 路径，都能在容器里直接 cat / 打开。
+
+## 注意
+- 命令以 **shell（uid 2000）** 身份跑，权限等同 adb；**不能**访问需要 root 的东西。
+- 命令经 `sh -c` 执行，支持管道 / 重定向；内部 30s 超时，长命令会被掐断。
+- 截屏 / ui_dump 的输出文件写在共享目录，返回的容器路径可直接读。
+""".trimIndent()
+
+    /** 首次写入内置 skill；旧版内置内容自愈升级，写回原位置、不新增副本。
+     *  每个 skill 用一个「特征串」判断是否已是当前版本（marker 出现即跳过）。 */
     fun ensureBuiltin(ctx: Context): Int {
-        val existing = listSkills(ctx).firstOrNull { it.id == "codetool-browser" }
+        var n = 0
+        n += ensureOne(ctx, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY, "browser_status")
+        n += ensureOne(ctx, "codetool-shizuku", SHIZUKU_DESC, SHIZUKU_BODY, "shizuku_exec")
+        return n
+    }
+
+    private fun ensureOne(ctx: Context, id: String, desc: String, body: String, marker: String): Int {
+        val existing = listSkills(ctx).firstOrNull { it.id == id }
         if (existing != null) {
-            val looksBuiltin = existing.body.contains("## 前置")
-            if (existing.body.contains("browser_status") || !looksBuiltin) return 0
-            return if (upsert(ctx, existing, existing.name, BUILTIN_DESC, BUILTIN_BODY) == null) 1 else 0
+            if (existing.body.contains(marker)) return 0
+            return if (upsert(ctx, existing, existing.name, desc, body) == null) 1 else 0
         }
-        return if (upsert(ctx, null, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY) == null) 1 else 0
+        return if (upsert(ctx, null, id, desc, body) == null) 1 else 0
     }
 
     private fun frontmatter(txt: String): Pair<String, String> {
