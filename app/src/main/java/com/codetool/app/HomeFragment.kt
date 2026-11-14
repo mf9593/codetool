@@ -301,7 +301,7 @@ class HomeFragment : Fragment() {
             val tawTone = if (tawOk) IconTone.OK else IconTone.ERROR
             val svcRunning = TerminalService.instance != null
             val svcLabel = if (svcRunning) "运行中" else "未启动"
-            val svcIcon = if (svcRunning) R.drawable.ic_play else R.drawable.ic_terminal_prompt
+            val svcIcon = R.drawable.ic_terminal_prompt  // 运行/未启动都用终端造型，状态靠文字区分
             val svcTone = if (svcRunning) IconTone.OK else IconTone.NEUTRAL
 
             // 更新行：图形贴合该行文字语义，颜色跟随主题
