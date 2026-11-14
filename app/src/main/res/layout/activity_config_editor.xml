@@ -51,18 +51,13 @@
         android:textAppearance="?attr/textAppearanceBodySmall"
         android:textColor="?attr/colorOnSurfaceVariant" />
 
-    <com.google.android.material.textfield.TextInputEditText
+    <!-- sora-editor 代码编辑器：与脚本编辑器同一库，内置行号、语法高亮、大文件流畅。
+         行号跟随、滚动同步由库负责，不重复造轮子。 -->
+    <io.github.rosemoe.sora.widget.CodeEditor
         android:id="@+id/etConfigContent"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
         android:layout_marginTop="8dp"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingBottom="16dp"
-        android:gravity="top|start"
-        android:inputType="textMultiLine|textNoSuggestions"
-        android:typeface="monospace"
-        android:textSize="13sp"
-        android:scrollbars="vertical" />
+        android:background="?android:attr/colorBackground" />
 </LinearLayout>

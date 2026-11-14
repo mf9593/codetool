@@ -7,12 +7,13 @@ import android.widget.AdapterView
 import android.widget.ArrayAdapter
 import android.widget.Spinner
 import android.widget.Toast
+import org.json.JSONTokener
 import androidx.appcompat.app.AppCompatActivity
 import androidx.lifecycle.lifecycleScope
 import com.codetool.app.ai.AiModelManager
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.textview.MaterialTextView
-import com.google.android.material.textfield.TextInputEditText
+import io.github.rosemoe.sora.widget.CodeEditor
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -25,7 +26,7 @@ import kotlinx.coroutines.withContext
 class ConfigEditorActivity : AppCompatActivity() {
 
     private lateinit var spFile: Spinner
-    private lateinit var etContent: TextInputEditText
+    private lateinit var etContent: CodeEditor
     private lateinit var hint: MaterialTextView
     private var configs: List<AiModelManager.EditableConfig> = emptyList()
     private var selected = 0
@@ -80,7 +81,11 @@ class ConfigEditorActivity : AppCompatActivity() {
 
     private fun saveCurrent() {
         val cfg = configs.getOrNull(selected) ?: return
-        val content = etContent.text?.toString().orEmpty()
+        val content = etContent.text.toString()
+        // 保存前 JSON 校验（容错 .jsonc 注释）：语法错误时提示行号，用户可选择返回修正或强制保存。
+        validateJson(content, cfg.rel.endsWith(".jsonc"))?.let { err ->
+            Toast.makeText(this, "⚠️ $err（仍可强制保存，但 CLI 可能读不了）", Toast.LENGTH_LONG).show()
+        }
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 AiModelManager.writeConfigFile(this@ConfigEditorActivity, cfg.rel, content)
@@ -92,6 +97,40 @@ class ConfigEditorActivity : AppCompatActivity() {
                 Toast.makeText(this@ConfigEditorActivity, "保存失败", Toast.LENGTH_SHORT).show()
             }
         }
+    }
+
+    /**
+     * 校验 JSON/JSONC 文本，返回 null 表示合法，否则返回带行号的错误描述。
+     * .jsonc 容忍行注释与块注释（先剥掉再 parse）；.json 严格要求无注释。
+     * 不抛异常，parse 失败即视为语法错误。
+     */
+    private fun validateJson(text: String, allowComment: Boolean): String? {
+        val body = if (allowComment) stripJsonComments(text) else text
+        return try {
+            JSONTokener(body).nextValue()
+            null
+        } catch (e: Exception) {
+            "JSON 语法错误：${e.message}"
+        }
+    }
+
+    /** 剥掉 JSONC 的 // 行注释与块注释（不处理字符串内的 //，仅用于校验前的粗剥）。 */
+    private fun stripJsonComments(s: String): String {
+        val sb = StringBuilder(); var i = 0; var inStr = false
+        while (i < s.length) {
+            val c = s[i]
+            if (inStr) {
+                sb.append(c)
+                if (c == '\\' && i + 1 < s.length) { sb.append(s[i + 1]); i += 2; continue }
+                if (c == '"') inStr = false
+                i++; continue
+            }
+            if (c == '"') { inStr = true; sb.append(c); i++; continue }
+            if (c == '/' && i + 1 < s.length && s[i + 1] == '/') { while (i < s.length && s[i] != '\n') i++; continue }
+            if (c == '/' && i + 1 < s.length && s[i + 1] == '*') { i += 2; while (i + 1 < s.length && !(s[i] == '*' && s[i + 1] == '/')) i++; i += 2; continue }
+            sb.append(c); i++
+        }
+        return sb.toString()
     }
 
     /** 每个文件的用途说明，澄清「CLI 配置只存当前模型，不是全量清单」。 */

@@ -90,7 +90,7 @@ object AiModelManager {
                 .put("id", p.id).put("label", p.label).put("baseUrl", p.baseUrl)
                 .put("models", JSONArray().also { a -> p.models.forEach { a.put(it) } }))
         }
-        file.writeText(arr.toString(2))
+        file.writeText(jsonPretty(arr))
     }
 
     /** 新增自定义服务商；成功 true，id 重复 / 必填为空 / 与预置冲突返回 false。 */
@@ -160,6 +160,20 @@ object AiModelManager {
 
     data class Status(val installed: Boolean, val version: String, val detail: String)
 
+    /**
+     * 美化 JSON（2 空格缩进）并去掉 Android JSONObject 默认产生的 `\/` 转义。
+     * JSONObject.toString() 会把所有 `/` 写成 `\/`（历史遗留的安全转义，JSON 合法但人读/手编难受）。
+     * 合法 JSON 里 `\/` 只可能出现在 provider 配置的 URL 路径，还原成 `/` 安全且不影响数据。
+     */
+    private fun jsonPretty(any: Any): String {
+        val pretty = when (any) {
+            is JSONObject -> any.toString(2)
+            is JSONArray -> any.toString(2)
+            else -> any.toString()
+        }
+        return pretty.replace("\\/", "/")
+    }
+
     private fun root(ctx: Context): File =
         RootfsManager.get(ctx.applicationContext).containerRoot
     private fun f(ctx: Context, p: String) = File(root(ctx), p)
@@ -190,7 +204,7 @@ object AiModelManager {
         val file = modelsFile(ctx).apply { parentFile?.mkdirs() }
         val arr = JSONArray()
         list.forEach { arr.put(it.toJson()) }
-        file.writeText(arr.toString(2))
+        file.writeText(jsonPretty(arr))
     }
 
     fun upsertModel(ctx: Context, model: Model) {
@@ -233,7 +247,7 @@ object AiModelManager {
                     backupFile(cfg)
                     providers.remove(provider)
                     if (providers.length() == 0) parsed.obj.remove("provider")
-                    runCatching { cfg.writeText(parsed.obj.toString(2) + "\n") }
+                    runCatching { cfg.writeText(jsonPretty(parsed.obj) + "\n") }
                 }
             }
             // auth.json：删 provider 的 key 段（纯 JSON）
@@ -244,7 +258,7 @@ object AiModelManager {
                     if (obj.has(provider)) {
                         backupFile(auth)
                         obj.remove(provider)
-                        auth.writeText(obj.toString(2))
+                        auth.writeText(jsonPretty(obj))
                     }
                 }
             }
@@ -259,7 +273,7 @@ object AiModelManager {
                         backupFile(file)
                         providers.remove(provider)
                         if (providers.length() == 0) obj.remove("provider")
-                        file.writeText(obj.toString(2))
+                        file.writeText(jsonPretty(obj))
                     }
                 }
             }
@@ -342,7 +356,7 @@ object AiModelManager {
         entry.put("key", m.apiKey)
         if (m.baseUrl.isNotEmpty()) entry.put("baseURL", m.baseUrl)
         obj.put(m.provider, entry)
-        auth.writeText(obj.toString(2))
+        auth.writeText(jsonPretty(obj))
 
         val mf = mimoModel(ctx).apply { parentFile?.mkdirs() }
         val mo = if (mf.isFile) runCatching { JSONObject(mf.readText()) }.getOrDefault(JSONObject()) else JSONObject()
@@ -351,7 +365,7 @@ object AiModelManager {
         mo.put("recent", recent)
         mo.put("favorite", mo.optJSONArray("favorite") ?: JSONArray())
         mo.put("variant", mo.optJSONObject("variant") ?: JSONObject())
-        mf.writeText(mo.toString(2))
+        mf.writeText(jsonPretty(mo))
 
         // 关键：mimo 列模型时按 provider.<id>.options.baseURL 取 API 地址（和 opencode
         // 的 opencode.json 同构）。只写 auth.json 的 baseURL 不够——实测 mimo 认得 provider
@@ -369,7 +383,7 @@ object AiModelManager {
                 val p = providers.optJSONObject(m.provider) ?: JSONObject().also { providers.put(m.provider, it) }
                 val options = p.optJSONObject("options") ?: JSONObject().also { p.put("options", it) }
                 options.put("baseURL", m.baseUrl)
-                cfg.writeText(obj.toString(2) + "\n")
+                cfg.writeText(jsonPretty(obj) + "\n")
             }
         }
         true
@@ -394,7 +408,7 @@ object AiModelManager {
             providers.put(m.provider, pObj)
             obj.put("provider", providers)
         }
-        file.writeText(obj.toString(2))
+        file.writeText(jsonPretty(obj))
         true
     }.getOrDefault(false)
 
