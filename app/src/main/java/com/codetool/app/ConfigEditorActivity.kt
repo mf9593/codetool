@@ -135,12 +135,10 @@ class ConfigEditorActivity : AppCompatActivity() {
 
     /** 每个文件的用途说明，澄清「CLI 配置只存当前模型，不是全量清单」。 */
     private fun fileHint(rel: String): String = when {
-        rel.endsWith("ai-models.json") ->
-            "App 的模型清单（权威来源，和上方列表一致）。增删改模型建议用列表页，这里可核对/手改。"
         rel.endsWith("mimocode/model.json") ->
             "mimo CLI 记录的「当前模型」(recent[0])，只存一个，不是全量清单。"
         rel.endsWith("mimocode/auth.json") ->
-            "mimo 各 provider 的 API Key 与 baseURL。"
+            "mimo 各 provider 的 API Key 与 baseURL（缺 key 则模型列表拉不到）。"
         rel.endsWith("mimocode.jsonc") ->
             "mimo 主配置：自定义 provider 的地址在 provider.<id>.options.baseURL；mcp 服务也在这里。"
         rel.endsWith("opencode.json") ->

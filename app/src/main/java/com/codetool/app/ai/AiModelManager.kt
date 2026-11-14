@@ -556,9 +556,8 @@ object AiModelManager {
     data class EditableConfig(val label: String, val rel: String)
 
     fun listEditableConfigs(): List<EditableConfig> = listOf(
-        EditableConfig("AI 模型清单 (ai-models.json)", "files/ai-models.json"),
         EditableConfig("mimo 模型 (model.json)", "root/.local/state/mimocode/model.json"),
-        EditableConfig("mimo 认证 (auth.json)", "root/.config/mimocode/auth.json"),
+        EditableConfig("mimo 认证 (auth.json)", "root/.local/share/mimocode/auth.json"),
         EditableConfig("mimo 主配置 (mimocode.jsonc)", "root/.config/mimocode/mimocode.jsonc"),
         EditableConfig("opencode 配置 (opencode.json)", "root/.config/opencode/opencode.json"),
     )
