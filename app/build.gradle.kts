@@ -23,22 +23,31 @@ android {
     signingConfigs {
         // 可复用 debug/release 签名：keystore 放在仓库外层 keystore/ 目录，
         // 换环境开发用同一个签名（覆盖安装不冲突）。密码明文仅用于 debug；release 建议走环境变量/不入库。
-        create("codetool") {
-            storeFile = rootProject.file("../keystore/codetool-debug.jks")
-            storePassword = "codetool-debug"
-            keyAlias = "codetool-debug"
-            keyPassword = "codetool-debug"
-            storeType = "PKCS12"
+        // CI（GitHub Actions）上仓库外 keystore 不存在，回退 AGP 默认 debug 签名，构建不中断。
+        val codetoolKeystore = rootProject.file("../keystore/codetool-debug.jks")
+        if (codetoolKeystore.exists()) {
+            create("codetool") {
+                storeFile = codetoolKeystore
+                storePassword = project.findProperty("CODETOOL_STORE_PW")?.toString() ?: "codetool-debug"
+                keyAlias = project.findProperty("CODETOOL_KEY_ALIAS")?.toString() ?: "codetool-debug"
+                keyPassword = project.findProperty("CODETOOL_KEY_PW")?.toString() ?: "codetool-debug"
+                storeType = "PKCS12"
+            }
         }
     }
 
     buildTypes {
         debug {
-            signingConfig = signingConfigs.getByName("codetool")
+            // keystore 存在时用项目统一签名；不存在（CI/新环境）用 AGP 默认 debug 签名
+            if (signingConfigs.findByName("codetool") != null) {
+                signingConfig = signingConfigs.getByName("codetool")
+            }
         }
         release {
             isMinifyEnabled = false
-            signingConfig = signingConfigs.getByName("codetool")
+            if (signingConfigs.findByName("codetool") != null) {
+                signingConfig = signingConfigs.getByName("codetool")
+            }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }
