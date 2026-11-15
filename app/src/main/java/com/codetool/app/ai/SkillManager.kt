@@ -235,13 +235,14 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 """.trimIndent()
 
     private const val DEV_DESC =
-        "通用开发约定与约束：改代码后写开发记录、原生库 16KB 页对齐、工具链下载必须与本机同架构、" +
-        "脚本真实自检、UI 布局规范、颜色跟随主题、不自造轮子。任何 Android / 软件项目干活前先读。"
+        "通用开发约定与约束（详细版）：开发记录、构建验证、原生库 16KB 页对齐、工具链同架构、脚本真实自检、Kotlin 协程、依赖与 Gradle、Git 规范、敏感信息、内存泄漏、列表性能、混淆发版、深色适配、完整 UI 设计规范。任何 Android / 软件项目干活前先读。"
 
     private val DEV_BODY = """
-# 通用开发约定与约束（本机记忆）
+# 通用开发约定与约束（详细版）
 
-> 跨项目通用的开发习惯和硬约束。改任何代码前先对照，避免同类问题反复返工。marker: codetool-dev-conventions
+> 跨项目通用的开发习惯和硬约束。改任何代码前先对照，避免同类问题反复返工。
+
+---
 
 ## 组件开发与改动通用原则（强制）
 
@@ -255,67 +256,268 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 
 > 一句话：**开发 = 组件 + 主题 + UI + 关联代码 + 潜在冲突**，五者一起考虑才算做完。
 
+---
+
 ## 开发记录（强制）
+
 - 每次改代码（源码 / 资源 / 脚本 / 构建配置）后，**立即**追加当天的开发记录（devlog），当天文件不存在就新建，不攒到最后补写。
 - 每节写清：背景/问题、改动文件（相对路径）、关键实现、验证方式与结果、产物位置、待办。
 - 只追加不改历史；更正用「补充」小节。没实机验证的写「待验证」，不默认生效。
 
+---
+
+## 架构图 / 项目地图（强制）
+
+**开发一个项目后，在项目根目录写一个架构图 md**（如 `ARCHITECTURE.md` 或 `架构.md`），让后续查文件不用全盘搜索：
+
+- **项目结构树**：列出主要目录/文件及职责（`app/src/main/java/.../` 各包干什么、`res/layout` 关键布局、`assets`、`jniLibs` 等），一眼看清代码在哪。
+- **核心模块与数据流**：画（或文字描述）关键流程，如「UI → ViewModel/Fragment → Manager/Repository → 运行时/容器」，标出核心类和它们怎么串起来。
+- **入口与关键文件**：标出 Application、MainActivity、各 Fragment/Activity、核心 Manager 单例、Manifest，方便定位。
+- **改代码时同步更新**：新增/移动/重命名关键文件、新增模块时，**顺手更新架构图**，别让地图过期误导人。
+- **目标**：新人（或未来的自己）打开这个 md 就知道「XX 功能的代码在哪、怎么串」，不用 grep 全盘搜。
+
+---
+
 ## 构建与验证
-- 编译通过 ≠ 完成。改完要装到实机 / 实际环境跑一遍验证，优先用日志和命令取证，而不是只看截图。
+
+- 编译通过 ≠ 完成。改完要装到实机 / 实际环境跑一遍验证，别只看 BUILD SUCCESSFUL 就当完成。
 - 用项目自己的构建方式（有的预装 gradle 直接 `gradle`，有的用 `gradlew`，有的要 Docker 脚本），先确认再用。
+- 验证优先用日志和命令取证，而不是只看截图。
+- **构建前先做代码合理性 + UI 排查**（见下节），别只求编译通过。
+
+---
+
+## 构建前排查思路（强制）
+
+**编译通过只是第一步。** 构建前先核查代码合理性和 UI 改动，防止用户调试时踩各种小问题：
+
+- **代码合理性自查**：改的逻辑边界对不对（null / 越界 / 状态残留）？有没有引入新隐患（回调里 `requireContext()` 可能崩、字段在配置变更后丢失、异步时序）？宁可多花两分钟通读，别留坑给调试期。
+- **UI 改动不能只「往后加一行」治标**：间距大了就减 padding、缺了就补一个 margin——这种「哪里不对补哪里」的打补丁，往往掩盖真实布局问题（父容器约束、measure 时机、主题覆盖），换台设备/换主题就复发。要**找根因**：为什么这里间距不对？是 padding 叠加、还是缺约束、还是硬编码？从根上改对，而不是只调一个数字。
+- **UI 改动要过一遍自查清单**（见「UI 设计规范」第十节）：控件样式、间距一致性、相邻间距、dimens 引用、硬编码色值/尺寸、动态 addView 间距。
+- **改动要考虑关联面**：一个组件改了，所有引用它的地方（布局/代码/样式/Adapter/其它页）同步了吗？会不会和已有功能冲突（同名资源、重复逻辑、生命周期/并发冲突）？
+
+> 一句话：**别只让代码编译过，要让代码对、UI 对、换环境也对。** 构建前花两分钟排查，胜过调试期两小时抓虫。
+
+---
+
+## 可复用签名（换环境一致）
+
+- **调试签名也要统一**：默认 `~/.android/debug.keystore` 是每台机器各自的，换环境构建签名就变，导致**无法覆盖安装**（签名不一致要先卸载，丢数据）。项目应自带一个专用 debug keystore，所有开发环境用同一个。
+- **keystore 放仓库外的固定目录**（如项目上层 `keystore/`），`build.gradle` 用 `rootProject.file("../keystore/xxx.jks")` 相对引用，避免硬编码绝对路径。
+- **签名文件不入库**：`.gitignore` 必须排除 `*.jks` / `*.keystore` / `keystore/`（见 Git 规范）。keystore 单独备份/同步，换环境时复制过去。
+- **debug 和 release 可共用一个 keystore**（保证覆盖安装一致）；release 若需独立正式签名，走环境变量/不入库的 `gradle.properties` 注入，别把正式密码写进 build.gradle。
+- **验证签名生效**：构建后 `apksigner verify --print-certs app-debug.apk` 看 `Subject DN` 是不是你的 keystore，而不是 `Android Debug`。
+
+---
 
 ## 崩溃日志记录（强制）
+
 **默认就接入崩溃日志采集**，别等出了闪退才发现无从排查。开发期错误必须能定位到具体故障：
-- **全局未捕获异常处理器**：App 启动（Application.onCreate）就设 `Thread.setDefaultUncaughtExceptionHandler`，把崩溃堆栈（线程 + Throwable 全栈）写入本地时间戳文件（如 `filesDir/crash/`）。
-- **崩溃可视 / 可分享**：崩溃后跳独立进程报告页展示堆栈，或提供入口查看 / 分享日志文件；主进程退出也不能影响报告展示。
+
+- **全局未捕获异常处理器**：App 启动（Application.onCreate）就设置 `Thread.setDefaultUncaughtExceptionHandler`，把崩溃堆栈（线程 + Throwable 全栈）写入本地时间戳文件（如 `filesDir/crash/`）。
+- **崩溃可视 / 可分享**：崩溃后跳独立进程的报告页展示堆栈，或提供入口查看 / 分享日志文件；主进程退出也不能影响报告展示。
 - **幂等初始化**：处理器只设一次，避免重复包装。
-- **不吞异常**：捕获后把原异常交给默认处理器 / 记录后退出，别静默吞掉导致「闪退但没日志」。
-- **运行期错误也留痕**：关键失败路径（网络/IO/解析失败）用统一日志工具记 warn/error（带上下文），Release 关 VERBOSE/DEBUG 但保留 error。禁止空 `catch {}`。
+- **不吞异常**：捕获后要把原异常交给默认处理器 / 记录后 `exitProcess`，别静默吞掉导致「闪退但没日志」。
+- **运行期错误也留痕**：关键失败路径（网络失败、IO 失败、解析失败）用统一日志工具记 `warn/error`（带上下文），Release 关闭 VERBOSE/DEBUG 但保留 error。禁止空 `catch {}`。
 - **目标**：任何崩溃 / 异常都能通过日志定位到「哪个文件哪一行、什么原因」，而不是「就是闪退了不知道为啥」。
 
+---
+
 ## 原生库打包（Android）
+
 - 所有 arm64-v8a 原生库（.so）**必须 16KB 页对齐**（Android 15+ 安装检查，Play 商店强制）。链接显式加：
   `-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384`
 - Rust/Cargo 可用 `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` 指向带上述参数的 NDK clang 包装器，或 `RUSTFLAGS="-C link-arg=..."`。
 - 打包前验证：`llvm-readelf -l libxxx.so | grep LOAD`，每个 LOAD 段 `Align` ≥ `0x4000`。
 
+---
+
 ## 依赖下载架构匹配（重要）
+
 - **下载 NDK / build-tools / platform-tools / 任何工具链，必须跟本机架构一致。** 本机是 **arm64 (aarch64)**，就下 aarch64/arm64 版本。
-- **绝不能给 arm64 机器下 x86_64/x64 的工具链**——那会浪费大量时间去修「为什么跑不起来 / aapt2 adb 不是可执行 ELF」。
-- 判断「已安装」时校验 ELF 架构（aarch64 = `e_machine=0xB7`），PATH 优先选本机架构的工具。
+- **绝不能给 arm64 机器下 x86_64/x64 的工具链**——那会浪费大量时间去修「为什么跑不起来 / aapt2 adb 不是可执行 ELF」。已真实踩坑：SDK 包里混进 x86_64 的 aapt2/adb，必须校验 ELF `e_machine=0xB7`（aarch64）才算已安装。
+- 判断「已安装」时校验 ELF 架构，`PATH` 优先选本机架构的 build-tools。
+
+---
 
 ## 脚本 / 安装逻辑
+
 - 安装脚本必须**真实自检**（`command -v <bin>` / `<bin> --version`），不能打印假成功。
-- 解压第三方压缩包**按文件头 magic 判断真实格式**，不按扩展名、不依赖 `file` 命令（最小环境常没装）。扩展名会骗人（`.tar.gz` 实为 XZ 已出现）。
+- 解压第三方压缩包**按文件头 magic 判断真实格式**，不按扩展名、不依赖 `file` 命令（最小环境常没装）。已出现扩展名骗人（`.tar.gz` 实为 XZ）。
 - 「安装构建环境」必须**幂等**：已装的跳过只装缺的。用标记文件记录「压缩包名|大小」，换了版本（文件名/大小不同）必须重装。
-- 复制 / 归类白名单必须与脚本逻辑一致，不能只写关键字（实际文件名常带版本号 / 架构后缀），否则文件没进目标位置，脚本只会「未找到」。
-- 内嵌 shell 时注意转义：Kotlin raw string 里用 `${'$'}` 表示字面美元符（直接写美元符会被当模板变量）；别依赖目标环境没装的工具（如 `fuser`/`pgrep`）。
+- 复制 / 归类白名单必须与脚本逻辑一致：不能只写 `ndk`/`platform-tools` 关键字（实际文件名常带版本号 / 架构后缀），否则文件没进目标位置，脚本只会「未找到」。
+- Kotlin 内嵌 shell 别用 `\\${'$'}{'${'$'}'}var`（会触发 "Unresolved reference"）；别依赖目标环境没装的工具（如 `fuser`/`pgrep`）。
 
-## UI 布局规范
-- 水平并排按钮 ≥ 12dp 间距；禁止两个等分按钮紧贴。动态生成按钮行同样设间距。
-- 破坏性操作（删除/恢复/格式化）与相邻 ≥ 16dp，用描边次要样式区分 + **必须二次确认**；别用 error 色当正常按钮色。
-- 首页只做状态展示，低频 / 破坏性操作放独立工具页或设置页。长耗时任务走前台服务 + WakeLock + 进度条，不放易被冻结的协程。
-- 动态列表项用布局文件 + inflater，别在代码里层层 addView 拼（难对齐、样式漂移）。每项风格与页面其它卡片一致，项间距统一。
-- 信息用「label 固定宽 + value 撑满」键值行分行展示，value 单行截断，别把所有字段拼一坨。
-- 已安装组件状态行**必须显示真实版本号**，多源回退读取，拿不到明确写「版本未知」。
-- 填 API Key/地址/连接参数的表单**必须带「测试连接」按钮**就地验证；可选项用下拉选 + 留自定义兜底。
-- 扫描类列表必须过滤备份/临时/隐藏文件（`.bak` `.old` `.tmp` `~`、`.` 开头），避免旧版本同名条目干扰。
+---
 
-## 颜色与主题
-- 颜色**跟随主题**，禁止硬编码色值。用主题属性 / ColorStateList，切主题自动跟随。
-- 自定义控件的选中 / 激活态颜色必须从主题管理器取，别写死。
+## 跨进程 / 桥接通信
+
+- 复用已有的共享目录 / bind mount 做**文件桥**，别另起 HTTP 服务或自造 IPC。
+- 调试能力优先用**标准协议**（如 Chrome DevTools Protocol `127.0.0.1:9222`），别手写 WebSocket/HTTP 解析器。
+
+---
 
 ## Skill / MCP 管理（AI CLI）
+
 - Skill 统一写 `~/.agents/skills/<name>/SKILL.md`（open standard），多个 CLI 都默认识别，写一份别写两份。
-- `SKILL.md` 以 YAML frontmatter 开头，必填 `name`/`description`；`name` 须 `^[a-z0-9]+(-[a-z0-9]+)*${'$'}` 且与目录名一致，`description` 1..1024 字符。
+- `SKILL.md` 以 YAML frontmatter 开头，必填 `name`/`description`；`name` 须 `^[a-z0-9]+(-[a-z0-9]+)*${'$'}{'${'$'}'}` 且与目录名一致，`description` 1..1024 字符。
 - 编辑导入的 skill **写回它原来的文件**，不能一律写 `.agents`（否则被同名高优先级覆盖，编辑看似无效）。
 - MCP 写进各 CLI 配置的 `mcp.<name>` 段（`type`/`command`/`url`/`enabled`）。配置可能 JSONC，容错读取，绝不破坏用户配置。
 
+---
+
 ## 其它通用习惯
-- 优先用成熟方案不自造轮子；解析/渲染/编解码/协议/格式转换先找成熟库，别手写正则解析标准格式（必然漏 case）。
-- 防崩溃：可能返回 null 的调用判 null 或给占位；异步回调回 UI 前加「还活着」检查；`setText` 别传可能为 null 的对象。
-- 点击运行脚本 / 长耗时准备时**先立刻切到进度界面并提示**再后台跑，别等准备完才切页（用户以为点击没反应）。
-- 全中文交流；UI 改动先询问。
+
+- 优先用成熟方案不自造轮子；解析/渲染/编解码/协议/格式转换先找成熟库，别手写正则解析标准格式。
+- **方法/函数复用**：开发新功能调用方法时先想「这个逻辑会不会在别处重复用到」。会复用的抽成**公共函数库/工具类**（如 `util/` 下的单例 object），避免重复造轮子、避免多处各写一份改一处漏一处。
+- **卡住时参考成熟开源项目**：遇到解决不了的问题，先查成熟开源项目怎么实现（思路/架构/边界处理），借鉴实现思路而不是照抄代码。**同时保证不侵权**：只参考思路、自己实现；确需引入第三方库/代码时核对 License（Apache-2.0/MIT/BSD 可用，GPL 传染性慎用，专有协议禁用），并在注释/CREDITS 标注来源与协议。
+- 颜色跟随主题，禁止硬编码色值。
+- 全中文交流；UI 改动先询问。防崩溃：可能返回 null 的调用判 null；Fragment 网络回调 `runOnUiThread` 里加 `isAdded()`。
+- 点击运行脚本/长耗时准备时**先立刻切到进度界面并提示**再后台准备，别等准备完才切页。
+
+---
+
+## Kotlin 协程与异步处理
+
+- **禁用 GlobalScope**：UI 层强制使用 `lifecycleScope` / `viewModelScope`；底层库使用自定义 `CoroutineScope` + `SupervisorJob` 便于统一取消。
+- **异常与取消**：耗时操作（`Dispatchers.IO`）切回主线程时严禁用 `try-catch` 吞掉 `CancellationException`；`withContext` 的异常必须向上传播。
+- **回调改造**：跨模块通信优先改为 `suspend` 函数挂起，禁止新增多层嵌套的接口回调。
+
+---
+
+## 依赖与 Gradle 管理
+
+- **版本集中管理**：所有依赖、编译 SDK 版本统一收口到 `libs.versions.toml`（Version Catalog），禁止在 `build.gradle` 中硬编码版本号。
+- **禁止动态版本**：严禁使用 `latest.integration` 或 `+` 版本号，确保每次构建产物可重现。
+- **引入新库前检查 ABI**：新增的 AAR/JAR 必须包含 `arm64-v8a` 的 `.so`；只有 x86 或只有 armeabi-v7a 的库直接弃用（Android 15 已强推纯 64 位）。
+
+---
+
+## Git 与提交规范
+
+- **分支策略**：功能开发走 `feat/xxx`，修 Bug 走 `fix/xxx`，禁止直接提交到 `main` / `master`。
+- **提交信息**：采用 `类型(范围): 简述` 格式（如 `fix(ui): 修复列表错位`），方便自动生成变更日志。
+- **禁止入库的文件**：`.gitignore` 必须覆盖 `local.properties`、签名文件（`*.jks`/`*.keystore`）、`build/` 目录及 IDE 配置；严禁把敏感信息提交到仓库。
+
+---
+
+## 敏感信息与日志管控
+
+- **密钥零硬编码**：API Key / Token / 密码严禁写在源码或 XML 中。统一放 `gradle.properties`（不入库）或 `local.properties`，通过 `buildConfigField` 注入。
+- **日志封装**：使用统一的日志工具类，Release 包自动关闭 `VERBOSE` / `DEBUG` 级别，严禁打印密码、私钥、用户隐私数据。
+- **adb 调试属性**：`adb shell setprop log.tag.xxx` 仅限本地临时调试，不得写入正式业务逻辑。
+
+---
+
+## 内存泄漏与 Context 管理
+
+- **Context 防泄漏**：单例、后台任务、静态变量禁止持有 `Activity` Context，统一使用 `ApplicationContext`。
+- **资源释放**：非静态 `Handler` / `Thread` 必须在 `onDestroy` 中移除回调或中断；动态注册的 `BroadcastReceiver` / `ContentObserver` 必须在对应生命周期反注册。
+- **Lifecycle 感知**：使用 `LifecycleObserver` 时确保在 `onDestroy` 中 `removeObserver`，避免 Fragment/Activity 无法被 GC 回收。
+
+---
+
+## 列表性能与图片加载
+
+- **强制 RecyclerView**：动态列表一律使用 `RecyclerView` + `ListAdapter` / `AsyncListDiffer` + `DiffUtil`，禁止在 UI 线程手动全量 `notifyDataSetChanged`。
+- **图片加载库**：统一使用 Coil 或 Glide 加载网络/本地图片，禁止手写 `decodeStream` 直接塞 `Bitmap`（极易 OOM）；列表图片必须设置 `placeholder` 和 `error` 占位图。
+
+---
+
+## 混淆与发版验证
+
+- **混淆规则同步**：引入新库、使用反射、序列化 `Parcelable` 时，必须同步在 `proguard-rules.pro` 中添加 `-keep` 规则。
+- **Release 实机验证**：发版前必须开启 `minifyEnabled true` 打 release 包，并装到实机完整走一遍核心流程（debug 包不混淆容易掩盖问题）。
+
+---
+
+## 深色模式与屏幕适配
+
+- **主题可扩展（核心）**：所有颜色、间距、圆角、字体统一收口到主题资源（`colors.xml` / `themes.xml` / `dimens.xml` / ColorStateList / Theme 属性），**代码和布局里禁止硬编码**。这样后续加深色模式、换配色、加新主题（如多套配色）时，只改资源文件即可全局生效，不用逐个控件改代码。
+- **深色模式**：所有颜色必须定义 `res/values/colors.xml` 与 `res/values-night/colors.xml`（或依赖 Theme 属性），代码里严禁写死 `#FFFFFF` 等色值。
+- **沉浸式与挖孔屏**：根布局合理使用 `android:fitsSystemWindows="true"` 或监听 `WindowInsets`，禁止写死状态栏高度，避免遮挡挖孔/摄像头区域。
+- **尺寸单位**：字体统一用 `sp`，间距/尺寸统一用 `dp`，Kotlin 代码里设置宽高也必须做 `dp2px` 转换，严禁出现裸 `px` 赋值。
+
+---
+
+## UI 设计规范（强制）
+
+### 核心原则
+
+> **严禁使用任何默认样式 / 裸控件直接上屏。** 所有控件必须经过自定义样式包裹或 XML 属性显式定义。相同类型的控件间距必须一致，相邻控件之间必须留有间距，禁止紧贴。
+
+### 一、禁止默认样式
+
+- **所有控件必须显式指定样式**，禁止出现"系统长什么样就什么样"的裸控件。
+- 全局基础控件样式统一定义在 `res/values/styles.xml` 中，至少覆盖 TextView / Button / EditText / CardView（字号、颜色、圆角、高度、padding、背景、elevation、stroke）。
+- Material 组件必须继承 `Widget.Material3.*` 并二次定制，不允许直接用裸标签。
+
+### 二、间距系统（Spacing System）
+
+- **间距只使用 4dp 基准的倍数**：4 / 8 / 12 / 16 / 24 / 32 dp。
+- **统一定义在 `res/values/dimens.xml`**：`spacing_xs=4dp` / `sm=8dp` / `md=12dp` / `lg=16dp` / `xl=24dp` / `xxl=32dp`。
+- **页面级容器**：根布局 padding 统一 `@dimen/spacing_lg`（16dp）。
+- **同组控件垂直间距**：统一 `@dimen/spacing_md`（12dp），同组内的相关控件用 `@dimen/spacing_sm`（8dp）。
+- **卡片之间 / 列表项间距**：统一 `@dimen/spacing_md`（12dp），列表容器顶部/底部留 `@dimen/spacing_lg`（16dp）。
+
+### 三、相同控件间距相同
+
+- **同类型控件间距必须完全一致**，不允许 A 处按钮间距 8dp、B 处按钮间距 16dp。
+- 所有水平并排按钮间距统一 `@dimen/spacing_md`（12dp）：`layout_marginStart="@dimen/spacing_md"`，禁止左右各 6dp 拆分的写法。
+- 所有垂直相邻输入框间距统一 `@dimen/spacing_md`（12dp）。
+- 所有标签-内容键值行间距统一 `@dimen/spacing_sm`（8dp）。
+- **动态 addView 的控件同样遵守**：代码中 `LayoutParams` 的 margin 必须从 `R.dimen.spacing_*` 读取，禁止写死 `12`。
+
+### 四、相邻控件必须留间距
+
+- **任意两个相邻控件之间必须有明确的 margin 或 padding 间隔，禁止紧贴。**
+- **容器边缘也要留间距**：内容距屏幕边缘（CardView 边缘）必须有 padding，不允许内容贴边。
+- **特殊例外**：仅以下场景允许 0 间距——卡片内部内容区与 CardView 边缘之间（已由 contentPadding 处理）；Divider 分割线。
+
+### 五、控件尺寸规范
+
+| 控件类型 | 最小高度 | 圆角 | 说明 |
+|---|---|---|---|
+| 主按钮 | 48dp | 12dp | 全宽或自适应，padding 水平 24dp |
+| 次按钮（描边） | 48dp | 12dp | stroke 1dp，padding 水平 24dp |
+| 输入框 | 56dp | 12dp | 背景带边框或填充色 |
+| MaterialCardView | — | 16dp | stroke 1dp、elevation 0 |
+| 图标 | 20dp / 24dp | — | 统一 20dp，强调区 24dp |
+| 列表项 | 64dp+ | 16dp | CardView 包裹 |
+
+### 六、水平并排按钮间距
+
+- 水平并排按钮 ≥ 12dp 间距，禁止两个 `weight=1` 按钮紧贴。
+- 动态 addView 的按钮行同样设 `@dimen/spacing_md` 间距。
+- 破坏性按钮（删除/恢复/格式化）与相邻按钮 ≥ 16dp，用**描边次要样式**区分 + **必须二次确认**；禁止 `colorError` 文字色。
+
+### 七、列表项规范
+
+- 动态列表项必须用 `item_*.xml` + `LayoutInflater.inflate()`，禁止 Kotlin 层层 addView 拼。
+- 每项一个 MaterialCardView（圆角 16dp、stroke 1dp、elevation 0），项间距 `@dimen/spacing_md`（12dp）。
+- 信息用「label 固定宽 72dp + value weight 1」键值行分行展示，value `singleLine` + `ellipsize="end"`，别把所有字段拼一坨。
+- 目录扫描类列表必须过滤备份/临时/隐藏文件（`.bak` `.old` `.tmp` `~`、`.` 开头）。
+
+### 八、状态图标与颜色
+
+- 状态图标统一 20dp + fitCenter，图形贴合语义，颜色跟随主题（ColorStateList），禁止硬编码色值，tint 由代码 `setImageTintList` 设。
+- 已安装组件状态行**必须显示真实版本号**，多源回退读取，拿不到写「版本未知」。
+
+### 九、表单与交互
+
+- 表单填 API Key/地址/连接参数**必须带「测试连接」按钮**就地验证；可选项用下拉选 + 留「自定义」兜底。
+- 首页只做状态展示，低频/破坏性操作（备份/恢复/删除/清空）放独立工具页或设置页。
+- 长耗时任务走**前台服务 + WakeLock + 进度条**，不放易被冻结的协程。
+
+### 十、代码检查清单（提交前自查）
+
+- [ ] 所有控件是否都带 style 或显式定义了外观属性？
+- [ ] 是否存在任何两个相邻控件紧贴（间距为 0）的情况？
+- [ ] 相同类型的控件间距是否一致（全局统一）？
+- [ ] 所有间距是否引用 `R.dimen.spacing_*` 而非裸写数字？
+- [ ] 是否存在硬编码色值（`#xxxxxx`）？
+- [ ] 是否存在硬编码 `dp`/`px` 数值而非引用 dimens？
+- [ ] 动态 addView 的控件是否设置了统一间距？
 """.trimIndent()
 
     /** 首次写入内置 skill；旧版内置内容自愈升级，写回原位置、不新增副本。

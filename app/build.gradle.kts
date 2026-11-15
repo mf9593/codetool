@@ -20,9 +20,25 @@ android {
         ndk { abiFilters += "arm64-v8a" }
     }
 
+    signingConfigs {
+        // 可复用 debug/release 签名：keystore 放在仓库外层 keystore/ 目录，
+        // 换环境开发用同一个签名（覆盖安装不冲突）。密码明文仅用于 debug；release 建议走环境变量/不入库。
+        create("codetool") {
+            storeFile = rootProject.file("../keystore/codetool-debug.jks")
+            storePassword = "codetool-debug"
+            keyAlias = "codetool-debug"
+            keyPassword = "codetool-debug"
+            storeType = "PKCS12"
+        }
+    }
+
     buildTypes {
+        debug {
+            signingConfig = signingConfigs.getByName("codetool")
+        }
         release {
             isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("codetool")
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
         }
     }

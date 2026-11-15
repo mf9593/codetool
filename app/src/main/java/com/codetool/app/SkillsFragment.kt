@@ -21,6 +21,7 @@ class SkillsFragment : Fragment() {
 
     private companion object {
         const val BUILTIN_SKILL = "codetool-browser"
+        const val STATE_PENDING_PATH = "pending_edit_path"
     }
 
     private lateinit var list: LinearLayout
@@ -36,7 +37,7 @@ class SkillsFragment : Fragment() {
         val desc = data.getStringExtra(SkillEditorActivity.EXTRA_DESC).orEmpty()
         val body = data.getStringExtra(SkillEditorActivity.EXTRA_BODY).orEmpty()
         val existing = pendingEdit
-        val ctx = requireContext()
+        val ctx = context ?: return@registerForActivityResult   // Fragment 已 detach 时安全退出，别 requireContext 崩溃
         val err = SkillManager.upsert(ctx, existing, name, desc, body)
         if (err != null) Toast.makeText(ctx, err, Toast.LENGTH_LONG).show()
         else {
@@ -55,6 +56,12 @@ class SkillsFragment : Fragment() {
         super.onViewCreated(view, savedInstanceState)
         list = view.findViewById(R.id.skillList)
         status = view.findViewById(R.id.skillStatus)
+        // 重建（旋转/进程回收）后恢复待编辑 skill：编辑页开着时宿主 Activity 若重建，
+        // 字段 pendingEdit 会归零 → 保存把「编辑」误当「新增」。按存的路径从磁盘重读恢复。
+        savedInstanceState?.getString(STATE_PENDING_PATH)?.let { path ->
+            pendingEdit = SkillManager.listSkills(requireContext())
+                .firstOrNull { it.file.absolutePath == path }
+        }
         SkillManager.ensureBuiltin(requireContext())
         view.findViewById<MaterialButton>(R.id.btnSkillAdd).setOnClickListener { showEdit(null) }
         view.findViewById<MaterialButton>(R.id.btnSkillBuiltin).setOnClickListener {
@@ -63,6 +70,12 @@ class SkillsFragment : Fragment() {
             refresh()
         }
         refresh()
+    }
+
+    override fun onSaveInstanceState(outState: Bundle) {
+        super.onSaveInstanceState(outState)
+        // 只存文件路径（轻量、唯一标识），重建时按路径重读，不序列化整个 Skill 对象。
+        pendingEdit?.let { outState.putString(STATE_PENDING_PATH, it.file.absolutePath) }
     }
 
     override fun onResume() {

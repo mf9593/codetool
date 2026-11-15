@@ -49,7 +49,8 @@ class SkillEditorActivity : AppCompatActivity() {
             title = "新增 Skill"
         }
         etDesc.setText(desc)
-        etBody.setText(body)
+        // sora-editor 的 setText 在布局完成前调用偶发不渲染，post 到下一帧确保正文显示。
+        etBody.post { etBody.setText(body) }
 
         toolbar.setOnMenuItemClickListener { item ->
             if (item.itemId == R.id.action_skill_save) { saveAndFinish(); true } else false
