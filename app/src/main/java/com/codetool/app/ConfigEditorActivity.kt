@@ -1,6 +1,7 @@
 package com.codetool.app
 
 import android.os.Bundle
+import android.content.Context
 import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
@@ -63,8 +64,31 @@ class ConfigEditorActivity : AppCompatActivity() {
         }
 
         toolbar.setOnMenuItemClickListener { item ->
-            if (item.itemId == R.id.action_config_save) { saveCurrent(); true } else false
+            when (item.itemId) {
+                R.id.action_config_save -> { saveCurrent(); true }
+                R.id.action_config_copy -> { copyToClipboard(etContent.text.toString()); true }
+                R.id.action_config_help -> { showHelp(); true }
+                else -> false
+            }
         }
+    }
+
+    /** 复制编辑器内容到剪贴板。 */
+    private fun copyToClipboard(text: String) {
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("config", text))
+        Toast.makeText(this, "已复制到剪贴板", Toast.LENGTH_SHORT).show()
+    }
+
+    /** 弹出当前文件的用途说明（标题栏说明按钮）。 */
+    private fun showHelp() {
+        val cfg = configs.getOrNull(selected) ?: return
+        val msg = fileHint(cfg.rel).ifEmpty { "（该文件暂无说明）" }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle(cfg.label)
+            .setMessage(msg)
+            .setPositiveButton("好的", null)
+            .show()
     }
 
     private fun loadFile(idx: Int) {

@@ -8,6 +8,7 @@ import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
 import android.os.PowerManager
 import android.provider.Settings
 import android.view.ViewGroup
@@ -34,6 +35,7 @@ class OnboardingActivity : Activity() {
     private lateinit var next: MaterialButton
     private var batteryBadge: TextView? = null
     private var notifyBadge: TextView? = null
+    private var storageBadge: TextView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(ThemeManager.resolveStyle(this))
@@ -73,6 +75,73 @@ class OnboardingActivity : Activity() {
                 desc = "允许通知，前台服务（rootfs 解压、终端保活、下载）才能持续运行不被系统杀掉。",
             ) { requestNotif() }
         } else null  // Android 13 以下无运行时通知权限，视为已满足
+        // 全部文件访问（Android 11+）：容器要读写共享存储（Download/ 下的项目、脚本库），
+        // 普通分区存储不够，需「管理所有文件」权限。点卡片跳系统开关页（列表式，不是直接弹授权框）。
+        storageBadge = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            makeCard(
+                icon = R.drawable.ic_folder,
+                title = "全部文件访问权限",
+                desc = "允许管理所有文件，容器才能读写共享存储里的项目、脚本（跳转系统开关页，找到本应用打开开关）。",
+            ) { requestStorage() }
+        } else null  // Android 11 以下用传统存储权限，视为已满足
+
+        // 解除子进程限制：不是权限，是「建议用户手动做的系统设置」，不卡「下一步」。
+        // Android 12+ 会终止启动过多子进程的应用，容器/多开易被系统杀；解除后运行更稳。
+        // 点进 SubprocessLimitActivity 看检测状态 + 解除方式（开发者选项/无线调试）。
+        cardsContainer.addView(makeOptionalCard(
+            icon = R.drawable.ic_terminal,
+            title = "解除子进程限制",
+            desc = "建议项（可选）：Android 12+ 会限制应用子进程数，可能杀掉容器。点此查看检测状态与解除方法。",
+        ) { SubprocessLimitActivity.start(this) })
+    }
+
+    /**
+     * 建一张「可选建议」卡片（无状态徽标、不参与授权判断）——用于不阻塞「下一步」
+     * 但值得引导用户的系统设置项（如解除子进程限制）。样式与权限卡片一致，靠无徽标区分。
+     */
+    private fun makeOptionalCard(icon: Int, title: String, desc: String, onClick: () -> Unit): MaterialCardView {
+        val card = MaterialCardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).also { it.bottomMargin = dp(14) }
+            radius = dp(16).toFloat()
+            val surface = MaterialColorsHelper.surface(this@OnboardingActivity)
+            setBackgroundTintList(android.content.res.ColorStateList.valueOf(surface))
+        }
+        val row = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(dp(18), dp(16), dp(18), dp(16))
+            isClickable = true
+            isFocusable = true
+            val ripple = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+            setBackgroundResource(ripple.resourceId)
+            setOnClickListener { onClick() }
+        }
+        ImageView(this).apply {
+            setImageResource(icon)
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+            setColorFilter(MaterialColorsHelper.accent(this@OnboardingActivity))
+        }.also { row.addView(it) }
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+                .also { it.leftMargin = dp(14) }
+            addView(TextView(this@OnboardingActivity).apply {
+                text = title
+                textSize = 15f
+                setTextColor(MaterialColorsHelper.onSurface(this@OnboardingActivity))
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@OnboardingActivity).apply {
+                text = desc
+                textSize = 13f
+                setTextColor(MaterialColorsHelper.onSurfaceVariant(this@OnboardingActivity))
+            }.also { (it.layoutParams as? LinearLayout.LayoutParams)?.topMargin = dp(4) })
+        }.also { row.addView(it) }
+        card.addView(row)
+        return card
     }
 
     /** 建一张权限卡片，返回状态徽标 TextView（供 refreshUi 更新）。 */
@@ -137,11 +206,13 @@ class OnboardingActivity : Activity() {
     private fun refreshUi() {
         val batOk = batteryGranted()
         val ntfOk = notifGranted()
+        val stoOk = storageGranted()
         updateBadge(batteryBadge, batOk)
         updateBadge(notifyBadge, ntfOk)
-        val allOk = batOk && ntfOk
+        updateBadge(storageBadge, stoOk)
+        val allOk = batOk && ntfOk && stoOk
         next.isEnabled = allOk
-        hint.text = if (allOk) "已完成全部授权，可以开始使用了" else "请先完成以上两项授权（点卡片跳转授权）"
+        hint.text = if (allOk) "已完成全部授权，可以开始使用了" else "请先完成以上授权（点卡片跳转授权）"
     }
 
     private fun updateBadge(badge: TextView?, ok: Boolean) {
@@ -161,6 +232,26 @@ class OnboardingActivity : Activity() {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
         } else true
+    }
+
+    /** 全部文件访问（Android 11+ MANAGE_EXTERNAL_STORAGE）。 */
+    private fun storageGranted(): Boolean {
+        return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            Environment.isExternalStorageManager()
+        } else true
+    }
+
+    private fun requestStorage() {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
+        // 跳系统「所有文件访问」开关页（列表式，用户找到本应用打开开关），不是直接弹授权框。
+        try {
+            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:$packageName")))
+        } catch (_: Exception) {
+            try {
+                startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION))
+            } catch (_: Exception) { }
+        }
     }
 
     private fun requestBattery() {

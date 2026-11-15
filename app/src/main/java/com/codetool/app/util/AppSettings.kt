@@ -16,7 +16,7 @@ object AppSettings {
     private const val KEY_MOUNT_MODE = "mount_mode"
 
     /** 默认终端字号（dp）。Termux 默认 14，这里调大。 */
-    const val DEFAULT_FONT_SIZE = 16
+    const val DEFAULT_FONT_SIZE = 30
     const val MIN_FONT_SIZE = 12
     const val MAX_FONT_SIZE = 44
 

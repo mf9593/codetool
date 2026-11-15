@@ -1,5 +1,6 @@
 package com.codetool.app
 
+import android.content.Context
 import android.os.Bundle
 import android.view.MenuItem
 import android.widget.Toast
@@ -53,8 +54,35 @@ class SkillEditorActivity : AppCompatActivity() {
         etBody.post { etBody.setText(body) }
 
         toolbar.setOnMenuItemClickListener { item ->
-            if (item.itemId == R.id.action_skill_save) { saveAndFinish(); true } else false
+            when (item.itemId) {
+                R.id.action_skill_save -> { saveAndFinish(); true }
+                R.id.action_skill_copy -> { copyToClipboard(); true }
+                R.id.action_skill_help -> { showHelp(); true }
+                else -> false
+            }
         }
+    }
+
+    /** 复制 skill 完整内容（正文为主）到剪贴板。 */
+    private fun copyToClipboard() {
+        val text = etBody.text.toString()
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("skill", text))
+        Toast.makeText(this, "已复制 skill 正文到剪贴板", Toast.LENGTH_SHORT).show()
+    }
+
+    /** 弹出 skill 编辑说明（标题栏说明按钮）。 */
+    private fun showHelp() {
+        val msg = "• 名称：小写字母/数字/连字符，= 容器里的目录名，编辑时不可改。\n" +
+            "• description：1-1024 字，写清楚「什么时候该用这个 skill」，模型据此决定是否加载。\n" +
+            "• 指令正文：Markdown，模型加载后遵循。新建写 ~/.agents/skills/<名称>/SKILL.md；" +
+            "编辑导入的 skill 会写回它原来的目录。\n" +
+            "• 保存后重启 CLI 会话（mimo / opencode）才会识别到改动。"
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("Skill 编辑说明")
+            .setMessage(msg)
+            .setPositiveButton("好的", null)
+            .show()
     }
 
     override fun onSupportNavigateUp(): Boolean {

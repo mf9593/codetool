@@ -2,6 +2,18 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_config_copy"
+        android:title="复制"
+        android:icon="@drawable/ic_copy"
+        app:iconTint="?attr/colorOnSurface"
+        app:showAsAction="ifRoom" />
+    <item
+        android:id="@+id/action_config_help"
+        android:title="说明"
+        android:icon="@drawable/ic_info"
+        app:iconTint="?attr/colorOnSurface"
+        app:showAsAction="ifRoom" />
+    <item
         android:id="@+id/action_config_save"
         android:title="保存"
         app:showAsAction="always" />

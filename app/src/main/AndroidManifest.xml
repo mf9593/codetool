@@ -87,6 +87,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
+        <!-- 解除子进程限制（全屏引导页：检测 phantom process 状态 + 解除方式引导） -->
+        <activity
+            android:name=".SubprocessLimitActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
         <!-- tawc compositor：全屏 SurfaceView 渲染容器 GUI 窗口 -->
         <activity
             android:name=".gui.TawcCompositorActivity"
