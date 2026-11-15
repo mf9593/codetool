@@ -35,6 +35,7 @@ class ConfigEditorActivity : AppCompatActivity() {
     private var loadedText = ""   // 当前已加载原文，用于判断是否有改动
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(com.codetool.app.theme.ThemeManager.resolveStyle(this))
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_config_editor)
 

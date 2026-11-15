@@ -29,6 +29,7 @@ class SkillEditorActivity : AppCompatActivity() {
     private lateinit var etBody: CodeEditor
 
     override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(com.codetool.app.theme.ThemeManager.resolveStyle(this))
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_skill_editor)
 

@@ -234,6 +234,51 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 - 截屏 / ui_dump 的输出文件写在共享目录，返回的容器路径可直接读。
 """.trimIndent()
 
+    private const val SYSTEM_DESC =
+        "终端里运行的是 rootfs 里的 Ubuntu 系统（不是模拟器 / 玩具 shell）：可以直接跑 ping / curl / apt / adb 等系统命令安装组件、做网络诊断，无需额外中转。需要装通用工具（ping、curl、vim、jq 等）先确认包里有没有，没有就让用户安装或引导用系统命令，装完验证。"
+
+    private val SYSTEM_BODY = """
+# rootfs Ubuntu 系统环境（可直接调系统命令）
+
+**你在终端 / 容器里跑的是真正的 Ubuntu（aarch64）**，不是模拟器、不是玩具 shell——
+能直接执行系统命令，装组件、跑诊断、做网络排查都行。这页告诉你怎么正确用它。
+
+## 环境
+- 系统：Ubuntu（aarch64），容器由 app 的 boot 流程挂载（rootfs + proot/共享目录）。
+- 用户：容器内以 root 身份操作；包管理走 `apt`。
+- 网络：容器与 app 共享网络栈（tawcroot 不隔离 netns），loopback 与宿主机互通；
+  诊断网络直接用 `ping` / `curl` / `ss`（IP 用宿主机的）。
+
+## 可以直接执行的系统命令（无需额外桥接）
+- `ping <ip|域名>` — ICMP 可达性（网络诊断第一查）
+- `curl -v <url>` / `wget` — HTTP 请求、下载
+- `ss -tulpn` / `netstat` — 端口 / 连接状态
+- `apt list --installed` / `apt-cache search <包>` — 查包
+- `adb devices` — 本机 Android 调试（容器里装了 platform-tools 时）
+- `nslookup` / `dig` / `getent hosts` — DNS 解析
+- `lsblk` / `df -h` / `free -m` — 磁盘 / 内存
+
+## 装通用工具（按需，装完必须验证）
+1. 先判断已装：`command -v ping` / `ping --version`（真实自检，别假定装好了）。
+2. 没装且是通用工具（ping/curl/vim/jq/ffmpeg 等），**先确认包名能否装**，
+   安装用 `apt-get update && apt-get install -y <包>`（容器内是 root）。
+3. **装完必须验证**：`command -v <bin>` + 跑一次 `--version` / 实际功能，
+   不能只看到 apt 输出 install 成功就当装好（可能依赖缺失跑不起来）。
+4. 装不动（缺仓库 / 缺依赖）就提示用户，别反复重试浪费时间。
+
+## 脚本运行（Permission denied / exit 126）
+- 脚本报 `Permission denied`，退出码 **126** = 没有可执行权限（缺 shebang 或文件系统无 exec），
+  **脚本根本没启动**，不是环境故障。
+- 解决：**用解释器显式跑**——`bash xxx.sh` / `sh xxx.sh` / `python3 xxx.py`，
+  比 `chmod +x` 可靠（跨挂载盘 chmod 可能无效）。`chmod +x` 无效时也改走解释器。
+- **先在前台跑一遍确认输出正常，再放后台**（`nohup ... &` / 任务管理器），
+  别直接后台启动没验证过的命令。
+
+## 注意（浏览器等特殊软件）
+- 依赖 app 前置能力的（如内置浏览器调试）走对应 skill（`codetool-browser`），
+  它要求检测浏览器是否已装、未装时引导 app 包管理安装——**不要自行 apt install 浏览器**。
+""".trimIndent()
+
     private const val DEV_DESC =
         "通用开发约定与约束（详细版）：开发记录、构建验证、原生库 16KB 页对齐、工具链同架构、脚本真实自检、Kotlin 协程、依赖与 Gradle、Git 规范、敏感信息、内存泄漏、列表性能、混淆发版、深色适配、完整 UI 设计规范。任何 Android / 软件项目干活前先读。"
 
@@ -382,6 +427,7 @@ description: 跨项目通用开发红线与验证约定。在任何 Android / Ko
 ## 脚本 / 安装逻辑
 
 - 安装脚本必须**真实自检**（`command -v <bin>` / `<bin> --version`），不能打印假成功。
+- **脚本 Permission denied（exit 126）处理（强制）**：`126` 意味着「文件没有可执行权限」（去掉了 shebang 或挂载盘无 exec bit），脚本**从未真正启动**。别误判成环境问题。解决：**用解释器显式运行**（`bash xxx.sh` / `python3 xxx.py` / `sh xxx.sh`），比 `chmod +x` 更可靠（尤其跨挂载/无 exec 的文件系统）；`chmod +x` 不生效时也改走解释器。**先在前台跑一遍确认输出正常，再放到后台**（`nohup ... &` 或任务管理器），别直接后台启动一个没验证过的命令。
 - 解压第三方压缩包**按文件头 magic 判断真实格式**，不按扩展名、不依赖 `file` 命令（最小环境常没装）。已出现扩展名骗人（`.tar.gz` 实为 XZ）。
   - 常见 magic 速查：gzip `1f 8b`、xz `fd 37 7a 58 5a 00`、zip `50 4b 03 04`、zstd `28 b5 2f fd`、tar 在偏移 257 处有 `ustar`。
 - 「安装构建环境」必须**幂等**：已装的跳过只装缺的。用标记文件记录「压缩包名|大小|SHA-256 或版本号」，同名同大小但内容被替换时仅比大小会漏重装，换了版本/内容不同必须重装。
@@ -667,6 +713,7 @@ apksigner verify --print-certs app-debug.apk
         var n = 0
         n += ensureOne(ctx, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY, "browser_status")
         n += ensureOne(ctx, "codetool-shizuku", SHIZUKU_DESC, SHIZUKU_BODY, "shizuku_exec")
+        n += ensureOne(ctx, "codetool-system", SYSTEM_DESC, SYSTEM_BODY, "rootfs Ubuntu 系统环境")
         n += ensureOne(ctx, "codetool-dev", DEV_DESC, DEV_BODY, "codetool-dev-conventions")
         return n
     }
