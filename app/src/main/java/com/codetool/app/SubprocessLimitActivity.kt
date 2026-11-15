@@ -12,11 +12,14 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textview.MaterialTextView
 import com.codetool.app.shizuku.ShizukuBridge
+import com.codetool.app.util.ShizukuManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import rikka.shizuku.Shizuku
 import android.content.Intent
 import android.net.Uri
+import android.view.View
 
 /**
  * 解除子进程限制（全屏引导页）：Android 12+ 会终止启动过多子进程的应用（phantom process），
@@ -39,6 +42,16 @@ class SubprocessLimitActivity : AppCompatActivity() {
 
     private lateinit var tvStatus: MaterialTextView
     private lateinit var tvMethodHint: MaterialTextView
+    private lateinit var tvShizukuHint: MaterialTextView
+    private lateinit var btnShizuku: MaterialButton
+
+    /** Shizuku 授权结果回调：授权成功后自动跑检测。 */
+    private val shizukuPermListener = Shizuku.OnRequestPermissionResultListener { requestCode, grantResult ->
+        if (requestCode == ShizukuManager.REQUEST_CODE &&
+            grantResult == android.content.pm.PackageManager.PERMISSION_GRANTED) {
+            runOnUiThread { refreshStatus() }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(com.codetool.app.theme.ThemeManager.resolveStyle(this))
@@ -48,11 +61,14 @@ class SubprocessLimitActivity : AppCompatActivity() {
         findViewById<MaterialToolbar>(R.id.subprocToolbar).setNavigationOnClickListener { finish() }
         tvStatus = findViewById(R.id.tvSubprocStatus)
         tvMethodHint = findViewById(R.id.tvSubprocMethodHint)
+        tvShizukuHint = findViewById(R.id.tvSubprocShizukuHint)
+        btnShizuku = findViewById(R.id.btnSubprocShizuku)
 
         findViewById<MaterialButton>(R.id.btnSubprocRefresh).setOnClickListener { refreshStatus() }
         findViewById<MaterialButton>(R.id.btnSubprocDev).setOnClickListener { showDevSteps() }
         findViewById<MaterialButton>(R.id.btnSubprocOpenDev).setOnClickListener { openDeveloperOptions() }
         findViewById<MaterialButton>(R.id.btnSubprocWireless).setOnClickListener { showWirelessSteps() }
+        btnShizuku.setOnClickListener { requestShizukuThenDetect() }
 
         tvMethodHint.text = "本机 Android ${Build.VERSION.RELEASE}（API ${Build.VERSION.SDK_INT}）· 可直接用「开发者选项」"
         refreshStatus()
@@ -60,7 +76,31 @@ class SubprocessLimitActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        ShizukuManager.addPermissionResultListener(shizukuPermListener)
         refreshStatus()  // 从开发者选项返回后刷新
+    }
+
+    override fun onPause() {
+        super.onPause()
+        ShizukuManager.removePermissionResultListener(shizukuPermListener)
+    }
+
+    /** 未授权 Shizuku 时：点按钮申请授权，授权成功回调里自动检测。 */
+    private fun requestShizukuThenDetect() {
+        val st = ShizukuManager.status(this)
+        if (!st.installed) {
+            Toast.makeText(this, "未安装 Shizuku，无法自动检测，请用开发者选项方式", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (!st.running) {
+            Toast.makeText(this, "Shizuku 服务未运行，请先打开 Shizuku 管理器启动服务", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (st.granted) {
+            refreshStatus()  // 已授权直接检测
+        } else {
+            ShizukuManager.requestPermission()  // 弹授权框，结果回调里自动检测
+        }
     }
 
     /**
@@ -111,6 +151,10 @@ class SubprocessLimitActivity : AppCompatActivity() {
         val warn = 0xFFB26A00.toInt()
         val neutral = com.google.android.material.color.MaterialColors.getColor(
             this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0)
+        // Unknown 且 Shizuku 未就绪时，显示「授权 Shizuku」引导
+        val showShizukuGuide = state is PhantomState.Unknown && !ShizukuManager.status(this).granted
+        tvShizukuHint.visibility = if (showShizukuGuide) View.VISIBLE else View.GONE
+        btnShizuku.visibility = if (showShizukuGuide) View.VISIBLE else View.GONE
         when (state) {
             is PhantomState.Unrestricted -> {
                 tvStatus.text = "✓ 已解除（子进程限制已关闭 / 上限已放宽）· 经 ${state.via} 检测"
@@ -121,7 +165,7 @@ class SubprocessLimitActivity : AppCompatActivity() {
                 tvStatus.setTextColor(warn)
             }
             is PhantomState.Unknown -> {
-                tvStatus.text = "无法自动检测（${state.reason}）· 可开启 Shizuku 自动检测，或在开发者选项确认「停用子进程限制」是否打开"
+                tvStatus.text = "无法自动检测（${state.reason}）"
                 tvStatus.setTextColor(neutral)
             }
         }

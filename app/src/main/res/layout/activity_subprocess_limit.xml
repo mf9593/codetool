@@ -76,6 +76,24 @@
                         android:layout_marginTop="@dimen/spacing_md"
                         android:text="检测中…"
                         android:textAppearance="?attr/textAppearanceTitleMedium" />
+                    <!-- 未授权 Shizuku 时的引导（授权后自动检测） -->
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/tvSubprocShizukuHint"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_sm"
+                        android:visibility="gone"
+                        android:text="自动检测需要 Shizuku 授权（免 root 读取系统子进程限制）。点下方按钮授权，成功后自动检测。"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:textColor="?attr/colorOnSurfaceVariant" />
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnSubprocShizuku"
+                        style="@style/Widget.Material3.Button.TonalButton"
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:layout_marginTop="@dimen/spacing_sm"
+                        android:visibility="gone"
+                        android:text="授权 Shizuku 并检测" />
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 
