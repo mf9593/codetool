@@ -47,16 +47,20 @@ class SubprocessLimitActivity : AppCompatActivity() {
     }
 
     /**
-     * 检测子进程监控是否已停用。App 进程读不到 device_config（需 shell/root），
-     * 只能读 Settings.Global 的 monitor 开关做**参考**；读不到时明确告知「无法自动检测，
-     * 请按下方方式在开发者选项确认」，不假装知道状态。
+     * 检测子进程限制是否已解除。App 进程读不到 device_config，但 Android 12+ 把
+     * 子进程上限同步到了 Settings.Global 的 max_phantom_processes（默认 32，
+     * 解除后 =2147483647），这个能读到。读到一个很大的值即视为已解除。
+     * 另检测 settings_enable_monitor_phantom_procs（部分机型在 Global 表里为 0）。
      */
     private fun refreshStatus() {
         val lifted = runCatching {
+            val max = Settings.Global.getInt(contentResolver, "max_phantom_processes", 0)
+            if (max >= Int.MAX_VALUE - 1) return@runCatching true  // 解除上限（2147483647）
+            // 部分机型 monitor 开关在 Global 表：=0 表示已关监控
             Settings.Global.getString(contentResolver, "settings_enable_monitor_phantom_procs") == "0"
         }.getOrDefault(false)
         if (lifted) {
-            tvStatus.text = "✓ 已解除（子进程监控已关闭）"
+            tvStatus.text = "✓ 已解除（子进程监控已关闭 / 上限已放宽）"
             tvStatus.setTextColor(0xFF1B8A4B.toInt())
         } else {
             tvStatus.text = "未确认已解除 · 请按下方方式在开发者选项检查「停用子进程限制」是否打开"
