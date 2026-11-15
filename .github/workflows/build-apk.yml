@@ -26,20 +26,41 @@ jobs:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
-      - name: Accept SDK licenses + ensure platform/build-tools
-        # AGP 会在构建时自动下载缺失组件；先把 licenses 全接受掉避免构建卡在确认
+      - name: Install Android SDK command line tools
+        # android-actions/setup-android@v3 在部分 runner 上不稳定，手动装 cmdline-tools 更可控
         run: |
-          yes | sdkmanager --licenses >/dev/null 2>&1 || true
-          sdkmanager "platforms;android-36" "build-tools;36.0.0" >/dev/null 2>&1 || echo "SDK 组件延迟到 Gradle 自动装"
+          set -e
+          mkdir -p "$ANDROID_SDK_ROOT" || true
+          export ANDROID_HOME="${ANDROID_HOME:-$HOME/android-sdk}"
+          export ANDROID_SDK_ROOT="$ANDROID_HOME"
+          echo "ANDROID_HOME=$ANDROID_HOME" >> "$GITHUB_ENV"
+          echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> "$GITHUB_ENV"
+          mkdir -p "$ANDROID_HOME/cmdline-tools"
+          curl -sSLo /tmp/cmdline-tools.zip \
+            https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip
+          unzip -q /tmp/cmdline-tools.zip -d /tmp/cmdt
+          mv /tmp/cmdt/cmdline-tools "$ANDROID_HOME/cmdline-tools/latest"
+          mkdir -p "$ANDROID_HOME/licenses" || true
+          printf '24333f8a63b6825ea9c5514f83c2829b004d1fee\n' > "$ANDROID_HOME/licenses/android-sdk-license"
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+            "platforms;android-36" "build-tools;36.0.0" "platform-tools" >/dev/null 2>&1 || \
+            "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" \
+              "platforms;android-36" "build-tools;36.0.0" "platform-tools"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
+          restore-keys: gradle-${{ runner.os }}-
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace
+        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
-          ORG_GRADLE_PROJECT_CACHE_FIX: "1"
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
 
       - name: Rename APK (带 commit/时间)
         run: |
