@@ -373,6 +373,7 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 - **卡住时参考成熟开源项目**：遇到解决不了的问题，先查成熟开源项目怎么实现（思路/架构/边界处理），借鉴实现思路而不是照抄代码。**同时保证不侵权**：只参考思路、自己实现；确需引入第三方库/代码时核对 License（Apache-2.0/MIT/BSD 可用，GPL 传染性慎用，专有协议禁用），并在注释/CREDITS 标注来源与协议。
 - 颜色跟随主题，禁止硬编码色值。
 - 全中文交流；UI 改动先询问。防崩溃：可能返回 null 的调用判 null；Fragment 网络回调 `runOnUiThread` 里加 `isAdded()`。
+- **外部 IO / 文件读取必须容错（强制）**：读写**外部存储 / 共享目录 / 用户路径**的文件时，`exists()` 只保证存在、**不保证可读可写**（权限未授予/路径受限时抛 `EACCES Permission denied`）。所有 `readText()` / `writeText()` / `delete()` / `listFiles()` 必须 `runCatching { ... }.getOrNull()/getOrDefault()` 包裹，**失败降级（当 null/跳过/提示）绝不裸抛**。否则一个文件读不到就会异常一路抛到 `onResume`/`onCreate` **崩掉整页**。判 null 只管返回值，管不了 IO 抛异常——两者都要防。
 - 点击运行脚本/长耗时准备时**先立刻切到进度界面并提示**再后台准备，别等准备完才切页。
 
 ---

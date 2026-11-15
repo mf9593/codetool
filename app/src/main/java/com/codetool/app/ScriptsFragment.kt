@@ -126,7 +126,12 @@ class ScriptsFragment : Fragment() {
             .setTitle("删除脚本")
             .setMessage("确定删除「${s.name}」？")
             .setPositiveButton("删除") { _, _ ->
-                s.file.delete()
+                // 外部存储删除可能失败（EACCES），容错：失败提示，不崩。
+                val ok = runCatching { s.file.delete() }.getOrDefault(false)
+                if (!ok && s.file.exists()) {
+                    Toast.makeText(ctx, "删除失败（权限/存储不可写）", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
                 // 只清理已有收藏，不能在删除时反向“加收藏”
                 if (ScriptManager.isScriptFav(ctx, s.file.absolutePath)) {
                     ScriptManager.toggleScriptFav(ctx, s.file.absolutePath)

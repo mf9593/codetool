@@ -10,7 +10,12 @@ import android.content.Context
  */
 object UserAgreement {
 
-    /** 协议版本：正文有实质变更时 +1，已同意旧版的用户会重新走一次同意流程。 */
+    /**
+     * 协议版本：正文有实质变更时 +1，已同意旧版的用户会重新走一次同意流程。
+     * 对应 res/raw/user_agreement.txt 开头的「协议版本：X.Y」——改 txt 版本号时这里必须同步 +1
+     * （整数自增即可，无需跟 txt 的小数点格式一致），否则正文升版了但代码仍判旧版已同意，
+     * 用户不会重新走同意流程。
+     */
     const val VERSION = 1
     private const val PREFS = "user_agreement"
     private const val KEY_ACCEPTED_VERSION = "accepted_version"

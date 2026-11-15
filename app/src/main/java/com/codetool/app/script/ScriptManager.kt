@@ -170,9 +170,12 @@ object ScriptManager {
      */
     private fun writeExample(f: File, content: String): Boolean {
         if (f.exists() && runCatching { f.readText() }.getOrNull() == content) return false
-        f.writeText(content)
-        f.setExecutable(true)
-        return true
+        // 外部存储可能不可写（EACCES），写失败只记日志不崩（调用方在 onResume，崩了会带垮整页）。
+        return runCatching {
+            f.writeText(content)
+            f.setExecutable(true)
+            true
+        }.getOrDefault(false)
     }
 
     // ---------------- 内置本地脚本 ----------------
@@ -192,10 +195,17 @@ object ScriptManager {
             return 0
         }
         val f = File(dir, "03-buildenv.sh")
-        val old = if (f.exists()) f.readText() else null
+        // 外部存储文件可能 exists() 但不可读（EACCES：共享存储权限未授予/路径受限），
+        // 裸 readText() 会抛异常一路崩到 onResume。这里容错：读失败当 null（视为需重写），写失败只记日志不崩。
+        val old = if (f.exists()) runCatching { f.readText() }.getOrNull() else null
         if (old == script) return 0
-        f.writeText(script)
-        f.setExecutable(true)
+        runCatching {
+            f.writeText(script)
+            f.setExecutable(true)
+        }.onFailure { e ->
+            com.codetool.app.util.FileLog.e(ctx, "Scripts", "写入 03-buildenv.sh 失败（权限/存储）: ${e.message}")
+            return 0
+        }
         com.codetool.app.util.FileLog.i(ctx, "Scripts", "03-buildenv.sh 已${if (old == null) "写入" else "更新为最新版"}")
         return 1
     }
