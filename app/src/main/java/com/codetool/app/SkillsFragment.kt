@@ -7,13 +7,13 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.LinearLayout
 import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.codetool.app.ai.SkillManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
-import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textview.MaterialTextView
 
 /** Skill 管理：扫描共享目录 + MiMo / OpenCode 等兼容目录，实时读盘；编辑写回原位置。 */
@@ -25,6 +25,27 @@ class SkillsFragment : Fragment() {
 
     private lateinit var list: LinearLayout
     private lateinit var status: MaterialTextView
+
+    /** 全屏编辑页 launcher：回传 name/desc/body，写回（新增或覆盖原文件）。 */
+    private val skillEditor = registerForActivityResult(
+        ActivityResultContracts.StartActivityForResult()
+    ) { result ->
+        if (result.resultCode != SkillEditorActivity.RESULT_SAVED) return@registerForActivityResult
+        val data = result.data ?: return@registerForActivityResult
+        val name = data.getStringExtra(SkillEditorActivity.EXTRA_NAME).orEmpty()
+        val desc = data.getStringExtra(SkillEditorActivity.EXTRA_DESC).orEmpty()
+        val body = data.getStringExtra(SkillEditorActivity.EXTRA_BODY).orEmpty()
+        val existing = pendingEdit
+        val ctx = requireContext()
+        val err = SkillManager.upsert(ctx, existing, name, desc, body)
+        if (err != null) Toast.makeText(ctx, err, Toast.LENGTH_LONG).show()
+        else {
+            Toast.makeText(ctx, "已保存，重启 CLI 会话即可识别", Toast.LENGTH_SHORT).show()
+            refresh()
+        }
+    }
+
+    private var pendingEdit: SkillManager.Skill? = null
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -108,33 +129,13 @@ class SkillsFragment : Fragment() {
     }
 
     private fun showEdit(existing: SkillManager.Skill?) {
-        val ctx = requireContext()
-        val v = layoutInflater.inflate(R.layout.dialog_skill, null)
-        val etName = v.findViewById<TextInputEditText>(R.id.etSkillName)
-        val etDesc = v.findViewById<TextInputEditText>(R.id.etSkillDesc)
-        val etBody = v.findViewById<TextInputEditText>(R.id.etSkillBody)
-        existing?.let {
-            etName.setText(it.name)
-            etName.isEnabled = false    // name = 目录名，编辑时不改
-            etDesc.setText(it.description)
-            etBody.setText(it.body)
+        pendingEdit = existing
+        val intent = android.content.Intent(requireContext(), SkillEditorActivity::class.java)
+        if (existing != null) {
+            intent.putExtra(SkillEditorActivity.EXTRA_NAME, existing.name)
+            intent.putExtra(SkillEditorActivity.EXTRA_DESC, existing.description)
+            intent.putExtra(SkillEditorActivity.EXTRA_BODY, existing.body)
         }
-        MaterialAlertDialogBuilder(ctx)
-            .setTitle(if (existing == null) "新增 Skill" else "编辑 Skill")
-            .setView(v)
-            .setPositiveButton("保存") { _, _ ->
-                val err = SkillManager.upsert(
-                    ctx,
-                    existing,
-                    etName.text?.toString()?.trim().orEmpty(),
-                    etDesc.text?.toString()?.trim().orEmpty(),
-                    etBody.text?.toString().orEmpty(),
-                )
-                if (err != null) toast(err) else {
-                    toast("已保存，重启 CLI 会话即可识别")
-                    refresh()
-                }
-            }
-            .setNegativeButton("取消", null).show()
+        skillEditor.launch(intent)
     }
 }

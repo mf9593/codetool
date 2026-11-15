@@ -81,6 +81,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
+        <!-- Skill 编辑器（全屏页：大空间编辑 Markdown 正文，比弹窗好编辑） -->
+        <activity
+            android:name=".SkillEditorActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
         <!-- tawc compositor：全屏 SurfaceView 渲染容器 GUI 窗口 -->
         <activity
             android:name=".gui.TawcCompositorActivity"
