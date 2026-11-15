@@ -2,6 +2,7 @@ package com.codetool.app
 
 import android.content.Context
 import android.os.Bundle
+import android.view.Menu
 import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
@@ -61,6 +62,12 @@ class SkillEditorActivity : AppCompatActivity() {
                 else -> false
             }
         }
+    }
+
+    /** 菜单必须在 onCreateOptionsMenu inflate，否则标题栏按钮不显示（复制/说明/保存）。 */
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_skill_editor, menu)
+        return true
     }
 
     /** 复制 skill 完整内容（正文为主）到剪贴板。 */

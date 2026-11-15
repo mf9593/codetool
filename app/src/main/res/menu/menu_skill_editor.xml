@@ -6,15 +6,16 @@
         android:title="复制"
         android:icon="@drawable/ic_copy"
         app:iconTint="?attr/colorOnSurface"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="always" />
     <item
         android:id="@+id/action_skill_help"
         android:title="说明"
         android:icon="@drawable/ic_info"
         app:iconTint="?attr/colorOnSurface"
-        app:showAsAction="ifRoom" />
+        app:showAsAction="always" />
     <item
         android:id="@+id/action_skill_save"
         android:title="保存"
+        android:icon="@drawable/ic_save"
         app:showAsAction="always" />
 </menu>

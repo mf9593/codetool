@@ -2,6 +2,7 @@ package com.codetool.app
 
 import android.os.Bundle
 import android.content.Context
+import android.view.Menu
 import android.view.MenuItem
 import android.view.View
 import android.widget.AdapterView
@@ -71,6 +72,12 @@ class ConfigEditorActivity : AppCompatActivity() {
                 else -> false
             }
         }
+    }
+
+    /** 菜单必须在 onCreateOptionsMenu inflate，否则标题栏按钮不显示（复制/说明/保存）。 */
+    override fun onCreateOptionsMenu(menu: Menu): Boolean {
+        menuInflater.inflate(R.menu.menu_config_editor, menu)
+        return true
     }
 
     /** 复制编辑器内容到剪贴板。 */
