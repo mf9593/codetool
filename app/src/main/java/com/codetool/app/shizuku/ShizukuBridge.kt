@@ -76,6 +76,14 @@ object ShizukuBridge {
         unbind()
     }
 
+    /**
+     * 供 App 内直接执行一条 shell 命令（走 Shizuku user-service，shell uid 2000 身份）。
+     * 返回 (ok, 输出/错误说明)。用于需要特权但用户已开 Shizuku 的场景
+     * （如检测 phantom process：dumpsys activity settings），免 root、免手动连 adb。
+     * 注意：内部 ensureService 会轮询阻塞（最多 3s），调用方须在后台线程。
+     */
+    fun execShell(cmd: String): Pair<Boolean, String> = execViaShizuku(cmd)
+
     private fun handle(obj: JSONObject, id: String, res: File) {
         val respond: (Boolean, String) -> Unit = { ok, msg -> respond(res, id, ok, msg) }
         val action = obj.optString("action", "exec")

@@ -6,10 +6,15 @@ import android.os.Bundle
 import android.provider.Settings
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
 import com.google.android.material.appbar.MaterialToolbar
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textview.MaterialTextView
+import com.codetool.app.shizuku.ShizukuBridge
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import android.content.Intent
 import android.net.Uri
 
@@ -17,8 +22,20 @@ import android.net.Uri
  * 解除子进程限制（全屏引导页）：Android 12+ 会终止启动过多子进程的应用（phantom process），
  * 容器 / 多开会因此被系统杀掉。本页提供状态检测 + 解除方式引导，具体操作（开发者选项开关 /
  * 无线调试命令）由用户完成——App 进程无 shell/root 权限，不能替用户改系统设置。
+ *
+ * 检测走「渐进」：Android 无公开 API 读子进程限制（MAX_PHANTOM_PROCESSES 是
+ * ActivityManagerConstants 内部字段），普通 App 进程读不到。codetool 的可靠路径是
+ * Shizuku（shell uid 2000 = 免 root 的 adb）跑 dumpsys 解析；Shizuku 不可用时降级
+ * Settings.Global 试探；都不行诚实显示「无法自动检测」引导手动确认，不假装知道。
  */
 class SubprocessLimitActivity : AppCompatActivity() {
+
+    /** 检测结果状态。 */
+    private sealed class PhantomState {
+        data class Unrestricted(val via: String) : PhantomState()  // 已解除
+        data class Limited(val max: Int, val via: String) : PhantomState()  // 仍受限
+        data class Unknown(val reason: String) : PhantomState()  // 读不到，走手动确认
+    }
 
     private lateinit var tvStatus: MaterialTextView
     private lateinit var tvMethodHint: MaterialTextView
@@ -47,25 +64,66 @@ class SubprocessLimitActivity : AppCompatActivity() {
     }
 
     /**
-     * 检测子进程限制是否已解除。App 进程读不到 device_config，但 Android 12+ 把
-     * 子进程上限同步到了 Settings.Global 的 max_phantom_processes（默认 32，
-     * 解除后 =2147483647），这个能读到。读到一个很大的值即视为已解除。
-     * 另检测 settings_enable_monitor_phantom_procs（部分机型在 Global 表里为 0）。
+     * 渐进检测子进程限制状态（后台线程，Shizuku 命令会阻塞）。优先级：
+     * ① Shizuku 跑 dumpsys 解析 max_phantom_processes（最可靠，免 root/adb）；
+     * ② Settings.Global 试探（辅助，多数 ROM 读不到）；
+     * ③ 都不行 → Unknown，诚实引导手动确认。
      */
     private fun refreshStatus() {
-        val lifted = runCatching {
-            val max = Settings.Global.getInt(contentResolver, "max_phantom_processes", 0)
-            if (max >= Int.MAX_VALUE - 1) return@runCatching true  // 解除上限（2147483647）
-            // 部分机型 monitor 开关在 Global 表：=0 表示已关监控
-            Settings.Global.getString(contentResolver, "settings_enable_monitor_phantom_procs") == "0"
-        }.getOrDefault(false)
-        if (lifted) {
-            tvStatus.text = "✓ 已解除（子进程监控已关闭 / 上限已放宽）"
-            tvStatus.setTextColor(0xFF1B8A4B.toInt())
-        } else {
-            tvStatus.text = "未确认已解除 · 请按下方方式在开发者选项检查「停用子进程限制」是否打开"
-            tvStatus.setTextColor(com.google.android.material.color.MaterialColors.getColor(
-                this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0))
+        tvStatus.text = "检测中…"
+        tvStatus.setTextColor(com.google.android.material.color.MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0))
+        lifecycleScope.launch {
+            val state = withContext(Dispatchers.IO) { detectPhantomState() }
+            renderState(state)
+        }
+    }
+
+    private fun detectPhantomState(): PhantomState {
+        // ① Shizuku（shell 身份跑 dumpsys，免 root/adb，最可靠）
+        runCatching {
+            val (ok, out) = ShizukuBridge.execShell("dumpsys activity settings")
+            if (ok) {
+                // 宽松正则：namespace 可能是 activity_manager 或 activity，字段 max_phantom_processes
+                val m = Regex("max_phantom_processes=(\\d+)").find(out)
+                val max = m?.groupValues?.get(1)?.toIntOrNull()
+                if (max != null) {
+                    return if (max >= Int.MAX_VALUE - 1) PhantomState.Unrestricted("Shizuku")
+                    else PhantomState.Limited(max, "Shizuku")
+                }
+            }
+        }
+        // ② Settings.Global 试探（辅助：部分机型 monitor 开关在 Global 表）
+        runCatching {
+            if (Settings.Global.getString(contentResolver, "settings_enable_monitor_phantom_procs") == "0") {
+                return PhantomState.Unrestricted("Settings")
+            }
+            val max = Settings.Global.getInt(contentResolver, "max_phantom_processes", -1)
+            if (max >= Int.MAX_VALUE - 1) return PhantomState.Unrestricted("Settings")
+            if (max in 1..100) return PhantomState.Limited(max, "Settings")
+        }
+        // ③ 都读不到：诚实返回 Unknown
+        return PhantomState.Unknown("App 进程无权限读取子进程限制（需 Shizuku 或 root）")
+    }
+
+    private fun renderState(state: PhantomState) {
+        val green = 0xFF1B8A4B.toInt()
+        val warn = 0xFFB26A00.toInt()
+        val neutral = com.google.android.material.color.MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0)
+        when (state) {
+            is PhantomState.Unrestricted -> {
+                tvStatus.text = "✓ 已解除（子进程限制已关闭 / 上限已放宽）· 经 ${state.via} 检测"
+                tvStatus.setTextColor(green)
+            }
+            is PhantomState.Limited -> {
+                tvStatus.text = "⚠ 仍受限：最多 ${state.max} 个子进程 · 经 ${state.via} 检测，请按下方方式解除"
+                tvStatus.setTextColor(warn)
+            }
+            is PhantomState.Unknown -> {
+                tvStatus.text = "无法自动检测（${state.reason}）· 可开启 Shizuku 自动检测，或在开发者选项确认「停用子进程限制」是否打开"
+                tvStatus.setTextColor(neutral)
+            }
         }
     }
 
