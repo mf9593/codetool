@@ -52,7 +52,13 @@ class SkillEditorActivity : AppCompatActivity() {
         }
         etDesc.setText(desc)
         // sora-editor 的 setText 在布局完成前调用偶发不渲染，post 到下一帧确保正文显示。
-        etBody.post { etBody.setText(body) }
+        // 注意：必须先 setText 再 applyTo 设语言——TextMate 语法加载是异步的，
+        // 语言设置的太早会把已渲染的正文清掉（正文区全空）。
+        etBody.post {
+            etBody.setText(body)
+            // Markdown 语法高亮（skill 正文是 .md）
+            com.codetool.app.util.TextMateEditor.applyTo(etBody, "skill.md")
+        }
 
         toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {

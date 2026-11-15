@@ -240,12 +240,37 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
     private val DEV_BODY = """
 ---
 name: dev-conventions
-description: 通用开发约定与约束（详细版）：开发记录、构建验证、原生库 16KB 页对齐、工具链同架构、脚本真实自检、Kotlin 协程、依赖与 Gradle、Git 规范、敏感信息、内存泄漏、列表性能、混淆发版、深色适配、完整 UI 设计规范。任何 Android / 软件项目干活前先读。
+description: 跨项目通用开发红线与验证约定。在任何 Android / Kotlin 项目开始写码、改动组件、调整 UI、接入依赖、构建打包、混淆发版或排查崩溃前使用；用于约束主题与 UI 适配、图标与无障碍、API/配置核实、构建实机验证、脚本自检、协程与 Context、Git 与密钥，并提供提交前自查清单。
 ---
 
 # 通用开发约定与约束（详细版）
 
 > 跨项目通用的开发习惯和硬约束。改任何代码前先对照，避免同类问题反复返工。
+
+**目录**
+1. [组件开发与改动通用原则](#组件开发与改动通用原则强制)
+2. [开发记录](#开发记录强制)
+3. [架构图 / 项目地图](#架构图--项目地图强制)
+4. [构建与验证](#构建与验证)
+5. [构建前排查思路](#构建前排查思路强制)
+6. [可复用签名](#可复用签名换环境一致)
+7. [崩溃日志记录](#崩溃日志记录强制)
+8. [原生库打包](#原生库打包android)
+9. [依赖下载架构匹配](#依赖下载架构匹配重要)
+10. [脚本 / 安装逻辑](#脚本--安装逻辑)
+11. [跨进程 / 桥接通信](#跨进程--桥接通信)
+12. [Skill / MCP 管理](#skill--mcp-管理ai-cli)
+13. [其它通用习惯](#其它通用习惯)
+14. [Kotlin 协程与异步处理](#kotlin-协程与异步处理)
+15. [依赖与 Gradle 管理](#依赖与-gradle-管理)
+16. [Git 与提交规范](#git-与提交规范)
+17. [敏感信息与日志管控](#敏感信息与日志管控)
+18. [内存泄漏与 Context 管理](#内存泄漏与-context-管理)
+19. [列表性能与图片加载](#列表性能与图片加载)
+20. [混淆与发版验证](#混淆与发版验证)
+21. [深色模式与屏幕适配](#深色模式与屏幕适配)
+22. [UI 设计规范](#ui-设计规范强制)
+23. [约束取证命令清单](#约束取证命令清单)
 
 **一句话速查**（最容易漏的两条）：
 1. **API / 配置先核实真实存储位置和读取路径**，别想当然；读不到就诚实降级，不假装知道。
@@ -317,7 +342,7 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 - **调试签名也要统一**：默认 `~/.android/debug.keystore` 是每台机器各自的，换环境构建签名就变，导致**无法覆盖安装**（签名不一致要先卸载，丢数据）。项目应自带一个专用 debug keystore，所有开发环境用同一个。
 - **keystore 放仓库外的固定目录**（如项目上层 `keystore/`），`build.gradle` 用 `rootProject.file("../keystore/xxx.jks")` 相对引用，避免硬编码绝对路径。
 - **签名文件不入库**：`.gitignore` 必须排除 `*.jks` / `*.keystore` / `keystore/`（见 Git 规范）。keystore 单独备份/同步，换环境时复制过去。
-- **debug 和 release 可共用一个 keystore**（保证覆盖安装一致）；release 若需独立正式签名，走环境变量/不入库的 `gradle.properties` 注入，别把正式密码写进 build.gradle。
+- **debug 用仓库外共享的专用 debug keystore**（保证覆盖安装一致）；**release 必须独立正式签名**，私钥与密码严格单独保管，走环境变量 / 不入库的 `gradle.properties` 注入，别把正式密码写进 build.gradle——debug/release 共用同一个 keystore 会扩大 release 私钥暴露面。
 - **验证签名生效**：构建后 `apksigner verify --print-certs app-debug.apk` 看 `Subject DN` 是不是你的 keystore，而不是 `Android Debug`。
 
 ---
@@ -337,17 +362,19 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 
 ## 原生库打包（Android）
 
-- 所有 arm64-v8a 原生库（.so）**必须 16KB 页对齐**（Android 15+ 安装检查，Play 商店强制）。链接显式加：
+- 所有 arm64-v8a 原生库（.so）**必须 16KB 页对齐**（面向 Android 15+ 设备的安装检查；Google Play 对 targetSdk 35+ 的新应用/更新为强制要求）。链接显式加：
   `-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384`
 - Rust/Cargo 可用 `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` 指向带上述参数的 NDK clang 包装器，或 `RUSTFLAGS="-C link-arg=..."`。
-- 打包前验证：`llvm-readelf -l libxxx.so | grep LOAD`，每个 LOAD 段 `Align` ≥ `0x4000`。
+- 打包前验证（双层）：
+  - .so 层：`llvm-readelf -l libxxx.so | grep LOAD`，每个 LOAD 段 `Align` ≥ `0x4000`；
+  - APK 层：`zipalign -c -P 16 4 app-release.apk`（build-tools 35+），与 .so 结果双取证。
 
 ---
 
 ## 依赖下载架构匹配（重要）
 
-- **下载 NDK / build-tools / platform-tools / 任何工具链，必须跟本机架构一致。** 本机是 **arm64 (aarch64)**，就下 aarch64/arm64 版本。
-- **绝不能给 arm64 机器下 x86_64/x64 的工具链**——那会浪费大量时间去修「为什么跑不起来 / aapt2 adb 不是可执行 ELF」。已真实踩坑：SDK 包里混进 x86_64 的 aapt2/adb，必须校验 ELF `e_machine=0xB7`（aarch64）才算已安装。
+- **下载 NDK / build-tools / platform-tools / 任何工具链，必须与运行宿主机架构一致。** 先探测本机架构（`uname -m` / `dpkg --print-architecture` / `file <exe>`），再下载与探测结果一致的工具链，不要把某一台机器的架构当成全局事实写死。
+- **绝不能给 arm64 机器下 x86_64/x64 的工具链**——那会浪费大量时间去修「为什么跑不起来 / aapt2 adb 不是可执行 ELF」。已真实踩坑：SDK 包里混进 x86_64 的 aapt2/adb，必须校验 ELF `e_machine` 才算已安装（aarch64 = `0xB7`，x86_64 = `0x3E`）。
 - 判断「已安装」时校验 ELF 架构，`PATH` 优先选本机架构的 build-tools。
 
 ---
@@ -356,9 +383,10 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 
 - 安装脚本必须**真实自检**（`command -v <bin>` / `<bin> --version`），不能打印假成功。
 - 解压第三方压缩包**按文件头 magic 判断真实格式**，不按扩展名、不依赖 `file` 命令（最小环境常没装）。已出现扩展名骗人（`.tar.gz` 实为 XZ）。
-- 「安装构建环境」必须**幂等**：已装的跳过只装缺的。用标记文件记录「压缩包名|大小」，换了版本（文件名/大小不同）必须重装。
+  - 常见 magic 速查：gzip `1f 8b`、xz `fd 37 7a 58 5a 00`、zip `50 4b 03 04`、zstd `28 b5 2f fd`、tar 在偏移 257 处有 `ustar`。
+- 「安装构建环境」必须**幂等**：已装的跳过只装缺的。用标记文件记录「压缩包名|大小|SHA-256 或版本号」，同名同大小但内容被替换时仅比大小会漏重装，换了版本/内容不同必须重装。
 - 复制 / 归类白名单必须与脚本逻辑一致：不能只写 `ndk`/`platform-tools` 关键字（实际文件名常带版本号 / 架构后缀），否则文件没进目标位置，脚本只会「未找到」。
-- Kotlin 内嵌 shell 别用 `\\${'$'}{'${'$'}'}var`（会触发 "Unresolved reference"）；别依赖目标环境没装的工具（如 `fuser`/`pgrep`）。
+- Kotlin 里避免内嵌长 shell：把脚本拆成独立文件放 `assets/` 读取执行；确需内嵌时用原始字符串（三个双引号）包裹并正确转义 `${'$'}{'${'$'}'}` / `${'$'}{'('}` 等模板前缀，别用 `\\${'$'}{'${'$'}'}var`（会触发 "Unresolved reference"）；别依赖目标环境没装的工具（如 `fuser`/`pgrep`）。
 
 ---
 
@@ -372,9 +400,9 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 ## Skill / MCP 管理（AI CLI）
 
 - Skill 统一写 `~/.agents/skills/<name>/SKILL.md`（open standard），多个 CLI 都默认识别，写一份别写两份。
-- `SKILL.md` 以 YAML frontmatter 开头，必填 `name`/`description`；`name` 须 `^[a-z0-9]+(-[a-z0-9]+)*${'$'}{'${'$'}'}` 且与目录名一致，`description` 1..1024 字符。
-- 编辑导入的 skill **写回它原来的文件**，不能一律写 `.agents`（否则被同名高优先级覆盖，编辑看似无效）。
-- MCP 写进各 CLI 配置的 `mcp.<name>` 段（`type`/`command`/`url`/`enabled`）。配置可能 JSONC，容错读取，绝不破坏用户配置。
+- `SKILL.md` 以 YAML frontmatter 开头，必填 `name`/`description`；`name` 须 `^[a-z0-9]+(-[a-z0-9]+)*${'$'}` 且与目录名一致，`description` 1..1024 字符（写「什么时候触发」，不是「里面有什么」）。
+- 编辑导入的 skill **先按加载优先级定位实际生效路径，再写回该文件**，不能一律写 `.agents`（否则被同名高优先级覆盖，编辑看似无效）。
+- MCP 按目标 CLI 的**实际 schema** 写入：先读现有配置文件确认顶层键与字段（不同 CLI 差异大，如 `mcp` / `mcpServers` / 各自的 `options` / `env` / `headers`），确认后合并，不臆造字段、不整文件覆盖。配置可能 JSONC，容错读取，绝不破坏用户配置。
 
 ---
 
@@ -383,8 +411,9 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 - 优先用成熟方案不自造轮子；解析/渲染/编解码/协议/格式转换先找成熟库，别手写正则解析标准格式。
 - **方法/函数复用**：开发新功能调用方法时先想「这个逻辑会不会在别处重复用到」。会复用的抽成**公共函数库/工具类**（如 `util/` 下的单例 object），避免重复造轮子、避免多处各写一份改一处漏一处。
 - **卡住时参考成熟开源项目**：遇到解决不了的问题，先查成熟开源项目怎么实现（思路/架构/边界处理），借鉴实现思路而不是照抄代码。**同时保证不侵权**：只参考思路、自己实现；确需引入第三方库/代码时核对 License（Apache-2.0/MIT/BSD 可用，GPL 传染性慎用，专有协议禁用），并在注释/CREDITS 标注来源与协议。
-- 全中文交流；UI 改动先询问。防崩溃：可能返回 null 的调用判 null；Fragment 网络回调 `runOnUiThread` 里加 `isAdded()`。
+- 全中文交流；UI 改动先询问。防崩溃：可能返回 null 的调用判 null；Fragment 回调里用 `viewLifecycleOwner.lifecycleScope.launchWhenStarted { }` 或 `view.post { if (isAdded) ... }` 替代裸 `runOnUiThread`。
 - **外部 IO / 文件读取必须容错（强制）**：读写**外部存储 / 共享目录 / 用户路径**的文件时，`exists()` 只保证存在、**不保证可读可写**（权限未授予/路径受限时抛 `EACCES Permission denied`）。所有 `readText()` / `writeText()` / `delete()` / `listFiles()` 必须 `runCatching { ... }.getOrNull()/getOrDefault()` 包裹，**失败降级（当 null/跳过/提示）绝不裸抛**。否则一个文件读不到就会异常一路抛到 `onResume`/`onCreate` **崩掉整页**。判 null 只管返回值，管不了 IO 抛异常——两者都要防。
+  - **注意与协程取消的冲突**：`runCatching` 会吞掉 `CancellationException`，在协程里包 IO 时必须显式重抛——`catch (e: CancellationException) { throw e }`，或只捕获 `IOException` / `SecurityException` 等具体异常，否则取消信号被吞、协程不响应取消（与「禁止吞 CancellationException」一条冲突）。
 - 点击运行脚本/长耗时准备时**先立刻切到进度界面并提示**再后台准备，别等准备完才切页。
 
 ---
@@ -416,7 +445,7 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 ## 敏感信息与日志管控
 
 - **密钥零硬编码**：API Key / Token / 密码严禁写在源码或 XML 中。统一放 `gradle.properties`（不入库）或 `local.properties`，通过 `buildConfigField` 注入。
-- **日志封装**：使用统一的日志工具类，Release 包自动关闭 `VERBOSE` / `DEBUG` 级别，严禁打印密码、私钥、用户隐私数据。
+- **日志封装**：使用统一的日志工具类，Release 包自动关闭 `VERBOSE` / `DEBUG` 级别，严禁打印密码、私钥、用户隐私数据。Release 的 error 日志也须**脱敏**：Token / 私钥 / 手机号 / 用户 ID 一律掩码或只记长度。
 - **adb 调试属性**：`adb shell setprop log.tag.xxx` 仅限本地临时调试，不得写入正式业务逻辑。
 
 ---
@@ -431,14 +460,14 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 
 ## 列表性能与图片加载
 
-- **强制 RecyclerView**：动态列表一律使用 `RecyclerView` + `ListAdapter` / `AsyncListDiffer` + `DiffUtil`，禁止在 UI 线程手动全量 `notifyDataSetChanged`。
+- **强制 RecyclerView**：动态列表一律使用 `RecyclerView` + `ListAdapter` / `AsyncListDiffer` + `DiffUtil`，禁止绕过 DiffUtil 手动全量 `notifyDataSetChanged`（`submitList` 内部本就会 notify，diff 计算走默认后台线程，不在主线程自行算）。
 - **图片加载库**：统一使用 Coil 或 Glide 加载网络/本地图片，禁止手写 `decodeStream` 直接塞 `Bitmap`（极易 OOM）；列表图片必须设置 `placeholder` 和 `error` 占位图。
 
 ---
 
 ## 混淆与发版验证
 
-- **混淆规则同步**：引入新库、使用反射、序列化 `Parcelable` 时，必须同步在 `proguard-rules.pro` 中添加 `-keep` 规则。
+- **混淆规则同步**：反射调用、Gson/Moshi 反射序列化、JNI 回调的类必须加 `-keep`；`androidx.parcelize` 生成的 Creator 由 AGP 默认规则覆盖，无需手写。
 - **Release 实机验证**：发版前必须开启 `minifyEnabled true` 打 release 包，并装到实机完整走一遍核心流程（debug 包不混淆容易掩盖问题）。
 
 ---
@@ -446,8 +475,9 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 ## 深色模式与屏幕适配
 
 - **主题可扩展（核心）**：所有颜色、间距、圆角、字体统一收口到主题资源（`colors.xml` / `themes.xml` / `dimens.xml` / ColorStateList / Theme 属性），**代码和布局里禁止硬编码**。这样后续加深色模式、换配色、加新主题（如多套配色）时，只改资源文件即可全局生效，不用逐个控件改代码。
+- **第三方编辑器/语法高亮库的配色必须跟随 app 主题（强制，真实踩坑）**：接入代码编辑器、语法高亮、富文本等自带配色方案的库时，**不能直接把库的某套主题色（尤其深色主题）硬编码给编辑器**——那会让编辑器背景突然变黑/固定某色，与 app 浅色/深色主题脱节（用户明确视为缺陷）。必须：库配色按 app 当前主题选（浅色主题→库的浅色主题、深色→深色），主题切换时同步；库要求的资源（主题/语法文件）由 app 打包并跟随 app 主题解析。<br>另注意此类库常要求 `setText` 后再设语言（异步加载语言会清空已渲染正文），以及主题文件可能是 JSONC/非标准格式需预处理（剥注释/尾逗号）。
 - **深色模式**：所有颜色必须定义 `res/values/colors.xml` 与 `res/values-night/colors.xml`（或依赖 Theme 属性），不能只在浅色一套里写死。
-- **沉浸式与挖孔屏**：根布局合理使用 `android:fitsSystemWindows="true"` 或监听 `WindowInsets`，禁止写死状态栏高度，避免遮挡挖孔/摄像头区域。
+- **沉浸式与挖孔屏**：以 `enableEdgeToEdge()` + `ViewCompat.setOnApplyWindowInsetsListener` 处理 insets 为主；`android:fitsSystemWindows="true"` 仅作兼容旧代码的兜底，禁止写死状态栏高度（Android 15+ targetSdk 35 强制 edge-to-edge，单靠 fitsSystemWindows 不够）。
 - **尺寸单位**：字体统一用 `sp`，间距/尺寸统一用 `dp`，Kotlin 代码里设置宽高也必须做 `dp2px` 转换，严禁出现裸 `px` 赋值。
 
 ---
@@ -494,35 +524,76 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 | 次按钮（描边） | 48dp | 12dp | stroke 1dp，padding 水平 24dp |
 | 输入框 | 56dp | 12dp | 背景带边框或填充色 |
 | MaterialCardView | — | 16dp | stroke 1dp、elevation 0 |
-| 图标 | 20dp / 24dp | — | 统一 20dp，强调区 24dp |
+| 图标 | 24dp | — | 状态行例外 20dp（dimens 定义 icon_size_* 两档） |
 | 列表项 | 64dp+ | 16dp | CardView 包裹 |
 
 ### 六、水平并排按钮间距
 
 - 水平并排按钮 ≥ 12dp 间距，禁止两个 `weight=1` 按钮紧贴。
 - 动态 addView 的按钮行同样设 `@dimen/spacing_md` 间距。
-- 破坏性按钮（删除/恢复/格式化）与相邻按钮 ≥ 16dp，用**描边次要样式**区分 + **必须二次确认**；禁止 `colorError` 文字色。
+- 破坏性按钮（删除/恢复/格式化）与相邻按钮 ≥ 16dp，用**描边次要样式**区分 + **必须二次确认**；禁止 `colorError` 文字色（团队约定：红色在 Material 里代表「错误/失败」，正常按钮变红像报错；其他项目沿用需自行确认团队规范）。
 
 ### 七、列表项规范
 
 - 动态列表项必须用 `item_*.xml` + `LayoutInflater.inflate()`，禁止 Kotlin 层层 addView 拼。
 - 每项一个 MaterialCardView（圆角 16dp、stroke 1dp、elevation 0），项间距 `@dimen/spacing_md`（12dp）。
-- 信息用「label 固定宽 72dp + value weight 1」键值行分行展示，value `singleLine` + `ellipsize="end"`，别把所有字段拼一坨。
+- 信息用「label 最小宽（`minWidth` 72dp 或按 sp 适配）+ value weight 1」键值行分行展示，value `singleLine` + `ellipsize="end"`，别把所有字段拼一坨（固定 72dp 在大字体/多语言下会截断，用权重或最小宽）。
 - 目录扫描类列表必须过滤备份/临时/隐藏文件（`.bak` `.old` `.tmp` `~`、`.` 开头）。
 
-### 八、状态图标与颜色
+### 八、图标规范（强制）
 
-- 状态图标统一 20dp + fitCenter，图形贴合语义，颜色跟随主题（ColorStateList），禁止硬编码色值，tint 由代码 `setImageTintList` 设。
-- 已安装组件状态行**必须显示真实版本号**，多源回退读取，拿不到写「版本未知」。
+> **本 Skill 及产出的 UI 一律不使用表情图标 / 装饰性 Unicode 符号。** 图标必须取自开放免费图标库（单一来源），统一为矢量资源，与 UI 一体化协调（尺寸、风格、线宽、主题色一致）。
+
+#### 一、禁用项
+
+- 禁止用 emoji、装饰性 Unicode 符号（U+2714 ✓ / U+2605 ★ / U+2192 → / U+26A0 ⚠ / U+2B00 区段等）、字符画、单个汉字充当图标或状态标记。
+- 禁止以文字标签硬替代图标语义；禁止把 PNG/JPG 位图当 UI 图标（品牌 Logo 除外）；禁止手工拉伸图标或改动 viewport 造成变形。
+- 禁止使用系统默认未定制的图标凑数；禁止一个项目混用多套图标库。
+- 状态表达**必须配文字**（状态行文本 / contentDescription / 按钮文字任一），禁止只靠图标或只靠颜色表达状态。
+
+#### 二、允许的图标来源（开放免费，白名单）
+
+| 图标库 | License | 网格 / 风格 | 适用场景 |
+|---|---|---|---|
+| Material Symbols / Material Icons | Apache-2.0 | 24dp，可变权重 | Android / Material 3 首选 |
+| Lucide | ISC | 24×24，stroke 2 | 跨平台通用，SVG 可转 vector |
+| Tabler Icons | MIT | 24×24，stroke 2 | 后台 / 工具类界面 |
+| Heroicons | MIT | 24×24,outline/solid | 需线面切换 |
+| Bootstrap Icons | MIT | 16px 网格 | 小尺寸辅助图标 |
+| Simple Icons | CC0 | 品牌标 | 仅品牌 Logo |
+
+- 单项目**只选一套**主库（Android 推荐 Material Symbols，可全部用内置 vector drawable 或导入单个 SVG），不得混用。
+- 引入前核对 License（MIT / Apache-2.0 / ISC / BSD / CC0 可用；CC BY 需署名；GPL / 专有协议禁用）；在 `CREDITS.md`（或 `LICENSES/`）记录库名、版本、License、取材链接，不直接改库内源文件方便升级。
+- Android 落地：`res/drawable/ic_<语义>_24.xml` 矢量 drawable，禁止为几个图标引入整套字体文件。
+
+#### 三、统一规格（UI 与图标协调一体）
+
+- **视觉尺寸统一 24dp**（图标库标准网格）；状态行可用 20dp，但全项目统一且仅在 `dimens.xml` 定义 `icon_size_sm=20dp` / `icon_size_md=24dp` 两档，禁止其它尺寸。
+- **触摸目标 ≥ 48dp**（`IconButton` 或 `minWidth/minHeight=48dp`），视觉尺寸与点击区域分开设置。
+- 线宽、端点圆角、填充风格跟随所选库默认值，不逐个微调；同语义全项目只保留一个文件，命名 `ic_<语义>_<尺寸>.xml`（如 `ic_sync_24`），禁止 `icon1`/`img_2`。
+
+#### 四、颜色与主题
+
+- tint 走主题属性：`app:tint="?attr/colorControlNormal"` / `?attr/colorPrimary`，或 `res/color/ic_tint_*.xml` 的 ColorStateList（深色自动跟随）；`setImageTintList` 只用于切状态，色值仍取自资源，禁止 `setColorFilter(0xFF...)`。
+- 状态语义固定「成功 / 警告 / 错误 / 进行中 / 未知」五类，颜色取主题 `color*` 属性，不同状态图标仍用同一套图标（只换色），色值不出现字面量。
+
+#### 五、缩放与对齐
+
+- 图标描边 / 内部留白对齐到所在容器重心；`ImageView` 用 `scaleType="fitCenter"`，禁止无缩放导致裁切；大小字体 / 高对比度 / 深色模式下复测不裁切、对比足够。
+
+#### 六、溯源与版本号
+
+- 已安装组件状态行**必须显示真实版本号**，多源回退读取，拿不到写「版本未知」（沿用原第八节要求）。
 
 ### 九、表单与交互
 
 - 表单填 API Key/地址/连接参数**必须带「测试连接」按钮**就地验证；可选项用下拉选 + 留「自定义」兜底。
 - 首页只做状态展示，低频/破坏性操作（备份/恢复/删除/清空）放独立工具页或设置页。
-- 长耗时任务走**前台服务 + WakeLock + 进度条**，不放易被冻结的协程。
+- 长耗时任务走**前台服务 + WakeLock + 进度条**，不放易被冻结的协程。Android 14+ 必须声明 `android:foregroundServiceType` 与对应权限（如 `FOREGROUND_SERVICE_DATA_SYNC`），否则启动即抛异常；普通短任务优先 `WorkManager`。
 
 ### 十、代码检查清单（提交前自查）
 
+**UI / 布局：**
 - [ ] 所有控件是否都带 style 或显式定义了外观属性？
 - [ ] 是否存在任何两个相邻控件紧贴（间距为 0）的情况？
 - [ ] 相同类型的控件间距是否一致（全局统一）？
@@ -530,6 +601,63 @@ description: 通用开发约定与约束（详细版）：开发记录、构建�
 - [ ] 是否存在硬编码色值（`#xxxxxx`）？
 - [ ] 是否存在硬编码 `dp`/`px` 数值而非引用 dimens？
 - [ ] 动态 addView 的控件是否设置了统一间距？
+
+**图标 / 无障碍：**
+- [ ] 布局 / 字符串 / 注释 / 日志中 grep 不到 emoji 与装饰性 Unicode 符号？
+- [ ] 图标均来自选定开源库，来源与 License 已记入 `CREDITS.md`？
+- [ ] 尺寸 24dp（状态行例外 20dp 已登记）、触摸目标 ≥ 48dp、命名 `ic_*_24`？
+- [ ] tint 引用主题属性 / ColorStateList，无硬编码色值？
+- [ ] 每个非装饰图标都有 `contentDescription` 与文字标签？未混入第二套图标库？
+
+**功能可达性：**
+- [ ] 新功能从**用户操作路径**走一遍能到达（入口位置、按钮显示、菜单 inflate）？
+- [ ] 标题栏常显按钮 `showAsAction="always"`？
+
+**构建 / 验证：**
+- [ ] 编译通过后是否已实机 / 实际环境验证（非只看 BUILD SUCCESSFUL）？
+
+---
+
+## 约束取证命令清单
+
+以下命令都能直接复制执行，把「强制」变成可跑的命令（与「构建与验证」呼应，落实"验证优先用日志和命令取证"）。
+
+```bash
+# [0 命中] 无表情图标 / 装饰性 Unicode 符号
+rg -n --pcre2 '[\x{1F300}-\x{1FAFF}\x{2600}-\x{27BF}\x{2190}-\x{21FF}\x{2B00}-\x{2BFF}]' res/layout res/values strings.xml
+
+# [0 命中] 无硬编码色值（ColorStateList 除外）
+rg -n '#[0-9a-fA-F]{3,8}' res/values res/layout
+
+# [0 命中] 布局中无裸写 dp / px / sp
+rg -n '\b[0-9]+(dp|px|sp)\b' res/layout
+
+# [逐项核对] 非装饰图标均有 contentDescription 与文字标签
+rg -n 'ImageView|ImageButton' res/layout
+
+# [逐项核对] 协程内无裸 runCatching（或已显式重抛 CancellationException）
+rg -n 'runCatching' java/
+
+# [0 命中] 禁用 GlobalScope
+rg -n 'GlobalScope' java/
+
+# [0 命中] 无动态版本
+rg -n 'latest\.(integration|release)|"\+"' -g '*.gradle*' -g '*.toml' .
+
+# [每个 LOAD 的 Align >= 0x4000] 16KB 页对齐（.so 层）
+llvm-readelf -l libxxx.so | grep LOAD
+
+# [校验通过] 16KB 页对齐（APK 层，build-tools 35+）
+zipalign -c -P 16 4 app-release.apk
+
+# [与 uname -m 探测结果一致] 工具链架构
+readelf -h "${'$'}(command -v aapt2)" | grep Machine
+
+# [Subject DN 为项目 keystore，不是 Android Debug] 调试签名生效
+apksigner verify --print-certs app-debug.apk
+```
+
+非命令类检查：注入一次测试异常后确认 `filesDir/crash/` 生成带全栈的时间戳文件；切深色模式 + 最大字体跑一遍核心页，确认颜色、图标 tint、间距无异常。
 
 """.trimIndent()
 

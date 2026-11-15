@@ -1,0 +1,28 @@
+{
+  "languages": [
+    {
+      "grammar": "textmate/markdown/markdown.tmLanguage.json",
+      "name": "markdown",
+      "scopeName": "text.html.markdown",
+      "languageConfiguration": "textmate/markdown/markdown.language-configuration.json"
+    },
+    {
+      "grammar": "textmate/shell/shellscript.tmLanguage.json",
+      "name": "shell",
+      "scopeName": "source.shell",
+      "languageConfiguration": "textmate/shell/shellscript.language-configuration.json"
+    },
+    {
+      "grammar": "textmate/json/json.tmLanguage.json",
+      "name": "json",
+      "scopeName": "source.json",
+      "languageConfiguration": "textmate/json/json.language-configuration.json"
+    },
+    {
+      "grammar": "textmate/jsonc/jsonc.tmLanguage.json",
+      "name": "jsonc",
+      "scopeName": "source.json.comments",
+      "languageConfiguration": "textmate/jsonc/jsonc.language-configuration.json"
+    }
+  ]
+}

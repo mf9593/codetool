@@ -122,6 +122,11 @@ class ScriptEditActivity : AppCompatActivity() {
             toolbar.title = "编辑: ${f.name}"
             editor.setText(runCatching { f.readText() }.getOrDefault(""))
         }
+        // 按文件类型设 TextMate 语法高亮（.sh 脚本高亮）
+        com.codetool.app.util.TextMateEditor.applyTo(
+            editor,
+            if (createMode) "新建脚本.sh" else (scriptFile?.name ?: path ?: "script.sh")
+        )
     }
 
     private fun save() {

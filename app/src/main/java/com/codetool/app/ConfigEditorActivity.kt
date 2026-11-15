@@ -107,6 +107,8 @@ class ConfigEditorActivity : AppCompatActivity() {
             }
             loadedText = content ?: "（文件不存在或为空）"
             etContent.setText(loadedText)
+            // 先 setText 再设语言（TextMate 语法加载异步，后设置避免清空已渲染正文）
+            com.codetool.app.util.TextMateEditor.applyTo(etContent, cfg.rel)
         }
     }
 

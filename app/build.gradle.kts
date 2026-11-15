@@ -59,6 +59,8 @@ android {
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
+        // sora-editor language-textmate 在 API 33 以下设备需要核心库去糖（java.time 等）
+        isCoreLibraryDesugaringEnabled = true
     }
     kotlinOptions { jvmTarget = "17" }
 
@@ -90,6 +92,10 @@ dependencies {
     // sora-editor：成熟的 Android 代码编辑器（内置行号、语法高亮、大文件流畅）。
     // 替换手搓的 LineNumberEditText（行号 desync / 滑动卡顿修不干净）。
     implementation("io.github.Rosemoe.sora-editor:editor:0.23.6")
+    // language-textmate：VSCode 同款 TextMate 语法高亮（JSON grammar + 主题），
+    // 给脚本/配置/skill 编辑器按文件类型提供高亮（语法文件在 assets/textmate/）。
+    implementation("io.github.Rosemoe.sora-editor:language-textmate:0.23.6")
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.5")
 
     // Shizuku：以 shell（adb）身份执行操作，无需 root。API v13.1.5（Maven Central）。
     implementation("dev.rikka.shizuku:api:13.1.5")

@@ -796,21 +796,28 @@ class MainActivity : AppCompatActivity() {
             AppSettings.MountMode.FULL to "整个共享存储",
             AppSettings.MountMode.NONE to "不挂载",
         )
+        // 用下拉框而不是 RadioGroup：动态 addView 的 RadioButton id 都为 0，
+        // RadioGroup 互斥靠 id 判重会失效，出现"选两个都选中"的问题。
         val currentMount = AppSettings.mountMode(this)
-        val radioGroup = android.widget.RadioGroup(this).apply { orientation = android.widget.RadioGroup.VERTICAL }
-        for ((mode, label) in mountOptions) {
-            val rb = android.widget.RadioButton(this).apply {
-                text = label
-                textSize = 15f
-                setPadding(dp(8), dp(6), dp(8), dp(6))
-                isChecked = currentMount == mode
-            }
-            rb.setOnCheckedChangeListener { _, checked ->
-                if (checked) AppSettings.setMountMode(this@MainActivity, mode)
-            }
-            radioGroup.addView(rb)
+        val mountSpinner = android.widget.Spinner(this).apply {
+            val adapter = android.widget.ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_item,
+                mountOptions.map { it.second }
+            )
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            this.adapter = adapter
+            setSelection(mountOptions.indexOfFirst { it.first == currentMount }.coerceAtLeast(0))
         }
-        container.addView(radioGroup)
+        mountSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?,
+                                        position: Int, id: Long) {
+                val mode = mountOptions.getOrNull(position)?.first ?: return
+                if (mode != currentMount) AppSettings.setMountMode(this@MainActivity, mode)
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+        container.addView(mountSpinner)
 
         dialog.setContentView(container)
         dialog.show()
