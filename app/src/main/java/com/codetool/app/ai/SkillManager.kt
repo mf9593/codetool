@@ -238,6 +238,11 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
         "通用开发约定与约束（详细版）：开发记录、构建验证、原生库 16KB 页对齐、工具链同架构、脚本真实自检、Kotlin 协程、依赖与 Gradle、Git 规范、敏感信息、内存泄漏、列表性能、混淆发版、深色适配、完整 UI 设计规范。任何 Android / 软件项目干活前先读。"
 
     private val DEV_BODY = """
+---
+name: dev-conventions
+description: 通用开发约定与约束（详细版）：开发记录、构建验证、原生库 16KB 页对齐、工具链同架构、脚本真实自检、Kotlin 协程、依赖与 Gradle、Git 规范、敏感信息、内存泄漏、列表性能、混淆发版、深色适配、完整 UI 设计规范。任何 Android / 软件项目干活前先读。
+---
+
 # 通用开发约定与约束（详细版）
 
 > 跨项目通用的开发习惯和硬约束。改任何代码前先对照，避免同类问题反复返工。
@@ -253,8 +258,9 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 - **关联代码适配**：改一个组件要排查**所有引用它的地方**（布局、代码、样式、Adapter、其它 Fragment/Activity），同步更新，别漏改导致风格或行为不一致。
 - **改动要考虑 UI 变化**：改逻辑 / 数据 / 配置前，先想清楚会带来什么界面变化（列表刷新、状态图标、按钮态、空态），确保 UI 正确反映新状态。
 - **改动要考虑功能冲突**：改代码前排查会不会和已有功能冲突（同 ID 控件、同名资源、重复逻辑、并发 / 生命周期冲突），避免改 A 坏 B。
+- **API / 配置 / 设置项必须核实，不能想当然（强制）**：调用系统 API、读写配置项（`Settings.*` / `device_config` / `SharedPreferences` / provider / 环境变量）前，**先核实它真实的存储位置、key 名和读取路径**，别凭记忆或"听起来合理"就用。同类设置可能分散在不同表（如 Android 的 `device_config` vs `Settings.Global`），用错表 API 会静默返回 null / 默认值，**不报错但恒错**（真实踩坑：用 `Settings.Global.getString` 读一个 device_config 的 key，返回 null 导致状态恒判错）。核实手段：官方文档确认 key 属于哪个 namespace、用 `adb shell settings/device_config get` 取真实值、跑起来打印实际读到的值。读不到 / 取不到时明确降级提示「无法确认，请手动检查」，**不要假装知道状态**。
 
-> 一句话：**开发 = 组件 + 主题 + UI + 关联代码 + 潜在冲突**，五者一起考虑才算做完。
+> 一句话：**开发 = 组件 + 主题 + UI + 关联代码 + 潜在冲突 + API/配置核实**，六者一起考虑才算做完。
 
 ---
 
@@ -519,6 +525,7 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 - [ ] 是否存在硬编码色值（`#xxxxxx`）？
 - [ ] 是否存在硬编码 `dp`/`px` 数值而非引用 dimens？
 - [ ] 动态 addView 的控件是否设置了统一间距？
+
 """.trimIndent()
 
     /** 首次写入内置 skill；旧版内置内容自愈升级，写回原位置、不新增副本。
