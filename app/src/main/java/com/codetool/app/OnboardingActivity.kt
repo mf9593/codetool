@@ -37,6 +37,10 @@ class OnboardingActivity : Activity() {
     private var notifyBadge: TextView? = null
     private var storageBadge: TextView? = null
 
+    /** 用户点过的权限卡片（key: battery/notify/storage）。点过即视为「已处理」，
+     *  防止部分 ROM 无法真正授权导致永远卡在引导页——点过就解锁「下一步」。 */
+    private val tapped = mutableSetOf<String>()
+
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(ThemeManager.resolveStyle(this))
         super.onCreate(savedInstanceState)
@@ -64,12 +68,14 @@ class OnboardingActivity : Activity() {
     private fun buildCards() {
         cardsContainer.removeAllViews()
         batteryBadge = makeCard(
+            key = "battery",
             icon = R.drawable.ic_wireless,
             title = "电池无限制",
             desc = "把本应用设为「忽略电池优化」，避免锁屏后系统冻结容器和终端（否则后台任务会中断）。",
         ) { requestBattery() }
         notifyBadge = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
             makeCard(
+                key = "notify",
                 icon = R.drawable.ic_info,
                 title = "通知权限",
                 desc = "允许通知，前台服务（rootfs 解压、终端保活、下载）才能持续运行不被系统杀掉。",
@@ -79,6 +85,7 @@ class OnboardingActivity : Activity() {
         // 普通分区存储不够，需「管理所有文件」权限。点卡片跳系统开关页（列表式，不是直接弹授权框）。
         storageBadge = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             makeCard(
+                key = "storage",
                 icon = R.drawable.ic_folder,
                 title = "全部文件访问权限",
                 desc = "允许管理所有文件，容器才能读写共享存储里的项目、脚本（跳转系统开关页，找到本应用打开开关）。",
@@ -145,7 +152,7 @@ class OnboardingActivity : Activity() {
     }
 
     /** 建一张权限卡片，返回状态徽标 TextView（供 refreshUi 更新）。 */
-    private fun makeCard(icon: Int, title: String, desc: String, onClick: () -> Unit): TextView {
+    private fun makeCard(key: String, icon: Int, title: String, desc: String, onClick: () -> Unit): TextView {
         val card = MaterialCardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
@@ -163,7 +170,11 @@ class OnboardingActivity : Activity() {
             val ripple = android.util.TypedValue()
             theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
             setBackgroundResource(ripple.resourceId)
-            setOnClickListener { onClick() }
+            setOnClickListener {
+                tapped.add(key)  // 点过即视为已处理，解锁下一步（兼容无法授权的 ROM）
+                refreshUi()
+                onClick()
+            }
         }
         ImageView(this).apply {
             setImageResource(icon)
@@ -210,15 +221,20 @@ class OnboardingActivity : Activity() {
         updateBadge(batteryBadge, batOk)
         updateBadge(notifyBadge, ntfOk)
         updateBadge(storageBadge, stoOk)
-        val allOk = batOk && ntfOk && stoOk
+        // 解锁「下一步」：真实授权成功 或 用户点过该卡片（部分 ROM 无法授权，点过即视为已处理）
+        val batSatisfied = batOk || "battery" in tapped
+        val ntfSatisfied = ntfOk || "notify" in tapped
+        val stoSatisfied = stoOk || "storage" in tapped
+        val allOk = batSatisfied && ntfSatisfied && stoSatisfied
         next.isEnabled = allOk
-        hint.text = if (allOk) "已完成全部授权，可以开始使用了" else "请先完成以上授权（点卡片跳转授权）"
+        hint.text = if (allOk) "已完成全部授权，可以开始使用了"
+        else "请先完成以上授权（点卡片跳转授权；若系统无法授权，点过卡片即可继续）"
     }
 
     private fun updateBadge(badge: TextView?, ok: Boolean) {
         badge?.let {
             it.text = if (ok) "已开启 ✓" else "待授权"
-            it.setTextColor(if (ok) 0xFF1B8A4B.toInt() else MaterialColorsHelper.accent(this))
+            it.setTextColor(MaterialColorsHelper.accent(this))
         }
     }
 

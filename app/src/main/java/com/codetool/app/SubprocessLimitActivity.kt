@@ -147,8 +147,12 @@ class SubprocessLimitActivity : AppCompatActivity() {
     }
 
     private fun renderState(state: PhantomState) {
-        val green = 0xFF1B8A4B.toInt()
-        val warn = 0xFFB26A00.toInt()
+        // 状态色跟随主题：成功=主题色 colorPrimary，受限=colorSecondary（不用 colorError，
+        // 红色代表失败/报错，「仍受限」只是待处理引导），未知=中性色。禁止硬编码色值。
+        val ok = com.google.android.material.color.MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorPrimary, 0)
+        val warn = com.google.android.material.color.MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorSecondary, 0)
         val neutral = com.google.android.material.color.MaterialColors.getColor(
             this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0)
         // Unknown 且 Shizuku 未就绪时，显示「授权 Shizuku」引导
@@ -158,7 +162,7 @@ class SubprocessLimitActivity : AppCompatActivity() {
         when (state) {
             is PhantomState.Unrestricted -> {
                 tvStatus.text = "✓ 已解除（子进程限制已关闭 / 上限已放宽）· 经 ${state.via} 检测"
-                tvStatus.setTextColor(green)
+                tvStatus.setTextColor(ok)
             }
             is PhantomState.Limited -> {
                 tvStatus.text = "⚠ 仍受限：最多 ${state.max} 个子进程 · 经 ${state.via} 检测，请按下方方式解除"

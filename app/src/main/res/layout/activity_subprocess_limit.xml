@@ -75,7 +75,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/spacing_md"
                         android:text="检测中…"
-                        android:textAppearance="?attr/textAppearanceTitleMedium" />
+                        android:textAppearance="?attr/textAppearanceBodyMedium" />
                     <!-- 未授权 Shizuku 时的引导（授权后自动检测） -->
                     <com.google.android.material.textview.MaterialTextView
                         android:id="@+id/tvSubprocShizukuHint"
