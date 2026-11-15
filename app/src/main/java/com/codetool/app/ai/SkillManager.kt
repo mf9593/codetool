@@ -235,70 +235,66 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 """.trimIndent()
 
     private const val DEV_DESC =
-        "codetool / Android 项目的开发约定与记忆：改代码后写 devlog、原生库 16KB 页对齐、" +
-        "NDK/buildtools 下载必须与本机同架构、UI 布局规范、Skill/MCP 管理路径。干 codetool 或本机 Android 项目活前先读。"
+        "通用开发约定与约束：改代码后写开发记录、原生库 16KB 页对齐、工具链下载必须与本机同架构、" +
+        "脚本真实自检、UI 布局规范、颜色跟随主题、不自造轮子。任何 Android / 软件项目干活前先读。"
 
     private val DEV_BODY = """
-# codetool / Android 项目开发约定（本机记忆）
+# 通用开发约定与约束（本机记忆）
 
-> 本 skill 整合 `/storage/emulated/0/Download/code/` 下各项目（codetool / tawc、网络工具箱、Podroid）的开发习惯。
-> 改这些项目的代码前先对照本约定，避免反复返工。marker: codetool-dev-conventions
+> 跨项目通用的开发习惯和硬约束。改任何代码前先对照，避免同类问题反复返工。marker: codetool-dev-conventions
 
 ## 开发记录（强制）
-- 每次改代码（Kotlin / XML / 脚本 / Gradle 配置）后，**立即**追加当天 `codetool/docs/devlog/YYYY-MM-DD.md`；当天文件不存在就新建，不攒到最后补写。
+- 每次改代码（源码 / 资源 / 脚本 / 构建配置）后，**立即**追加当天的开发记录（devlog），当天文件不存在就新建，不攒到最后补写。
 - 每节写清：背景/问题、改动文件（相对路径）、关键实现、验证方式与结果、产物位置、待办。
 - 只追加不改历史；更正用「补充」小节。没实机验证的写「待验证」，不默认生效。
 
 ## 构建与验证
-- codetool 用 `gradle :app:assembleDebug --offline`（本机预装 gradle，不一定有 gradlew）。网络工具箱用 `gradle assembleDebug`（必须 `gradle`，不要 `gradlew`）。Podroid 用 `./gradlew assembleDebug`。
-- 编译后装到实机验证（无线 adb：`adb connect <mDNS>` → `adb install -r app-debug.apk`），别只看 BUILD SUCCESSFUL 就当完成。
-- 验证优先用日志/命令（`adb shell run-as <pkg> ...`、`uiautomator dump`）而不是截图。
+- 编译通过 ≠ 完成。改完要装到实机 / 实际环境跑一遍验证，优先用日志和命令取证，而不是只看截图。
+- 用项目自己的构建方式（有的预装 gradle 直接 `gradle`，有的用 `gradlew`，有的要 Docker 脚本），先确认再用。
 
-## Android 原生库打包
+## 原生库打包（Android）
 - 所有 arm64-v8a 原生库（.so）**必须 16KB 页对齐**（Android 15+ 安装检查，Play 商店强制）。链接显式加：
   `-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384`
-- Rust/Cargo 用 `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` 指向带上述参数的 NDK clang 包装器，或 `RUSTFLAGS="-C link-arg=..."`。
+- Rust/Cargo 可用 `CARGO_TARGET_AARCH64_LINUX_ANDROID_LINKER` 指向带上述参数的 NDK clang 包装器，或 `RUSTFLAGS="-C link-arg=..."`。
 - 打包前验证：`llvm-readelf -l libxxx.so | grep LOAD`，每个 LOAD 段 `Align` ≥ `0x4000`。
 
 ## 依赖下载架构匹配（重要）
 - **下载 NDK / build-tools / platform-tools / 任何工具链，必须跟本机架构一致。** 本机是 **arm64 (aarch64)**，就下 aarch64/arm64 版本。
-- **绝不能给 arm64 机器下 x86_64/x64 的工具链**——那会浪费大量时间去修「为什么跑不起来 / aapt2 adb 不是可执行 ELF」。已真实踩坑：SDK 包里混进 x86_64 的 aapt2/adb，必须校验 ELF `e_machine=0xB7`（aarch64）才算已安装。
-- 判断「已安装」时校验 ELF 架构，`PATH` 优先选本机架构的 build-tools。
+- **绝不能给 arm64 机器下 x86_64/x64 的工具链**——那会浪费大量时间去修「为什么跑不起来 / aapt2 adb 不是可执行 ELF」。
+- 判断「已安装」时校验 ELF 架构（aarch64 = `e_machine=0xB7`），PATH 优先选本机架构的工具。
 
 ## 脚本 / 安装逻辑
 - 安装脚本必须**真实自检**（`command -v <bin>` / `<bin> --version`），不能打印假成功。
-- 解压第三方压缩包**按文件头 magic 判断真实格式**，不按扩展名、不依赖 `file` 命令（最小 rootfs 常没装）。已出现扩展名骗人（`android-sdk.tar.gz` 实为 XZ）。
+- 解压第三方压缩包**按文件头 magic 判断真实格式**，不按扩展名、不依赖 `file` 命令（最小环境常没装）。扩展名会骗人（`.tar.gz` 实为 XZ 已出现）。
 - 「安装构建环境」必须**幂等**：已装的跳过只装缺的。用标记文件记录「压缩包名|大小」，换了版本（文件名/大小不同）必须重装。
-- 复制白名单必须与脚本归类逻辑一致：不能只写 `ndk`/`platform-tools` 关键字（实际文件名是 `r27d_...`、`buildtools_...`、`4.3.0-aarch64...`），否则文件没进容器，脚本只会「未找到」。
-- Kotlin 内嵌 shell 别用 `\\${'$'}var`（会触发 "Unresolved reference"）；容器里别依赖 `fuser`/`pgrep`（psmisc 没装）。
+- 复制 / 归类白名单必须与脚本逻辑一致，不能只写关键字（实际文件名常带版本号 / 架构后缀），否则文件没进目标位置，脚本只会「未找到」。
+- 内嵌 shell 时注意转义：Kotlin raw string 里用 `${'$'}` 表示字面美元符（直接写美元符会被当模板变量）；别依赖目标环境没装的工具（如 `fuser`/`pgrep`）。
 
-## 容器内 → app 桥接
-- 复用 `TawcrootRuntime` 的 bind mount：`dataDir/share` ↔ 容器 `/usr/share/tawc`，走**文件桥**（`BrowserBridge`），别另起 HTTP 服务或自造 IPC。
-- 调试能力优先用**标准协议**（Chrome DevTools Protocol `127.0.0.1:9222`），别手写 WebSocket/HTTP 解析器。
-- 共享存储挂载：按终端设置「容器挂载目录」决定（默认仅 Download），改完需重启终端服务。
+## UI 布局规范
+- 水平并排按钮 ≥ 12dp 间距；禁止两个等分按钮紧贴。动态生成按钮行同样设间距。
+- 破坏性操作（删除/恢复/格式化）与相邻 ≥ 16dp，用描边次要样式区分 + **必须二次确认**；别用 error 色当正常按钮色。
+- 首页只做状态展示，低频 / 破坏性操作放独立工具页或设置页。长耗时任务走前台服务 + WakeLock + 进度条，不放易被冻结的协程。
+- 动态列表项用布局文件 + inflater，别在代码里层层 addView 拼（难对齐、样式漂移）。每项风格与页面其它卡片一致，项间距统一。
+- 信息用「label 固定宽 + value 撑满」键值行分行展示，value 单行截断，别把所有字段拼一坨。
+- 已安装组件状态行**必须显示真实版本号**，多源回退读取，拿不到明确写「版本未知」。
+- 填 API Key/地址/连接参数的表单**必须带「测试连接」按钮**就地验证；可选项用下拉选 + 留自定义兜底。
+- 扫描类列表必须过滤备份/临时/隐藏文件（`.bak` `.old` `.tmp` `~`、`.` 开头），避免旧版本同名条目干扰。
 
-## Android UI 布局规范（强制）
-- 水平并排按钮 ≥ 12dp 间距（`layout_marginStart="12dp"` 或左右各 6dp）；禁止两个 `weight=1` 按钮紧贴。动态 addView 的按钮行同样设间距。
-- 破坏性按钮（删除/恢复/格式化）与相邻 ≥ 16dp，用**描边次要样式**区分 + **必须二次确认**；禁止 `colorError` 文字色。
-- 首页只做状态展示，低频/破坏性操作（备份/恢复/删除/清空）放「工具」页独立 tab 或设置页。长耗时任务走**前台服务 + WakeLock + 进度条**，不放 fragment 协程。
-- 状态图标统一 20dp + fitCenter，图形贴合语义（存储/文件夹/运行时/播放停止/火花），颜色只用 `res/color/icon_tone_{ok,error,neutral}.xml`（跟随主题），禁止硬编码色值，tint 由代码 `setImageTintList` 设。
-- 动态列表项必须用 `item_*.xml` + `LayoutInflater.inflate()`，禁止 Kotlin 层层 addView 拼。每项一个 MaterialCardView（圆角 16dp、stroke 1dp、elevation 0），项间距 12dp。
-- 信息用「label 固定宽 72dp + value weight 1」键值行分行展示，value `singleLine` + `ellipsize="end"`，别把所有字段拼一坨。
-- 已安装组件状态行**必须显示真实版本号**（如 `mimo 0.1.16`），多源回退读取，拿不到写「版本未知」。
-- 表单填 API Key/地址/连接参数**必须带「测试连接」按钮**就地验证；服务商用下拉选（预置 id/显示名/默认 Base URL/常用模型），留「自定义」兜底。
-- 目录扫描类列表必须过滤备份/临时/隐藏文件（`.bak` `.old` `.tmp` `~`、`.` 开头）。
+## 颜色与主题
+- 颜色**跟随主题**，禁止硬编码色值。用主题属性 / ColorStateList，切主题自动跟随。
+- 自定义控件的选中 / 激活态颜色必须从主题管理器取，别写死。
 
-## Skill / MCP 管理
-- Skill 统一写 `~/.agents/skills/<name>/SKILL.md`（open standard），MiMo Code 与 OpenCode 都默认识别，写一份别写两份。
+## Skill / MCP 管理（AI CLI）
+- Skill 统一写 `~/.agents/skills/<name>/SKILL.md`（open standard），多个 CLI 都默认识别，写一份别写两份。
 - `SKILL.md` 以 YAML frontmatter 开头，必填 `name`/`description`；`name` 须 `^[a-z0-9]+(-[a-z0-9]+)*${'$'}` 且与目录名一致，`description` 1..1024 字符。
 - 编辑导入的 skill **写回它原来的文件**，不能一律写 `.agents`（否则被同名高优先级覆盖，编辑看似无效）。
-- MCP 写进 `mimocode.jsonc` 与 `opencode.json` 的 `mcp.<name>` 段（`type`/`command`/`url`/`enabled`）。配置可能 JSONC，容错读取，绝不破坏用户配置。
+- MCP 写进各 CLI 配置的 `mcp.<name>` 段（`type`/`command`/`url`/`enabled`）。配置可能 JSONC，容错读取，绝不破坏用户配置。
 
 ## 其它通用习惯
-- 优先用成熟方案不自造轮子；解析/渲染/编解码/协议/格式转换先找成熟库，别手写正则解析标准格式。
-- 颜色跟随主题，禁止硬编码色值（网络工具箱用 ThemeManager，codetool 用主题属性/ColorStateList）。
-- 全中文交流；UI 改动先询问。防崩溃：`getConnectionInfo()`/`getStringExtra()`/`getString()` 等判 null；Fragment 网络回调 `runOnUiThread` 里加 `isAdded()`。
-- 点击运行脚本/长耗时准备时**先立刻切到终端页并提示**再后台准备，别等准备完才切页。
+- 优先用成熟方案不自造轮子；解析/渲染/编解码/协议/格式转换先找成熟库，别手写正则解析标准格式（必然漏 case）。
+- 防崩溃：可能返回 null 的调用判 null 或给占位；异步回调回 UI 前加「还活着」检查；`setText` 别传可能为 null 的对象。
+- 点击运行脚本 / 长耗时准备时**先立刻切到进度界面并提示**再后台跑，别等准备完才切页（用户以为点击没反应）。
+- 全中文交流；UI 改动先询问。
 """.trimIndent()
 
     /** 首次写入内置 skill；旧版内置内容自愈升级，写回原位置、不新增副本。

@@ -9,21 +9,14 @@
         android:layout_height="wrap_content"
         android:orientation="vertical"
         android:paddingHorizontal="20dp"
-        android:paddingTop="16dp"
+        android:paddingTop="8dp"
         android:paddingBottom="8dp">
-
-        <com.google.android.material.textview.MaterialTextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:text="新建写 ~/.agents/skills/&lt;name&gt;/SKILL.md（两个 CLI 默认扫描）；编辑导入的 skill 会写回它原来的目录。名称须小写字母/数字/连字符。"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?attr/colorOnSurfaceVariant" />
 
         <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="12dp"
-            android:hint="名称（如 code-review）">
+            android:layout_marginTop="4dp"
+            android:hint="名称（如 code-review，小写字母/数字/连字符）">
             <com.google.android.material.textfield.TextInputEditText
                 android:id="@+id/etSkillName"
                 android:layout_width="match_parent"
