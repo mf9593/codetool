@@ -127,9 +127,9 @@ object ScriptManager {
                 "#!/bin/sh\n" +
                     "#codetool: 示例（带参数）\n" +
                     "#codetool-desc: 带一个参数输入框的示例（名字）\n" +
-                    "#codetool-param: 参数（如 我的）\n" +
+                    "#codetool-param: 内容（如 我的）\n" +
                     "echo \"你好，\${1:-世界}！\"\n" +
-                    "echo \"今天是 \$(date '+%Y-%m-%d %H:%M:%S')\"\n"
+                    "echo \"今天是 \$(date '+%Y-%m-%d %H:%M:%S')，APP内置的示例\"\n"
             if (writeExample(f, content)) count++
         }
         // 示例 3：启动 opencode（带参数输入框）

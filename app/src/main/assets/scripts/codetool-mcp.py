@@ -4,6 +4,8 @@
 stdio 传输（每行一个 JSON-RPC 2.0 消息），只暴露 tools：
   browser_open / browser_list / browser_ws / browser_dom
   browser_screenshot / browser_eval / browser_help
+  shizuku_status / shizuku_exec / shizuku_screenshot / shizuku_ui_dump
+  model_list / model_schedule_get / model_schedule_set
 
 零依赖是有意为之：MCP stdio 只是换行分隔 JSON，容器离线时不保证能
 pip install SDK，所以只用 Python 标准库实现；CDP 是标准协议，
@@ -14,6 +16,7 @@ WebSocket 客户端仅实现 CDP 需要的单帧文本收发（非通用 WS 库�
   http://127.0.0.1:9222      →  Chrome DevTools Protocol（调试）
 """
 import base64
+import datetime
 import json
 import os
 import socket
@@ -28,6 +31,10 @@ BRIDGE = "/usr/share/tawc/browser"
 SHIZUKU_BRIDGE = "/usr/share/tawc/shizuku"
 CDP = "http://127.0.0.1:9222"
 HEADLESS_PROFILE = "/tmp/codetool-headless"
+MODELS_FILE = "/root/.config/codetool/ai-models.json"
+SCHEDULE_FILE = "/usr/share/tawc/model-schedule.json"
+HOLIDAYS_FILE = "/root/.config/codetool/holidays.json"
+BEIJING = datetime.timezone(datetime.timedelta(hours=8))
 
 CHROME_BINS = ("/usr/bin/google-chrome", "/usr/bin/google-chrome-stable",
                "/usr/bin/chromium", "/usr/bin/chromium-browser",
@@ -108,6 +115,33 @@ TOOLS = [
         "name": "shizuku_ui_dump",
         "description": "通过 Shizuku 用 uiautomator dump 导出当前界面的控件树（XML），返回容器内可读的路径。用于精确获取 App 界面上每个控件的文字、坐标、resource-id，定位 UI 元素比看截图更准。",
         "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "model_list",
+        "description": "列出用户在 app「AI 模型」里配置的全部模型（名称 / 服务商 / 模型 ID / 目标 CLI / 是否当前 / 是否停用）。配置定时切换前先用它确认模型名。",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "model_schedule_get",
+        "description": "读取 AI 模型定时切换规则：是否启用、高峰时段、高峰/闲时各自绑定的模型、当前北京时间与当前处于高峰还是闲时。",
+        "inputSchema": {"type": "object", "properties": {}},
+    },
+    {
+        "name": "model_schedule_set",
+        "description": "修改 AI 模型定时切换规则（按北京时间 UTC+8，默认 DeepSeek 口径：工作日 09:00–12:00、14:00–18:00 高峰，其余时段含周末/法定节假日为闲时）。只需传要改的字段：enabled / peak1Start / peak1End / peak2Start / peak2End / peakModel / peakTarget / offModel / offTarget / weekendOff / holidayOff。模型名必须存在于 model_list 中。保存后需让用户回 app 一次，系统闹钟才会按新边界重排。",
+        "inputSchema": {"type": "object", "properties": {
+            "enabled": {"type": "boolean"},
+            "peak1Start": {"type": "string", "description": "第一段高峰开始 HH:mm（北京时间，默认 09:00）"},
+            "peak1End": {"type": "string", "description": "第一段高峰结束 HH:mm（默认 12:00）"},
+            "peak2Start": {"type": "string", "description": "第二段高峰开始 HH:mm（默认 14:00）"},
+            "peak2End": {"type": "string", "description": "第二段高峰结束 HH:mm（默认 18:00；与开始相同表示不启用该段）"},
+            "peakModel": {"type": "string", "description": "高峰时段使用的模型名称（model_list 里的 name）"},
+            "peakTarget": {"type": "string", "description": "高峰模型写入哪个 CLI：mimo / opencode"},
+            "offModel": {"type": "string", "description": "闲时使用的模型名称"},
+            "offTarget": {"type": "string", "description": "闲时模型写入哪个 CLI：mimo / opencode"},
+            "weekendOff": {"type": "boolean", "description": "周六 / 周日是否全天按闲时处理（默认 true）"},
+            "holidayOff": {"type": "boolean", "description": "中国法定节假日是否全天按闲时处理（默认 true）"},
+        }},
     },
 ]
 
@@ -316,8 +350,190 @@ def shizuku_ui_dump():
     return "控件树已导出：%s（XML，容器内可直接读）。" % r.get("message", "").split("：")[-1]
 
 
+# ---------- AI 模型定时切换（与 app 侧 ModelScheduleManager 共用同一份规则文件） ----------
+# 只读写规则，不直接改 CLI 配置：真正切换模型由 app 负责（要同时写 mimo/opencode 配置）。
+# 北京时间固定 UTC+8，不依赖容器 tzdata。
+
+def _read_json(path, default):
+    try:
+        with open(path, encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return default
+
+
+def _parse_hm(v):
+    try:
+        h, m = str(v).strip().split(":")
+        h, m = int(h), int(m)
+        if 0 <= h <= 23 and 0 <= m <= 59:
+            return h * 60 + m
+    except Exception:
+        pass
+    return None
+
+
+_HOLIDAY_CACHE = {"stamp": object(), "dates": set()}
+
+
+def _holiday_set():
+    """中国法定节假日晚期覆盖文件（app 从内置数据注入，ISO 日期数组）。"""
+    try:
+        stamp = os.path.getmtime(HOLIDAYS_FILE)
+    except OSError:
+        stamp = None
+    if stamp != _HOLIDAY_CACHE["stamp"]:
+        data = _read_json(HOLIDAYS_FILE, None)
+        _HOLIDAY_CACHE["dates"] = set(str(x) for x in data) if isinstance(data, list) else set()
+        _HOLIDAY_CACHE["stamp"] = stamp
+    return _HOLIDAY_CACHE["dates"]
+
+
+def _peak_ranges(s):
+    """有效高峰段 [(start, end)]；时间非法或 start == end 视为停用该段。"""
+    out = []
+    for idx, dft_s, dft_e in (("1", "09:00", "12:00"), ("2", "14:00", "18:00")):
+        ps = _parse_hm(s.get("peak%sStart" % idx, dft_s))
+        pe = _parse_hm(s.get("peak%sEnd" % idx, dft_e))
+        if ps is None or pe is None or ps == pe:
+            continue
+        out.append((ps, pe))
+    return out
+
+
+def _slot_of(s, now):
+    """返回「高峰」/「周末闲时」/「法定节假日闲时」/「闲时」；规则无效返回说明文本。"""
+    if not s.get("enabled"):
+        return "未启用"
+    ranges = _peak_ranges(s)
+    if not ranges:
+        return "时段无效（没有启用任何高峰段）"
+    if s.get("weekendOff", True) and now.weekday() >= 5:
+        return "周末闲时"
+    if s.get("holidayOff", True) and now.strftime("%Y-%m-%d") in _holiday_set():
+        return "法定节假日闲时"
+    m = now.hour * 60 + now.minute
+
+    def hit(r):
+        ps, pe = r
+        return (m >= ps or m < pe) if ps > pe else (ps <= m < pe)
+
+    return "高峰" if any(hit(r) for r in ranges) else "闲时"
+
+
+def model_list():
+    models = _read_json(MODELS_FILE, None)
+    if not isinstance(models, list):
+        return "模型清单不存在或格式异常：%s（先在 app「AI 模型」页新增模型）" % MODELS_FILE
+    if not models:
+        return "还没有配置任何模型：请在 app「AI 模型」页新增。"
+    lines = ["共 %d 个模型（* = 当前使用）：" % len(models)]
+    for m in models:
+        if not isinstance(m, dict):
+            continue
+        flags = []
+        if m.get("current"):
+            flags.append("当前")
+        if not m.get("enabled", True):
+            flags.append("已停用")
+        lines.append("- %s%s | 服务商 %s | 模型 %s | 目标 %s" % (
+            m.get("name", "?"),
+            ("（" + "，".join(flags) + "）") if flags else "",
+            m.get("provider", "?"), m.get("modelId", "?"), m.get("target", "?")))
+    return "\n".join(lines)
+
+
+def model_schedule_get():
+    s = _read_json(SCHEDULE_FILE, None)
+    if not isinstance(s, dict):
+        return ("尚未配置定时切换（规则文件 %s 不存在）。\n"
+                "可用 model_schedule_set 创建，例如：enabled=true, peak1Start=09:00, peak1End=12:00, "
+                "peak2Start=14:00, peak2End=18:00, peakModel=..., offModel=... "
+                "配置前先调 model_list 看模型名。" % SCHEDULE_FILE)
+    now = datetime.datetime.now(BEIJING)
+    p1s, p1e = s.get("peak1Start", "09:00"), s.get("peak1End", "12:00")
+    p2s, p2e = s.get("peak2Start", "14:00"), s.get("peak2End", "18:00")
+    slot = _slot_of(s, now)
+    return "\n".join([
+        "定时切换：%s" % ("已启用" if s.get("enabled") else "未启用"),
+        "当前北京时间：%s（当前时段：%s）" % (now.strftime("%Y-%m-%d %H:%M"), slot),
+        "高峰 1：%s — %s（可跨零点）" % (p1s, p1e),
+        "高峰 2：%s — %s（开始=结束表示不启用）" % (p2s, p2e),
+        "  高峰模型：%s（写入 %s）" % (s.get("peakModel") or "未设置", s.get("peakTarget", "opencode")),
+        "闲时：其余所有时段（含午休、夜间、周末与法定节假日，自动）",
+        "  闲时模型：%s（写入 %s）" % (s.get("offModel") or "未设置", s.get("offTarget", "opencode")),
+        "周末规则：%s" % ("周六 / 周日全天算闲时" if s.get("weekendOff", True) else "周末与工作日相同"),
+        "法定节假日规则：%s（内置 2025–2027，可在 app 关闭）"
+        % ("全天算闲时" if s.get("holidayOff", True) else "与工作日相同"),
+        "行为：到点由 app 的后台闹钟自动切换模型，并通知用户重新打开终端（运行中的会话不会热更新）。",
+        "规则文件：%s（app 与 MCP 共用）" % SCHEDULE_FILE,
+    ])
+
+
+def model_schedule_set(a):
+    cur = _read_json(SCHEDULE_FILE, None)
+    if not isinstance(cur, dict):
+        cur = {"enabled": False, "peak1Start": "09:00", "peak1End": "12:00",
+               "peak2Start": "14:00", "peak2End": "18:00",
+               "peakModel": "", "peakTarget": "opencode",
+               "offModel": "", "offTarget": "opencode",
+               "weekendOff": True, "holidayOff": True}
+    for key in ("peak1Start", "peak1End", "peak2Start", "peak2End"):
+        if a.get(key) is not None:
+            v = str(a[key]).strip()
+            if _parse_hm(v) is None:
+                return "时间格式错误：%s 必须是 HH:mm（00:00–23:59）" % v
+            cur[key] = v
+    models = _read_json(MODELS_FILE, None)
+    if not isinstance(models, list):
+        models = []
+
+    def find_model(name, target):
+        for m in models:
+            if not isinstance(m, dict):
+                continue
+            if m.get("name") == name and m.get("target", "opencode") == target \
+                    and m.get("enabled", True):
+                return m
+        return None
+
+    for side in ("peak", "off"):
+        nk, tk = side + "Model", side + "Target"
+        if a.get(nk) is not None:
+            name = str(a[nk]).strip()
+            target = str(a.get(tk) or cur.get(tk) or "opencode").strip()
+            if name and find_model(name, target) is None:
+                return ("模型「%s」（目标 %s）不存在或已停用，先用 model_list 查看可用模型。"
+                        % (name, target))
+            cur[nk], cur[tk] = name, target
+        elif a.get(tk) is not None:
+            cur[tk] = str(a[tk]).strip()
+    if a.get("enabled") is not None:
+        cur["enabled"] = bool(a["enabled"])
+    if a.get("weekendOff") is not None:
+        cur["weekendOff"] = bool(a["weekendOff"])
+    if a.get("holidayOff") is not None:
+        cur["holidayOff"] = bool(a["holidayOff"])
+    if cur.get("enabled") and (not cur.get("peakModel") or not cur.get("offModel")):
+        return "启用前必须同时设置 peakModel 与 offModel（先调 model_list 选模型）。"
+    os.makedirs(os.path.dirname(SCHEDULE_FILE), exist_ok=True)
+    tmp = SCHEDULE_FILE + ".tmp"
+    with open(tmp, "w", encoding="utf-8") as f:
+        json.dump(cur, f, ensure_ascii=False, indent=2)
+    os.replace(tmp, SCHEDULE_FILE)
+    return ("已保存定时规则：%s\n\n注意：系统闹钟由 app 维护，"
+            "请让用户回 app「AI 模型」页一次（或重开 app），新边界时间才会排进闹钟；"
+            "已过边界会立即补切一次。\n\n" % SCHEDULE_FILE) + model_schedule_get()
+
+
 def call_tool(name, a):
     try:
+        if name == "model_list":
+            return model_list()
+        if name == "model_schedule_get":
+            return model_schedule_get()
+        if name == "model_schedule_set":
+            return model_schedule_set(a)
         if name == "shizuku_status":
             return shizuku_status()
         if name == "shizuku_exec":

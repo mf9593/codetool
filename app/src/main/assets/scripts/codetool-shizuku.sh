@@ -6,19 +6,39 @@
 #   codetool-shizuku screenshot [路径]  截屏到共享目录并拷到指定路径(默认 /tmp/ct-shot.png)
 #   codetool-shizuku uidump [路径]      导出界面控件树 XML 到指定路径(默认 /tmp/ct-ui.xml)
 # 底层: 写 /usr/share/tawc/shizuku/requests/<id>.json，轮询 responses/<id>.json。
+# JSON 编解码优先用 python3（容器 AI 环境标配）；缺失时退化 awk/sed（多行命令不支持，
+# 输出里的换行会保持字面量 \n——仅为兜底）。
 set -u
 BRIDGE=/usr/share/tawc/shizuku
 REQ="$BRIDGE/requests"; RES="$BRIDGE/responses"
 
-request() {  # request <action> <extra-json-fields>  → 输出响应 JSON
-    local action="$1" extra="${2:-}" id i
+# JSON 字符串转义：stdin 内容 → JSON 字符串内容（不含外层引号）。仅用于 python3 缺失兜底。
+json_escape() {
+    awk 'BEGIN{ORS=""} {gsub(/\\/,"\\\\"); gsub(/"/,"\\\""); gsub(/\r/,"\\r"); gsub(/\t/,"\\t"); if (NR>1) printf "\\n"; printf "%s", $0}'
+}
+
+request() {  # request <action> [cmd] → 输出响应 JSON
+    local action="$1" cmd="${2:-}" id i payload esc
     id="cli-$$-$(date +%s%N)"
     if [ ! -d "$REQ" ]; then
         echo '{"ok":false,"message":"桥目录不存在：请在 app 终端里启动过一次容器（桥随 App 常驻）"}'
         return 1
     fi
     mkdir -p "$RES" 2>/dev/null
-    printf '{"id":"%s","action":"%s"%s}' "$id" "$action" "$extra" > "$REQ/$id.tmp" 2>/dev/null || {
+    # 用 python3 构建合法 JSON：cmd 可含引号 / 换行 / 制表符等任意字符。
+    # （旧实现只转义反斜杠和引号，多行命令会写出非法 JSON 被 app 侧静默丢弃 → 35s 超时。）
+    if command -v python3 >/dev/null 2>&1; then
+        payload=$(ACTION="$action" CMD="$cmd" ID="$id" python3 -c 'import json,os
+print(json.dumps({"id": os.environ["ID"], "action": os.environ["ACTION"], "cmd": os.environ["CMD"]}, ensure_ascii=False))')
+    else
+        esc=$(printf '%s' "$cmd" | json_escape)
+        if [ -n "$esc" ]; then
+            payload="{\"id\":\"$id\",\"action\":\"$action\",\"cmd\":\"$esc\"}"
+        else
+            payload="{\"id\":\"$id\",\"action\":\"$action\"}"
+        fi
+    fi
+    printf '%s' "$payload" > "$REQ/$id.tmp" 2>/dev/null || {
         echo '{"ok":false,"message":"写入请求失败"}'; return 1; }
     mv "$REQ/$id.tmp" "$REQ/$id.json"      # 原子改名
     i=0
@@ -33,15 +53,24 @@ request() {  # request <action> <extra-json-fields>  → 输出响应 JSON
     return 1
 }
 
-# 从响应 JSON 里取 message 字段（仅做最小提取，避免引依赖）
-json_message() {  # 读 stdin 的 message
-    sed -n 's/.*"message":"\([^"]*\)".*/\1/p'
+# 从响应 JSON 里取 message 字段（真实换行；python3 优先，sed 仅兜底）。
+json_message() {  # 读 stdin 的响应
+    local raw out
+    raw=$(cat)
+    if command -v python3 >/dev/null 2>&1; then
+        out=$(printf '%s' "$raw" | python3 -c 'import json,sys
+try:
+    sys.stdout.write(json.load(sys.stdin).get("message",""))
+except Exception:
+    sys.exit(1)' 2>/dev/null) && { printf '%s' "$out"; return 0; }
+    fi
+    printf '%s' "$raw" | sed -n 's/.*"message":"\([^"]*\)".*/\1/p'
 }
 
 cmd="${1:-help}"
 case "$cmd" in
     status)
-        request "exec" ',"cmd":"id"' | { r=$(cat); msg=$(printf '%s' "$r" | json_message)
+        request "exec" "id" | { r=$(cat); msg=$(printf '%s' "$r" | json_message)
             case "$msg" in
                 *uid=2000*) echo "Shizuku 调试桥可用：$msg" ;;
                 *未授权*|*授权*) echo "未授权：请在 app 首页点「Shizuku」行申请授权。($msg)" ;;
@@ -52,11 +81,18 @@ case "$cmd" in
     exec)
         c="${2:-}"
         if [ -z "$c" ]; then echo "用法: codetool-shizuku exec '<命令>'"; exit 1; fi
-        esc=$(printf '%s' "$c" | sed 's/\\/\\\\/g; s/"/\\"/g')
-        request "exec" ",\"cmd\":\"$esc\"" | { msg=$(json_message)
-            # message 形如 "exit=N\n<输出>"，去掉前缀直接打印输出
-            printf '%s' "$msg" | sed 's/^exit=[-0-9]*\\n//'
-            printf '\n'; }
+        msg=$(request "exec" "$c" | json_message)
+        case "$msg" in
+            exit=*)
+                # message 形如 "exit=N\n<输出>"：去掉首行前缀，正文按真实多行输出；
+                # 非 0 退出码单独提示到 stderr，不污染 stdout 管道。
+                code=$(printf '%s\n' "$msg" | head -1 | sed 's/^exit=//')
+                body=$(printf '%s\n' "$msg" | tail -n +2)
+                if [ -n "$body" ]; then printf '%s\n' "$body"; fi
+                if [ "$code" != "0" ]; then echo "[exit=$code]" >&2; fi
+                ;;
+            *) printf '%s\n' "$msg" ;;
+        esac
         ;;
     screenshot)
         out="${2:-/tmp/ct-shot.png}"

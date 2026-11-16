@@ -32,6 +32,9 @@ class RootfsBackupFragment : Fragment() {
     private lateinit var btnBackup: MaterialButton
     private lateinit var btnRestore: MaterialButton
     private lateinit var btnBackupCancel: MaterialButton
+    private lateinit var backupList: android.widget.LinearLayout
+    private lateinit var backupEmptyHint: TextView
+    private lateinit var backupCount: TextView
     private var receiver: BroadcastReceiver? = null
 
     override fun onCreateView(
@@ -45,11 +48,15 @@ class RootfsBackupFragment : Fragment() {
         btnBackup = view.findViewById(R.id.btnBackup)
         btnRestore = view.findViewById(R.id.btnRestore)
         btnBackupCancel = view.findViewById(R.id.btnBackupCancel)
+        backupList = view.findViewById(R.id.backupList)
+        backupEmptyHint = view.findViewById(R.id.backupEmptyHint)
+        backupCount = view.findViewById(R.id.backupCount)
 
         btnBackup.setOnClickListener { startBackupService(null) }
         btnRestore.setOnClickListener { pickRestore() }
         btnBackupCancel.setOnClickListener { cancelBackupService() }
         syncBackupUi(RootfsBackupService.snapshot())
+        refreshBackupList()
 
         val r = object : BroadcastReceiver() {
             override fun onReceive(context: Context, intent: Intent) {
@@ -60,6 +67,7 @@ class RootfsBackupFragment : Fragment() {
                 when {
                     done -> {
                         syncBackupUi(null)
+                        refreshBackupList()
                         toast(msg.ifEmpty { "完成" })
                     }
                     err != null -> {
@@ -81,6 +89,31 @@ class RootfsBackupFragment : Fragment() {
     override fun onResume() {
         super.onResume()
         if (::backupProgress.isInitialized) syncBackupUi(RootfsBackupService.snapshot())
+        if (::backupList.isInitialized) refreshBackupList()
+    }
+
+    /** 可恢复备份列表：文件名 + 本地时间 + 大小（只读展示）。 */
+    private fun refreshBackupList() {
+        if (!::backupList.isInitialized) return
+        val files = RootfsBackupManager.listBackups()
+        backupCount.text = "${files.size} 个"
+        backupEmptyHint.visibility = if (files.isEmpty()) View.VISIBLE else View.GONE
+        backupList.removeAllViews()
+        val fmt = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm", java.util.Locale.getDefault())
+        files.forEach { f ->
+            val item = layoutInflater.inflate(R.layout.item_backup, backupList, false)
+            item.findViewById<TextView>(R.id.backupItemName).text = f.name
+            item.findViewById<TextView>(R.id.backupItemMeta).text =
+                "${fmt.format(java.util.Date(f.lastModified()))} · ${humanSize(f.length())}"
+            backupList.addView(item)
+        }
+    }
+
+    private fun humanSize(bytes: Long): String = when {
+        bytes >= 1L shl 30 -> String.format(java.util.Locale.US, "%.2f GB", bytes / 1073741824.0)
+        bytes >= 1L shl 20 -> String.format(java.util.Locale.US, "%.1f MB", bytes / 1048576.0)
+        bytes >= 1024 -> String.format(java.util.Locale.US, "%.0f KB", bytes / 1024.0)
+        else -> "$bytes B"
     }
 
     override fun onDestroyView() {

@@ -131,6 +131,8 @@ class TawcrootRuntime private constructor(private val context: Context) {
             put("TERM", "xterm-256color")
             put("LANG", "C.UTF-8")
             put("LC_ALL", "C.UTF-8")
+            // 统一北京时间（UTC+8），与 AI 模型定时切换口径一致
+            put("TZ", "Asia/Shanghai")
             // 合成器在 App 进程 setenv 了 XKB_CONFIG_ROOT 指向 App 私有目录，
             // chroot 内不可见 → xkbcommon 加载失败 → GUI 客户端（spark-store 等）段错误。
             // 容器内直接用发行版自带的 /usr/share/X11/xkb，必须移除该变量。
@@ -162,9 +164,34 @@ class TawcrootRuntime private constructor(private val context: Context) {
             // 终端会话默认 PATH 不一定包含它。
             val content = "export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin\n" +
                 "export XDG_RUNTIME_DIR=/tmp\n" +
-                "export WAYLAND_DISPLAY=/usr/share/tawc/wayland-0\n"
+                "export WAYLAND_DISPLAY=/usr/share/tawc/wayland-0\n" +
+                // 统一北京时间（UTC+8）：终端 date、CLI、脚本与 AI 模型定时切换口径一致
+                "export TZ=Asia/Shanghai\n"
             if (!profile.exists() || profile.readText() != content) {
                 profile.writeText(content)
+            }
+
+            // 时区校准：容器内 /etc/timezone + /etc/localtime 指向北京时间，
+            // 避免 Ubuntu 默认 UTC 导致 date / 日志 / 高峰闲时判断全部差 8 小时。
+            runCatching {
+                val tz = "Asia/Shanghai\n"
+                val tzFile = File(rootfsDir, "etc/timezone")
+                if (!tzFile.isFile || tzFile.readText() != tz) tzFile.writeText(tz)
+                val zone = File(rootfsDir, "usr/share/zoneinfo/Asia/Shanghai")
+                val localtime = File(rootfsDir, "etc/localtime")
+                if (zone.isFile) {
+                    // 链接目标必须是「容器内绝对路径」，chroot 后按容器根解析
+                    val target = "/usr/share/zoneinfo/Asia/Shanghai"
+                    val ok = localtime.exists() && java.nio.file.Files.isSymbolicLink(localtime.toPath()) &&
+                        runCatching {
+                            java.nio.file.Files.readSymbolicLink(localtime.toPath()).toString()
+                        }.getOrNull() == target
+                    if (!ok) {
+                        localtime.delete()
+                        java.nio.file.Files.createSymbolicLink(
+                            localtime.toPath(), java.nio.file.Paths.get(target))
+                    }
+                }
             }
 
             // 注入 codetool-browser：容器内 CLI / AI 模型调用 app 内置浏览器的统一入口。
@@ -201,6 +228,17 @@ class TawcrootRuntime private constructor(private val context: Context) {
                 shizuku.parentFile?.mkdirs()
                 shizuku.writeText(shizukuScript)
                 shizuku.setExecutable(true, false)
+            }
+
+            // 注入中国法定节假日表：app 内定时切换与 MCP 的 model_schedule_* 共用同一份，
+            // 单一来源 assets/scripts/model-holidays.json（2025–2027，来源 chinese-days）。
+            val holidays = File(rootfsDir, "root/.config/codetool/holidays.json")
+            val holidaysJson = runCatching {
+                context.assets.open("scripts/model-holidays.json").bufferedReader().use { it.readText() }
+            }.getOrNull()
+            if (holidaysJson != null && (!holidays.exists() || holidays.readText() != holidaysJson)) {
+                holidays.parentFile?.mkdirs()
+                holidays.writeText(holidaysJson)
             }
 
             // 注入 pm：容器里没有 Android 的 /system/bin/pm（rootfs 是 Ubuntu），

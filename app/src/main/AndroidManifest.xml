@@ -20,6 +20,8 @@
     <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
     <!-- 通知（Android 13+） -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- 模型定时切换：边界时间精确闹钟（Android 12+ 特殊访问，未授权时退化为宽松闹钟） -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
     <!-- 引导用户把电池优化设为「无限制」：锁屏后后台进程不被 Doze 冻结 -->
     <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
     <!-- Shizuku：以 shell（adb）身份调用 API，无需 root -->
@@ -143,6 +145,11 @@
             android:name=".runtime.RootfsBackupService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+
+        <!-- 模型定时切换：边界闹钟触发（高峰/闲时切换点）→ 自动切换模型 + 通知提醒重开终端 -->
+        <receiver
+            android:name=".ai.ModelScheduleReceiver"
+            android:exported="false" />
 
         <!-- FileProvider：让外部应用（文本编辑器等）能读取本应用文件（如日志 .log）。
              authorities 用 ${applicationId}.fileprovider，避免多渠道/调试包冲突。 -->

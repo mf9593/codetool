@@ -166,10 +166,13 @@ class FilesFragment : Fragment() {
         val codetool = File(ext, "Download/codetool")
         val download = File(ext, "Download")
         val logs = requireContext().getExternalFilesDir("logs")
+        val appData = File(ext, "Android/data/com.codetool.app")
         setChipChecked(v.findViewById(R.id.btnContainer), inContainer)
         setChipChecked(v.findViewById(R.id.btnCodeToolDir), !inContainer && currentDir == codetool)
         setChipChecked(v.findViewById(R.id.btnDownloadDir), !inContainer && currentDir == download)
         setChipChecked(v.findViewById(R.id.btnLogDir), !inContainer && logs != null && currentDir == logs)
+        // 之前漏了「应用数据」：其它 chip 选中会高亮，它永远不变 → 看起来样式不一致
+        setChipChecked(v.findViewById(R.id.btnAppDataDir), !inContainer && currentDir == appData)
     }
 
     private fun setChipChecked(chip: Chip, checked: Boolean) {

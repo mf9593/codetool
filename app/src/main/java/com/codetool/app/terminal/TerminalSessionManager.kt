@@ -127,6 +127,9 @@ class TerminalSessionManager(private val context: Context) {
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
             "LANG=C.UTF-8",
             "LC_ALL=C.UTF-8",
+            // 容器统一按北京时间（UTC+8）：与 AI 模型定时切换、DeepSeek 高峰/闲时计费口径一致，
+            // 终端里 date / 脚本取到的时间不再受 Android 系统时区影响。
+            "TZ=Asia/Shanghai",
             // 合成器在 App 进程 setenv 了 TAWC_XKB_CONFIG_ROOT，Termux 的
             // createSubprocess 会把父进程环境合并进来 → chroot 内不可见的
             // XKB_CONFIG_ROOT 让 xkbcommon 失败，GUI 客户端段错误。必须清掉。

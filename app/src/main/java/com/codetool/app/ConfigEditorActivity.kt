@@ -70,6 +70,7 @@ class ConfigEditorActivity : AppCompatActivity() {
                 R.id.action_config_save -> { saveCurrent(); true }
                 R.id.action_config_copy -> { copyToClipboard(etContent.text.toString()); true }
                 R.id.action_config_help -> { showHelp(); true }
+                R.id.action_config_format -> { formatCurrent(); true }
                 else -> false
             }
         }
@@ -79,6 +80,111 @@ class ConfigEditorActivity : AppCompatActivity() {
     override fun onCreateOptionsMenu(menu: Menu): Boolean {
         menuInflater.inflate(R.menu.menu_config_editor, menu)
         return true
+    }
+
+    /**
+     * 标题栏「格式化」：只对 JSON / JSONC 配置文件显示。
+     * 只调整空白缩进，字符串、数字与注释原文一律保留（不做 parse→重序列化，
+     * 避免 org.json 丢注释、改数字格式）。
+     */
+    private fun formatCurrent() {
+        val cfg = configs.getOrNull(selected) ?: return
+        if (!isJsonConfig(cfg.rel)) {
+            Toast.makeText(this, "当前文件不是 JSON 格式", Toast.LENGTH_SHORT).show()
+            return
+        }
+        val text = etContent.text.toString()
+        // 语法不合法时不格式化：缩进器按字符走，坏 JSON 会被排得更乱
+        validateJson(text, cfg.rel.endsWith(".jsonc"))?.let { err ->
+            Toast.makeText(this, "⚠️ $err，请先修正语法再格式化", Toast.LENGTH_LONG).show()
+            return
+        }
+        val formatted = prettyJson(text)
+        // 再校验一次，防止格式化器自身引入问题（宁可不动）
+        if (validateJson(formatted, cfg.rel.endsWith(".jsonc")) != null) {
+            Toast.makeText(this, "格式化失败：结果校验不通过，已保留原文", Toast.LENGTH_LONG).show()
+            return
+        }
+        if (formatted == text) {
+            Toast.makeText(this, "已经是格式化状态", Toast.LENGTH_SHORT).show()
+            return
+        }
+        etContent.setText(formatted)
+        Toast.makeText(this, "已格式化（内容未改）", Toast.LENGTH_SHORT).show()
+    }
+
+    private fun isJsonConfig(rel: String): Boolean =
+        rel.endsWith(".json") || rel.endsWith(".jsonc")
+
+    /**
+     * 保留字符串 / 数字原文与注释的 JSON(C) 缩进格式化。
+     * 规则：{ [ 后换行缩进，} ] 前换行回退，逗号换行，冒号后一个空格；
+     * 字符串内与注释内容原样输出，注释位置也保留。
+     */
+    private fun prettyJson(src: String): String {
+        val out = StringBuilder(src.length + 64)
+        var i = 0
+        var indent = 0
+        var inString = false
+
+        fun writeIndent() { repeat(indent) { out.append("  ") } }
+        fun skipWsAhead() { while (i < src.length && src[i].isWhitespace()) i++ }
+
+        while (i < src.length) {
+            val c = src[i]
+            if (inString) {
+                out.append(c)
+                if (c == '\\' && i + 1 < src.length) { out.append(src[i + 1]); i += 2; continue }
+                if (c == '"') inString = false
+                i++
+                continue
+            }
+            when {
+                c == '"' -> { inString = true; out.append(c); i++ }
+
+                // 行注释：原样保留，强制换行后继续（否则后续 token 会被注释吃掉）
+                c == '/' && i + 1 < src.length && src[i + 1] == '/' -> {
+                    while (i < src.length && src[i] != '\n') { out.append(src[i]); i++ }
+                    if (i < src.length) i++
+                    out.append('\n'); writeIndent(); skipWsAhead()
+                }
+
+                // 块注释：原样保留
+                c == '/' && i + 1 < src.length && src[i + 1] == '*' -> {
+                    out.append("/*"); i += 2
+                    while (i + 1 < src.length && !(src[i] == '*' && src[i + 1] == '/')) {
+                        out.append(src[i]); i++
+                    }
+                    if (i + 1 < src.length) { out.append("*/"); i += 2 }
+                }
+
+                c == '{' || c == '[' -> {
+                    out.append(c)
+                    i++
+                    skipWsAhead()
+                    val close = if (c == '{') '}' else ']'
+                    if (i < src.length && src[i] == close) {
+                        out.append(close); i++          // 空对象/空数组保持一行
+                    } else {
+                        indent++
+                        out.append('\n'); writeIndent()
+                    }
+                }
+
+                c == '}' || c == ']' -> {
+                    indent = (indent - 1).coerceAtLeast(0)
+                    while (out.isNotEmpty() && out.last().isWhitespace()) out.setLength(out.length - 1)
+                    out.append('\n'); writeIndent()
+                    out.append(c); i++
+                }
+
+                c == ',' -> { out.append(','); i++; skipWsAhead(); out.append('\n'); writeIndent() }
+                c == ':' -> { out.append(": "); i++; skipWsAhead() }
+                c.isWhitespace() -> i++
+                else -> { out.append(c); i++ }
+            }
+        }
+        return out.toString().trimEnd() + "\n"
     }
 
     /** 复制编辑器内容到剪贴板。 */

@@ -67,6 +67,11 @@ class MainActivity : AppCompatActivity() {
     /** 当前页位置（用于键盘切换按钮的显隐）。 */
     private var currentPage = 0
 
+    /** 模型定时切换：前台边界自检 + 防误触重启提示弹窗。 */
+    private val scheduleHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var scheduleTickRunnable: Runnable? = null
+    private var modelRestartDialog: androidx.appcompat.app.AlertDialog? = null
+
     override fun onCreate(savedInstanceState: Bundle?) {
         // 应用当前主题（必须在 setContentView 前；换主题后 recreate 时全局生效）
         ThemeManager.apply(this)
@@ -92,6 +97,18 @@ class MainActivity : AppCompatActivity() {
         viewPager.adapter = PagerAdapter(this)
         // 允许左右滑动切换
         viewPager.offscreenPageLimit = fragments.size
+
+        // 定时切换提醒弹窗预览（仅 debug 构建）：
+        // adb shell am start -n com.codetool.app/.MainActivity --ez codetool_debug_model_dialog true
+        if (isDebug && intent?.getBooleanExtra("codetool_debug_model_dialog", false) == true) {
+            window.decorView.post {
+                showModelRestartPrompt(
+                    "已按高峰时段（北京时间 18:45）把 mimo 模型从「sensenova/deepseek-v4-flash」切换为「sensenova/glm-5.2」\n\n" +
+                        "检测到 mimo 仍在运行：正在运行的会话仍使用旧模型。\n请关闭当前终端会话后重新打开，新模型才会生效。\n\n" +
+                        "（调试预览：实际触发时显示真实切换信息）"
+                )
+            }
+        }
 
         // 底部导航 ↔ ViewPager2 联动
         bottomNav.setOnItemSelectedListener { item ->
@@ -201,6 +218,59 @@ class MainActivity : AppCompatActivity() {
         // 延迟兜底：只在「仍停留在首页」时才收，避免误伤用户主动切到终端页打字。
         window.decorView.postDelayed({ if (currentPage != 1) hideImeUnlessTerminal(currentPage) }, 400)
         window.decorView.postDelayed({ if (currentPage != 1) hideImeUnlessTerminal(currentPage) }, 1200)
+        // 定时切换模型：回到前台兜底应用一次（休眠/进程被杀可能错过闹钟）。
+        // 后台切换已由 AlarmManager 完成；若仍有 CLI 在运行 → 弹防误触弹窗告知重启终端。
+        com.codetool.app.ai.ModelScheduleManager.runAndCheckPrompt(this)?.let {
+            showModelRestartPrompt(it)
+        }
+        scheduleNextModelTick()
+    }
+
+    override fun onPause() {
+        super.onPause()
+        scheduleHandler.removeCallbacksAndMessages(null)
+    }
+
+    /**
+     * 前台边界自检：AlarmManager 负责后台触发，前台用 Handler 保证到点立刻弹窗
+     * （系统闹钟在 MIUI 等 ROM 上可能被延迟/打断）。
+     */
+    private fun scheduleNextModelTick() {
+        scheduleTickRunnable?.let { scheduleHandler.removeCallbacks(it) }
+        val s = com.codetool.app.ai.ModelScheduleManager.load(this)
+        if (!s.enabled) return
+        val delay = com.codetool.app.ai.ModelScheduleManager.nextBoundaryMillis(s) ?: return
+        val r = Runnable {
+            com.codetool.app.ai.ModelScheduleManager.runAndCheckPrompt(this)?.let {
+                showModelRestartPrompt(it)
+            }
+            scheduleNextModelTick()
+        }
+        scheduleTickRunnable = r
+        scheduleHandler.postDelayed(r, delay + 1000)
+    }
+
+    /**
+     * 定时切换提醒弹窗（只告知，不操作终端）：后台已完成模型切换，
+     * 检测到 CLI 仍在运行时提醒用户手动重启终端。
+     * setCancelable(false) + setCanceledOnTouchOutside(false)：点外部或返回键都不会消失，
+     * 只有明确点「去终端 / 知道了」才关闭，避免误触把提示弄丢。
+     */
+    fun showModelRestartPrompt(text: String) {
+        if (isFinishing || isDestroyed) return
+        if (modelRestartDialog?.isShowing == true) return
+        val d = com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("模型已定时切换")
+            .setMessage(text)
+            .setPositiveButton("去终端") { _, _ -> viewPager.currentItem = 1 }
+            .setNegativeButton("知道了", null)
+            .setCancelable(false)
+            .create()
+        d.setCanceledOnTouchOutside(false)
+        // 双保险：显式吞掉返回键，避免个别 ROM 把返回键透传给 Activity 导致弹窗/页面消失
+        d.setOnKeyListener { _, keyCode, _ -> keyCode == android.view.KeyEvent.KEYCODE_BACK }
+        d.show()
+        modelRestartDialog = d
     }
 
     /** 非终端页收起输入法并清焦点，避免预创建的 TerminalView 抢焦点弹键盘。 */
