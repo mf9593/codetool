@@ -98,18 +98,31 @@ class AboutActivity : Activity() {
             setNavigationOnClickListener { finish() }
         }
 
-        // ─── 头部：图标 + 名称 + 版本标签 ───
-        val headerCard = MaterialCardView(this).apply {
+        // ─── 单一大卡片（用户反馈多张卡看着乱）：所有区块合并进一张卡，区块间细分割线 ───
+        val mainCard = MaterialCardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = dp(16) }
+            )
             setRadius(dp(20).toFloat())
             setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
         }
+        val mainLayout = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        // 区块间分割线（1dp，颜色随主题）
+        fun divider(): View = View(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
+            ).also { it.topMargin = dp(8); it.bottomMargin = dp(8) }
+            setBackgroundColor(divider)
+        }
+
+        // ─── 头部：图标 + 名称 + 版本标签 ───
         val headerLayout = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(20))
+            setPadding(0, dp(12), 0, dp(12))
         }
         ImageView(this).apply {
             setImageResource(R.drawable.ic_launcher_foreground)
@@ -133,19 +146,13 @@ class AboutActivity : Activity() {
             ).also { it.topMargin = dp(4) }
         }.also { v -> titleLayout.addView(v) }
         headerLayout.addView(titleLayout)
-        headerCard.addView(headerLayout)
+        mainLayout.addView(headerLayout)
+        mainLayout.addView(divider())
 
-        // ─── 信息卡片 ───
-        val infoCard = MaterialCardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = dp(16) }
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
+        // ─── 应用信息区块 ───
         val infoLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
+            setPadding(0, dp(8), 0, dp(8))
         }
         TextView(this).apply {
             text = "应用信息"
@@ -192,20 +199,14 @@ class AboutActivity : Activity() {
                 infoLayout.addView(row)
             }
         }
-        infoCard.addView(infoLayout)
+        mainLayout.addView(infoLayout)
+        mainLayout.addView(divider())
 
-        // ─── 检查更新卡片（GitHub Releases）───
-        val updateCard = MaterialCardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = dp(16) }
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
+        // ─── 检查更新行（GitHub Releases）───
         val updateRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
+            setPadding(0, dp(16), 0, dp(16))
             isClickable = true
             isFocusable = true
             val ripple = android.util.TypedValue()
@@ -240,20 +241,14 @@ class AboutActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             setColorFilter(onSurfaceVariant)
         }.also { updateRow.addView(it) }
-        updateCard.addView(updateRow)
+        mainLayout.addView(updateRow)
+        mainLayout.addView(divider())
 
-        // ─── 用户协议与免责声明卡片 ───
-        val agreementCard = MaterialCardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = dp(16) }
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
+        // ─── 用户协议与免责声明行 ───
         val agreementRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
+            setPadding(0, dp(16), 0, dp(16))
             isClickable = true
             isFocusable = true
             val ripple = android.util.TypedValue()
@@ -288,20 +283,14 @@ class AboutActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             setColorFilter(onSurfaceVariant)
         }.also { agreementRow.addView(it) }
-        agreementCard.addView(agreementRow)
+        mainLayout.addView(agreementRow)
+        mainLayout.addView(divider())
 
-        // ─── 重置引导状态卡片（调试/重走引导：清除 onboarding_done，下次启动重走协议→权限→AI 环境）───
-        val resetCard = MaterialCardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = dp(16) }
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
+        // ─── 重置引导状态行（调试/重走引导：清除 onboarding_done，下次启动重走协议→权限→AI 环境）───
         val resetRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
             gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
+            setPadding(0, dp(16), 0, dp(16))
             isClickable = true
             isFocusable = true
             val ripple = android.util.TypedValue()
@@ -345,19 +334,55 @@ class AboutActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             setColorFilter(onSurfaceVariant)
         }.also { resetRow.addView(it) }
-        resetCard.addView(resetRow)
+        mainLayout.addView(resetRow)
+        mainLayout.addView(divider())
 
-        // ─── 开源项目卡片 ───
-        val ossCard = MaterialCardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
+        // ─── QQ 交流群行（点击跳转手机 QQ 群）───
+        val qqRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(16), 0, dp(16))
+            isClickable = true
+            isFocusable = true
+            val ripple = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+            setBackgroundResource(ripple.resourceId)
+            setOnClickListener { openQqGroup() }
         }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_group)
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+            setColorFilter(accent)
+        }.also { qqRow.addView(it) }
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).also { it.leftMargin = dp(12) }
+            addView(TextView(this@AboutActivity).apply {
+                text = "QQ交流群"
+                textSize = 14f
+                setTextColor(onSurface)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@AboutActivity).apply {
+                text = "群号 559711374 · 点击加入"
+                textSize = 13f
+                setTextColor(onSurfaceVariant)
+            })
+        }.also { qqRow.addView(it) }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
+            setColorFilter(onSurfaceVariant)
+        }.also { qqRow.addView(it) }
+        mainLayout.addView(qqRow)
+        mainLayout.addView(divider())
+
+        // ─── 参考开源项目区块 ───
         val ossLayout = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
+            setPadding(0, dp(8), 0, dp(8))
         }
         TextView(this).apply {
             text = "参考开源项目"
@@ -401,57 +426,10 @@ class AboutActivity : Activity() {
                 }
             }.also { ossLayout.addView(it) }
         }
-        ossCard.addView(ossLayout)
-
-        // ─── QQ 交流群卡片（点击跳转手机 QQ 群）───
-        val qqCard = MaterialCardView(this).apply {
-            layoutParams = LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.topMargin = dp(16) }
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
-        val qqRow = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
-            isClickable = true
-            isFocusable = true
-            val ripple = android.util.TypedValue()
-            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
-            setBackgroundResource(ripple.resourceId)
-            setOnClickListener { openQqGroup() }
-        }
-        ImageView(this).apply {
-            setImageResource(R.drawable.ic_group)
-            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
-            setColorFilter(accent)
-        }.also { qqRow.addView(it) }
-        LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            layoutParams = LinearLayout.LayoutParams(
-                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).also { it.leftMargin = dp(12) }
-            addView(TextView(this@AboutActivity).apply {
-                text = "QQ交流群"
-                textSize = 14f
-                setTextColor(onSurface)
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-            })
-            addView(TextView(this@AboutActivity).apply {
-                text = "群号 559711374 · 点击加入"
-                textSize = 13f
-                setTextColor(onSurfaceVariant)
-            })
-        }.also { qqRow.addView(it) }
-        ImageView(this).apply {
-            setImageResource(R.drawable.ic_chevron_right)
-            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
-            setColorFilter(onSurfaceVariant)
-        }.also { qqRow.addView(it) }
-        qqCard.addView(qqRow)
+        mainLayout.addView(ossLayout)
 
         // ─── 滚动容器：背景跟随主题（隐藏滚动条，内容超出仍可滑动）───
+        mainCard.addView(mainLayout)
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             setBackgroundColor(bg)
@@ -461,13 +439,7 @@ class AboutActivity : Activity() {
             overScrollMode = android.view.View.OVER_SCROLL_NEVER
             addView(LinearLayout(this@AboutActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(headerCard)
-                addView(infoCard)
-                addView(updateCard)
-                addView(agreementCard)
-                addView(resetCard)
-                addView(ossCard)
-                addView(qqCard)
+                addView(mainCard)
             })
         }
 

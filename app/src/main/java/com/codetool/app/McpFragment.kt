@@ -6,6 +6,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.AdapterView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.Toast
@@ -41,6 +42,12 @@ class McpFragment : Fragment() {
             toast(if (n > 0) "已注册内置 MCP 服务（默认开启）" else "内置服务已存在")
             refresh()
         }
+        // 环境卡的一键修复：进 EnvSetupActivity 修复模式（唯一跑 apt 的入口），回来 onResume 刷新
+        view.findViewById<MaterialButton>(R.id.btnEnvRepair).setOnClickListener {
+            startActivity(android.content.Intent(requireContext(), EnvSetupActivity::class.java).apply {
+                putExtra(EnvSetupActivity.EXTRA_FIX_MODE, true)
+            })
+        }
         refresh()
     }
 
@@ -49,7 +56,48 @@ class McpFragment : Fragment() {
         if (::list.isInitialized) {
             refresh()
             refreshBrowserStatus()
+            refreshEnvStatus()
         }
+    }
+
+    /** 图标颜色语义（与 HomeFragment 同款）：tone 引用主题属性，切主题自动跟随。 */
+    private enum class IconTone(val csl: Int) {
+        OK(com.codetool.app.R.color.icon_tone_ok),
+        ERROR(com.codetool.app.R.color.icon_tone_error),
+        NEUTRAL(com.codetool.app.R.color.icon_tone_neutral),
+    }
+
+    private fun applyIcon(iv: ImageView, res: Int, tone: IconTone) {
+        iv.setImageResource(res)
+        androidx.core.content.ContextCompat.getColorStateList(requireContext(), tone.csl)?.let {
+            androidx.core.widget.ImageViewCompat.setImageTintList(iv, it)
+        }
+    }
+
+    /**
+     * 环境状态卡：MCP 能否启动取决于 python3 / 桥脚本 / 配置。check() 全轻量文件读，
+     * 主线程直接调；缺项才显示「一键修复环境」。
+     */
+    private fun refreshEnvStatus() {
+        val v = view ?: return
+        val st = com.codetool.app.ai.AiEnvHelper.check(requireContext())
+        // python3：显示真实版本号（usr/lib/python3.X 目录名），未知时如实写
+        v.findViewById<MaterialTextView>(R.id.envTextPython).text =
+            if (st.python3Installed) "python3 ${st.pythonVersion.ifEmpty { "（版本未知）" }}"
+            else "python3 未安装（MCP 无法启动）"
+        applyIcon(v.findViewById(R.id.envIconPython), com.codetool.app.R.drawable.ic_code,
+            if (st.python3Installed) IconTone.OK else IconTone.ERROR)
+        v.findViewById<MaterialTextView>(R.id.envTextBridge).text =
+            if (st.mcpScriptOk) "MCP 桥脚本已注入" else "MCP 桥脚本缺失"
+        applyIcon(v.findViewById(R.id.envIconBridge), com.codetool.app.R.drawable.ic_terminal,
+            if (st.mcpScriptOk) IconTone.OK else IconTone.ERROR)
+        v.findViewById<MaterialTextView>(R.id.envTextConfig).text =
+            if (st.mcpConfigured) "MCP 配置已注册" else "MCP 配置未注册"
+        applyIcon(v.findViewById(R.id.envIconConfig), com.codetool.app.R.drawable.ic_settings,
+            if (st.mcpConfigured) IconTone.OK else IconTone.ERROR)
+        // rootfs 未解压（首次启动前）算中性，不算坏
+        v.findViewById<MaterialButton>(R.id.btnEnvRepair).visibility =
+            if (st.allOk) View.GONE else View.VISIBLE
     }
 
     /** 内置 MCP 服务依赖浏览器；未装时给出明确安装入口，别让模型白调 browser_open。 */

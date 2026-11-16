@@ -36,7 +36,8 @@ object AiEnvHelper {
         val python3Installed: Boolean,
         val mcpScriptOk: Boolean,
         val mcpConfigured: Boolean,
-        val pythonPath: String = "",
+        /** python3 真实版本（如 "3.12"），来自文件读，非 exec 探测。 */
+        val pythonVersion: String = "",
     ) {
         val allOk: Boolean get() = rootfsReady && python3Installed && mcpScriptOk && mcpConfigured
     }
@@ -62,7 +63,19 @@ object AiEnvHelper {
             python3Installed = python,
             mcpScriptOk = mcp,
             mcpConfigured = configured,
+            pythonVersion = if (python) python3Version(rt).orEmpty() else "",
         )
+    }
+
+    /**
+     * python3 版本号（纯文件读，不起进程）：Ubuntu/Debian 在 usr/lib/python3.X 挂版本目录，
+     * usr/bin/python3 -> python3.X 是相对符号链接，File.name 拿不到，故扫 lib 目录。
+     */
+    private fun python3Version(rt: File): String? {
+        val lib = File(rt, "usr/lib")
+        val dirs = lib.listFiles { f -> f.isDirectory && Regex("python3\\.\\d+").matches(f.name) }
+            ?: return null
+        return dirs.maxByOrNull { it.name }?.name?.removePrefix("python")
     }
 
     /**
