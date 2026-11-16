@@ -213,4 +213,10 @@ class TawcrootRuntime private constructor(private val context: Context) {
             Log.w(TAG, "ensureGuiBridge failed: ${e.message}")
         }
     }
+
+    /**
+     * 公开的桥注入入口：给「AI 环境自愈 / 首次引导安装环境 / 包管理一键修复」用，
+     * 显式重新写入浏览器 / MCP / Shizuku 桥脚本与内置 skill / MCP 配置（幂等）。
+     */
+    fun ensureGuiBridgePublic(rootfsDir: File) = ensureGuiBridge(rootfsDir)
 }

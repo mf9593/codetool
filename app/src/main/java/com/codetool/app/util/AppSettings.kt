@@ -63,6 +63,12 @@ object AppSettings {
             .edit().putBoolean(KEY_ONBOARDING_DONE, true).apply()
     }
 
+    /** 清除引导完成标记（关于页「重新进入引导」用，幂等）。 */
+    fun resetOnboarding(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_ONBOARDING_DONE, false).apply()
+    }
+
     /** 容器挂载 Android 共享存储的模式。 */
     object MountMode {
         const val DOWNLOAD = "download"   // 仅 Download（默认，最小暴露）

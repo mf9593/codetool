@@ -290,6 +290,63 @@ class AboutActivity : Activity() {
         }.also { agreementRow.addView(it) }
         agreementCard.addView(agreementRow)
 
+        // ─── 重置引导状态卡片（调试/重走引导：清除 onboarding_done，下次启动重走协议→权限→AI 环境）───
+        val resetCard = MaterialCardView(this).apply {
+            layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
+            ).also { it.bottomMargin = dp(16) }
+            setRadius(dp(16).toFloat())
+            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
+        }
+        val resetRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(dp(20), dp(16), dp(20), dp(16))
+            isClickable = true
+            isFocusable = true
+            val ripple = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+            setBackgroundResource(ripple.resourceId)
+            setOnClickListener {
+                com.codetool.app.util.AppSettings.resetOnboarding(this@AboutActivity)
+                Toast.makeText(this@AboutActivity, "引导状态已清除，下次启动会重走协议/权限/AI 环境引导", Toast.LENGTH_LONG).show()
+                // 直接重新进 MainActivity 走引导链
+                val i = android.content.Intent(this@AboutActivity, MainActivity::class.java).apply {
+                    addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                }
+                startActivity(i)
+                finish()
+            }
+        }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_refresh)
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+            setColorFilter(accent)
+        }.also { resetRow.addView(it) }
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).also { it.leftMargin = dp(12) }
+            addView(TextView(this@AboutActivity).apply {
+                text = "重新进入引导"
+                textSize = 14f
+                setTextColor(onSurface)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@AboutActivity).apply {
+                text = "清除权限/环境引导状态，下次启动从头走"
+                textSize = 13f
+                setTextColor(onSurfaceVariant)
+            })
+        }.also { resetRow.addView(it) }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
+            setColorFilter(onSurfaceVariant)
+        }.also { resetRow.addView(it) }
+        resetCard.addView(resetRow)
+
         // ─── 开源项目卡片 ───
         val ossCard = MaterialCardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
@@ -408,6 +465,7 @@ class AboutActivity : Activity() {
                 addView(infoCard)
                 addView(updateCard)
                 addView(agreementCard)
+                addView(resetCard)
                 addView(ossCard)
                 addView(qqCard)
             })

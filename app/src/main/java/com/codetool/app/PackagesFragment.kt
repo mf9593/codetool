@@ -175,6 +175,14 @@ class PackagesFragment : Fragment() {
             )
         }
         refreshBrowserStatus()
+        // 一键修复 AI 环境：rootfs 缺 python3 / MCP 桥损坏导致 MCP 起不来时自愈
+        v.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnEnvFix)
+            .setOnClickListener {
+                startActivity(android.content.Intent(requireContext(),
+                    com.codetool.app.EnvSetupActivity::class.java).apply {
+                    putExtra(com.codetool.app.EnvSetupActivity.EXTRA_FIX_MODE, true)
+                })
+            }
         return v
     }
 

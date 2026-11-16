@@ -93,6 +93,12 @@
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
+        <!-- AI 环境安装（首次启动第三引导页 / 包管理一键修复共用）：装 python3 + MCP 桥 -->
+        <activity
+            android:name=".EnvSetupActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
         <!-- tawc compositor：全屏 SurfaceView 渲染容器 GUI 窗口 -->
         <activity
             android:name=".gui.TawcCompositorActivity"

@@ -113,6 +113,17 @@
             app:icon="@drawable/ic_display"
             app:iconGravity="textStart" />
 
+        <!-- 一键修复 AI 环境：rootfs 缺 python3 / MCP 桥损坏时，MCP 起不来。点这里自愈。 -->
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnEnvFix"
+            style="@style/Widget.Material3.Button.TonalButton"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
+            android:text="一键修复 AI 环境（MCP 起不来时）"
+            app:icon="@drawable/ic_refresh"
+            app:iconGravity="textStart" />
+
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="match_parent"
             android:layout_height="wrap_content"

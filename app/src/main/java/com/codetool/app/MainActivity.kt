@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     /** 首次启动用户协议页的请求码。 */
     private val REQUEST_AGREEMENT = 900
     private val REQUEST_ONBOARD = 901
+    private val REQUEST_ENV = 902
 
     /** 当前页位置（用于键盘切换按钮的显隐）。 */
     private var currentPage = 0
@@ -138,8 +139,8 @@ class MainActivity : AppCompatActivity() {
             return  // 引导未完成前不初始化；结果在 onActivityResult 处理
         }
 
-        // 协议已同意 + 引导已完成 → 正常初始化（含权限申请）
-        onFullyOnboarded()
+        // 协议已同意 + 引导已完成 → 按 AI 环境状态继续（未就绪进第三引导页）
+        maybeGoEnvSetupOrFully()
     }
 
     /** 协议 + 引导都完成后才走：申请权限 → 自动解压 rootfs。 */
@@ -148,16 +149,26 @@ class MainActivity : AppCompatActivity() {
         maybeAutoInstallRootfs()
     }
 
+    /** 引导完成后的环境判断：AI 环境（python3/MCP 桥）未就绪 → 第三引导页，否则正常初始化。 */
+    private fun maybeGoEnvSetupOrFully() {
+        val envOk = com.codetool.app.ai.AiEnvHelper.check(this).allOk
+        if (!envOk) {
+            EnvSetupActivity.startForResult(this, REQUEST_ENV)
+        } else {
+            onFullyOnboarded()
+        }
+    }
+
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
         when (requestCode) {
             REQUEST_AGREEMENT -> {
                 if (resultCode == RESULT_OK) {
-                    // 已同意协议 → 进引导页（若未完成）；都完成则正常初始化
+                    // 已同意协议 → 进引导页（若未完成）；都完成则按环境状态继续
                     if (!AppSettings.onboardingDone(this)) {
                         OnboardingActivity.start(this, REQUEST_ONBOARD)
                     } else {
-                        onFullyOnboarded()
+                        maybeGoEnvSetupOrFully()
                     }
                 } else {
                     finishAffinity()  // 不同意协议：退出
@@ -165,9 +176,17 @@ class MainActivity : AppCompatActivity() {
             }
             REQUEST_ONBOARD -> {
                 if (resultCode == RESULT_OK) {
-                    onFullyOnboarded()  // 引导完成：申请权限 + 正常初始化
+                    // 引导完成 → 第三引导页（AI 环境未就绪先装）或正常初始化
+                    maybeGoEnvSetupOrFully()
                 } else {
                     finishAffinity()  // 引导页返回：退出（未授权不进主页）
+                }
+            }
+            REQUEST_ENV -> {
+                if (resultCode == RESULT_OK) {
+                    onFullyOnboarded()  // 环境装了（或用户跳过修复模式）：正常初始化
+                } else {
+                    finishAffinity()  // 第三引导页返回：退出
                 }
             }
         }

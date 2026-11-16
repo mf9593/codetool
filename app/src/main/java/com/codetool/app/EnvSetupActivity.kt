@@ -1,0 +1,132 @@
+package com.codetool.app
+
+import android.app.Activity
+import android.content.Intent
+import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import androidx.lifecycle.lifecycleScope
+import com.codetool.app.ai.AiEnvHelper
+import com.codetool.app.theme.ThemeManager
+import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.button.MaterialButton
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.textview.MaterialTextView
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
+/**
+ * 首次启动第三引导页 / 包管理「一键修复环境」共用：
+ * 检测器容器 AI 环境（rootfs + python3 + codetool-mcp 桥），缺就一键安装
+ * （apt 装 python3 + 注入桥）。装好才能用 MCP（browser_* / shizuku_*）。
+ *
+ * 用法：
+ *  - 首次引导：OnboardingActivity 完成后由 MainActivity 跳入（requestCode 见调用方）
+ *  - 包管理一键修复：从 PackagesFragment 跳入，装完返回
+ */
+class EnvSetupActivity : AppCompatActivity() {
+
+    private lateinit var tvStatus: MaterialTextView
+    private lateinit var tvLog: MaterialTextView
+    private lateinit var progressCard: android.view.View
+    private lateinit var progressTitle: MaterialTextView
+    private lateinit var progress: LinearProgressIndicator
+    private lateinit var btnNext: MaterialButton
+    private lateinit var btnInstall: MaterialButton
+
+    /** 一键修复模式（包管理进入）不要求「开始使用」禁用到装完，检测完即可回。 */
+    private var fixMode = false
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        setTheme(ThemeManager.resolveStyle(this))
+        super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_env_setup)
+
+        fixMode = intent.getBooleanExtra(EXTRA_FIX_MODE, false)
+
+        findViewById<MaterialToolbar>(R.id.envToolbar).setNavigationOnClickListener { finish() }
+        tvStatus = findViewById(R.id.envStatusText)
+        tvLog = findViewById(R.id.envLogText)
+        progressCard = findViewById(R.id.envProgressCard)
+        progressTitle = findViewById(R.id.envProgressTitle)
+        progress = findViewById(R.id.envProgress)
+        btnNext = findViewById(R.id.envNext)
+        btnInstall = findViewById(R.id.envInstallBtn)
+
+        btnInstall.setOnClickListener { install() }
+        btnNext.setOnClickListener {
+            setResult(RESULT_OK)
+            finish()
+        }
+
+        refreshStatus()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        refreshStatus()  // 从后台/安装返回后刷新
+    }
+
+    private fun refreshStatus() {
+        val st = AiEnvHelper.check(this)
+        tvStatus.text = if (st.allOk) {
+            "✓ 环境就绪（python3 ✓ MCP 桥 ✓ 配置 ✓）"
+        } else {
+            buildString {
+                if (!st.rootfsReady) append("\n✗ rootfs 未解压")
+                if (!st.python3Installed) append("\n✗ 缺少 python3（MCP 无法启动）")
+                if (!st.mcpScriptOk) append("\n✗ MCP 桥脚本缺失")
+                if (!st.mcpConfigured) append("\n✗ MCP 配置未注册")
+                if (st.python3Installed && !st.mcpScriptOk) append("\n提示：点「安装环境」重注入桥")
+            }.trim().ifEmpty { "环境异常" }
+        }
+        if (st.allOk) {
+            btnInstall.isEnabled = false
+            btnNext.isEnabled = true
+            btnNext.visibility = android.view.View.VISIBLE
+        } else if (fixMode) {
+            // 修复模式：装不装都能返回（不强制）
+            btnNext.isEnabled = true
+            btnInstall.text = "一键修复环境"
+        } else {
+            btnNext.isEnabled = false
+            btnInstall.text = "安装环境"
+        }
+    }
+
+    private fun install() {
+        btnInstall.isEnabled = false
+        btnNext.isEnabled = false
+        if (!fixMode) btnNext.visibility = android.view.View.GONE
+        progressCard.visibility = android.view.View.VISIBLE
+        progressTitle.visibility = android.view.View.VISIBLE
+        progress.visibility = android.view.View.VISIBLE
+        tvLog.text = ""
+        lifecycleScope.launch {
+            val ok = withContext(Dispatchers.IO) {
+                AiEnvHelper.ensure(this@EnvSetupActivity) { line ->
+                    runOnUiThread { tvLog.append(line + "\n") }
+                }
+            }
+            progress.visibility = android.view.View.GONE
+            progressTitle.visibility = android.view.View.GONE
+            refreshStatus()
+            if (!ok && !fixMode) {
+                tvStatus.text = "安装未完成，请重试或查看上方输出"
+                btnInstall.isEnabled = true
+                btnNext.isEnabled = false
+            }
+        }
+    }
+
+    companion object {
+        const val EXTRA_FIX_MODE = "fix_mode"
+
+        fun startForResult(activity: Activity, requestCode: Int, fixMode: Boolean = false) {
+            activity.startActivityForResult(
+                Intent(activity, EnvSetupActivity::class.java).putExtra(EXTRA_FIX_MODE, fixMode),
+                requestCode
+            )
+        }
+    }
+}

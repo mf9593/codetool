@@ -47,7 +47,9 @@
     </LinearLayout>
 
     <!-- 终端主体：占满剩余空间（weight 在 LinearLayout 生效，不被底部按键遮挡） -->
-    <FrameLayout
+    <!-- 外包 VerticalInterceptLayout：终端竖直滚动优先，外层主 ViewPager2 不抢手势
+         （否则上下滑动带一点水平分量会误切左右页面 tab） -->
+    <com.codetool.app.VerticalInterceptLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1">
@@ -65,7 +67,7 @@
             android:layout_height="match_parent"
             android:background="?attr/colorSurface" />
 
-    </FrameLayout>
+    </com.codetool.app.VerticalInterceptLayout>
 
     <!-- 底部快捷键：双面板左右滑动（基础键 | F键），每面板两行 -->
     <!-- 外层容器禁止父 ViewPager2 拦截，面板滑动只切面板不切主页面 -->

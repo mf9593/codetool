@@ -235,19 +235,22 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 """.trimIndent()
 
     private const val SYSTEM_DESC =
-        "终端里运行的是 rootfs 里的 Ubuntu 系统（不是模拟器 / 玩具 shell）：可以直接跑 ping / curl / apt / adb 等系统命令安装组件、做网络诊断，无需额外中转。需要装通用工具（ping、curl、vim、jq 等）先确认包里有没有，没有就让用户安装或引导用系统命令，装完验证。"
+        "终端里跑的是 rootfs 里的 Ubuntu 系统（由 tawcroot 模拟 chroot 运行，无 root 权限、原理类似 PRoot 的单进程版本）：可直接跑 ping / curl / apt / adb 等系统命令安装组件、做网络诊断。装通用工具先确认包里有没有，没有就用 apt 装（容器内 root 是模拟映射，不代表 Android 已 root），装完必须验证。"
 
     private val SYSTEM_BODY = """
 # rootfs Ubuntu 系统环境（可直接调系统命令）
 
-**你在终端 / 容器里跑的是真正的 Ubuntu（aarch64）**，不是模拟器、不是玩具 shell——
+**你在终端 / 容器里跑的是 Ubuntu（aarch64）的 rootfs**，不是模拟器、不是玩具 shell——
 能直接执行系统命令，装组件、跑诊断、做网络排查都行。这页告诉你怎么正确用它。
 
-## 环境
-- 系统：Ubuntu（aarch64），容器由 app 的 boot 流程挂载（rootfs + proot/共享目录）。
-- 用户：容器内以 root 身份操作；包管理走 `apt`。
-- 网络：容器与 app 共享网络栈（tawcroot 不隔离 netns），loopback 与宿主机互通；
-  诊断网络直接用 `ping` / `curl` / `ss`（IP 用宿主机的）。
+## 环境（tawcroot 模拟 chroot，**无 root**）
+- 系统：Ubuntu（aarch64）rootfs，由 **tawcroot** 运行——它**模拟 chroot**（ptrace 拦截
+  系统调用、把路径重写到 rootfs），**原理类似 PRoot 但用单进程实现、更快**；**不是**真正的
+  `chroot(2)`（那需要 root，Android app 没有），**更不是 proot 程序**。
+- 用户：容器内是 **root（模拟映射的 uid 0）**，包管理走 `apt`——但这**不代表 Android 已
+  root**，也不代表能访问需要真 root 的设备资源（内核模块、真实 mount 等）。
+- 限制：共享宿主 Android 内核，无 systemd（容器内直接 /bin/bash 流程）；网络与 app 共享
+  （tawcroot 不隔离 netns），loopback 与宿主机互通。
 
 ## 可以直接执行的系统命令（无需额外桥接）
 - `ping <ip|域名>` — ICMP 可达性（网络诊断第一查）
@@ -261,7 +264,7 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 ## 装通用工具（按需，装完必须验证）
 1. 先判断已装：`command -v ping` / `ping --version`（真实自检，别假定装好了）。
 2. 没装且是通用工具（ping/curl/vim/jq/ffmpeg 等），**先确认包名能否装**，
-   安装用 `apt-get update && apt-get install -y <包>`（容器内是 root）。
+   安装用 `apt-get update && apt-get install -y <包>`（容器内是模拟映射的 root）。
 3. **装完必须验证**：`command -v <bin>` + 跑一次 `--version` / 实际功能，
    不能只看到 apt 输出 install 成功就当装好（可能依赖缺失跑不起来）。
 4. 装不动（缺仓库 / 缺依赖）就提示用户，别反复重试浪费时间。
@@ -713,7 +716,7 @@ apksigner verify --print-certs app-debug.apk
         var n = 0
         n += ensureOne(ctx, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY, "browser_status")
         n += ensureOne(ctx, "codetool-shizuku", SHIZUKU_DESC, SHIZUKU_BODY, "shizuku_exec")
-        n += ensureOne(ctx, "codetool-system", SYSTEM_DESC, SYSTEM_BODY, "rootfs Ubuntu 系统环境")
+        n += ensureOne(ctx, "codetool-system", SYSTEM_DESC, SYSTEM_BODY, "模拟 chroot")
         n += ensureOne(ctx, "codetool-dev", DEV_DESC, DEV_BODY, "codetool-dev-conventions")
         return n
     }
