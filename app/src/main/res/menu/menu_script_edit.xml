@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 内置编辑器标题栏菜单：复制全部（方便把 .log 内容一键复制出去） -->
+<!-- 内置编辑器标题栏菜单：保存（主操作，移入标题栏）、复制全部（.log 内容一键带出） -->
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
 
@@ -8,4 +8,10 @@
         android:title="复制全部"
         android:icon="@drawable/ic_copy"
         app:showAsAction="ifRoom" />
+
+    <item
+        android:id="@+id/action_save"
+        android:title="保存脚本"
+        android:icon="@drawable/ic_check"
+        app:showAsAction="always" />
 </menu>

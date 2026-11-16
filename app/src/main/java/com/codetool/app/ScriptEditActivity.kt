@@ -74,25 +74,21 @@ class ScriptEditActivity : AppCompatActivity() {
         editor = findViewById(R.id.scriptEditor)
         nameLayout = findViewById(R.id.nameLayout)
         nameInput = findViewById(R.id.nameInput)
-        findViewById<MaterialButton>(R.id.saveBtn).setOnClickListener { save() }
+        // 保存按钮已移入标题栏（menu action_save）；底部不再放按钮
         toolbar.setNavigationOnClickListener { finish() }
 
-        // 标题栏「复制全部」：把编辑器全文复制到剪贴板，方便把 .log 等内容一键带出
+        // 标题栏菜单：复制全部（带 .log 内容出去）+ 保存（主操作，移入标题栏）
         toolbar.inflateMenu(R.menu.menu_script_edit)
         toolbar.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_copy_all -> { copyAll(); true }
+                R.id.action_save -> { save(); true }
                 else -> false
             }
         }
 
         // 状态栏 inset 由 AppBarLayout(fitsSystemWindows) 自动消费；
-        // 这里只处理底部导航条 inset 给保存按钮，避免被手势条遮挡
-        ViewCompat.setOnApplyWindowInsetsListener(findViewById(R.id.saveBtn)) { v, insets ->
-            val nav = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
-            v.updatePadding(bottom = nav.bottom)
-            insets
-        }
+        // 保存按钮已移入标题栏，底部无控件，导航条 inset 交给编辑器自身留白
 
         val path = intent.getStringExtra(EXTRA_PATH)
         createMode = intent.getBooleanExtra(EXTRA_CREATE, false)
