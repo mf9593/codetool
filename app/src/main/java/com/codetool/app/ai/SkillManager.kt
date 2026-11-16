@@ -235,7 +235,7 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 """.trimIndent()
 
     private const val SYSTEM_DESC =
-        "终端里跑的是 rootfs 里的 Ubuntu 系统（由 tawcroot 模拟 chroot 运行，无 root 权限、原理类似 PRoot 的单进程版本）：可直接跑 ping / curl / apt / adb 等系统命令安装组件、做网络诊断。装通用工具先确认包里有没有，没有就用 apt 装（容器内 root 是模拟映射，不代表 Android 已 root），装完必须验证。"
+        "终端里跑的是 rootfs 里的 Ubuntu 系统（由 tawcroot 模拟 chroot 运行，无 root 权限、原理类似 PRoot 的单进程版本）：可直接跑 ping / curl / apt / adb 等系统命令安装组件、做网络诊断。装通用工具先确认包里有没有，没有就用 apt 装（容器内 root 是模拟映射，不代表 Android 已 root），装完必须验证。需要新能力可从 skill 商店搜索安装 skill（SkillHub / SkillStore / SkillsMP / 讯飞等，装前必须安全审查）。"
 
     private val SYSTEM_BODY = """
 # rootfs Ubuntu 系统环境（可直接调系统命令）
@@ -276,6 +276,28 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
   比 `chmod +x` 可靠（跨挂载盘 chmod 可能无效）。`chmod +x` 无效时也改走解释器。
 - **先在前台跑一遍确认输出正常，再放后台**（`nohup ... &` / 任务管理器），
   别直接后台启动没验证过的命令。
+
+## Skill 商店（按需扩展能力）
+
+想增强能力时，可以从 skill 商店搜索/安装现成的 skill，装到容器内
+`~/.agents/skills/<名字>/SKILL.md`（MiMo Code 与 OpenCode 都默认扫描该目录）。
+商店自行搜索比较，判断哪个满足需求再装；**装任何 skill 前必须先做安全审查**（见下）。
+
+1. **SkillHub**（国内优先，加速/合规）：按官方文档安装——
+   `curl -s https://skillhub.cn/install/skillhub.md` 读文档后按其说明安装 CLI 并使用。
+2. **SkillStore** — https://skillstore.io/zh-hans
+3. **SkillsMP** — https://skillsmp.com/zh
+4. **人人 Skill** — https://www.rrskill.cn/
+5. **Skills.sh** — https://www.skills.sh/
+6. **LobeHub Skills** — https://lobehub.com/zh/skills
+7. **讯飞 Astron SkillHub** — https://skill.xfyun.cn/
+
+**安全审查（装任何 skill 前，必须逐条做）：**
+1. 先解压/下载到临时目录，**通读 SKILL.md 与全部脚本代码**，不要只看描述。
+2. 危险信号：`rm -rf`、`curl ... | bash` 盲执行、base64 混淆内容、向陌生域名外传数据
+   （文件/剪贴板/环境变量）、索要 API key 或账号密码、要求关闭安全设置。
+3. 有疑点 → **不装**，向用户说明原因；用户明确确认后才可继续。
+4. 审查通过再移入 `~/.agents/skills/`，装完验证 CLI 能识别（重新进 skill 列表确认）。
 
 ## 注意（浏览器等特殊软件）
 - 依赖 app 前置能力的（如内置浏览器调试）走对应 skill（`codetool-browser`），
@@ -716,7 +738,7 @@ apksigner verify --print-certs app-debug.apk
         var n = 0
         n += ensureOne(ctx, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY, "browser_status")
         n += ensureOne(ctx, "codetool-shizuku", SHIZUKU_DESC, SHIZUKU_BODY, "shizuku_exec")
-        n += ensureOne(ctx, "codetool-system", SYSTEM_DESC, SYSTEM_BODY, "模拟 chroot")
+        n += ensureOne(ctx, "codetool-system", SYSTEM_DESC, SYSTEM_BODY, "skillhub.cn")
         n += ensureOne(ctx, "codetool-dev", DEV_DESC, DEV_BODY, "codetool-dev-conventions")
         return n
     }

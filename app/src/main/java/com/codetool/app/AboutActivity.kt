@@ -98,23 +98,34 @@ class AboutActivity : Activity() {
             setNavigationOnClickListener { finish() }
         }
 
-        // ─── 单一大卡片（用户反馈多张卡看着乱）：所有区块合并进一张卡，区块间细分割线 ───
-        val mainCard = MaterialCardView(this).apply {
+        // ─── 三张中卡片（用户反馈整张太大）：卡1 头部+应用信息、卡2 操作行、卡3 开源项目 ───
+        fun card() = MaterialCardView(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            setRadius(dp(20).toFloat())
+            ).also { it.bottomMargin = dp(12) }
+            setRadius(dp(16).toFloat())
             setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
         }
-        val mainLayout = LinearLayout(this).apply {
+        val card1 = card()   // 头部 + 应用信息
+        val layout1 = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
             setPadding(dp(20), dp(8), dp(20), dp(8))
         }
-        // 区块间分割线（1dp，颜色随主题）
+        val card2 = card()   // 操作行：检查更新 / 协议 / 重新引导 / QQ
+        val layout2 = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(4), dp(20), dp(4))
+        }
+        val card3 = card()   // 参考开源项目
+        val layout3 = LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            setPadding(dp(20), dp(8), dp(20), dp(8))
+        }
+        // 行间分割线（1dp，颜色随主题）
         fun divider(): View = View(this).apply {
             layoutParams = LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
-            ).also { it.topMargin = dp(8); it.bottomMargin = dp(8) }
+            )
             setBackgroundColor(divider)
         }
 
@@ -146,8 +157,7 @@ class AboutActivity : Activity() {
             ).also { it.topMargin = dp(4) }
         }.also { v -> titleLayout.addView(v) }
         headerLayout.addView(titleLayout)
-        mainLayout.addView(headerLayout)
-        mainLayout.addView(divider())
+        layout1.addView(headerLayout)
 
         // ─── 应用信息区块 ───
         val infoLayout = LinearLayout(this).apply {
@@ -199,8 +209,8 @@ class AboutActivity : Activity() {
                 infoLayout.addView(row)
             }
         }
-        mainLayout.addView(infoLayout)
-        mainLayout.addView(divider())
+        layout1.addView(infoLayout)
+        card1.addView(layout1)
 
         // ─── 检查更新行（GitHub Releases）───
         val updateRow = LinearLayout(this).apply {
@@ -241,8 +251,7 @@ class AboutActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             setColorFilter(onSurfaceVariant)
         }.also { updateRow.addView(it) }
-        mainLayout.addView(updateRow)
-        mainLayout.addView(divider())
+        layout2.addView(updateRow)
 
         // ─── 用户协议与免责声明行 ───
         val agreementRow = LinearLayout(this).apply {
@@ -283,8 +292,8 @@ class AboutActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             setColorFilter(onSurfaceVariant)
         }.also { agreementRow.addView(it) }
-        mainLayout.addView(agreementRow)
-        mainLayout.addView(divider())
+        layout2.addView(divider())
+        layout2.addView(agreementRow)
 
         // ─── 重置引导状态行（调试/重走引导：清除 onboarding_done，下次启动重走协议→权限→AI 环境）───
         val resetRow = LinearLayout(this).apply {
@@ -334,8 +343,8 @@ class AboutActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             setColorFilter(onSurfaceVariant)
         }.also { resetRow.addView(it) }
-        mainLayout.addView(resetRow)
-        mainLayout.addView(divider())
+        layout2.addView(divider())
+        layout2.addView(resetRow)
 
         // ─── QQ 交流群行（点击跳转手机 QQ 群）───
         val qqRow = LinearLayout(this).apply {
@@ -376,8 +385,9 @@ class AboutActivity : Activity() {
             layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
             setColorFilter(onSurfaceVariant)
         }.also { qqRow.addView(it) }
-        mainLayout.addView(qqRow)
-        mainLayout.addView(divider())
+        layout2.addView(divider())
+        layout2.addView(qqRow)
+        card2.addView(layout2)
 
         // ─── 参考开源项目区块 ───
         val ossLayout = LinearLayout(this).apply {
@@ -426,20 +436,23 @@ class AboutActivity : Activity() {
                 }
             }.also { ossLayout.addView(it) }
         }
-        mainLayout.addView(ossLayout)
+        layout3.addView(ossLayout)
+        card3.addView(layout3)
 
         // ─── 滚动容器：背景跟随主题（隐藏滚动条，内容超出仍可滑动）───
-        mainCard.addView(mainLayout)
+        // 顶部 padding 0：内容紧贴标题栏（用户反馈标题栏下方多余空隙）。
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             setBackgroundColor(bg)
-            setPadding(dp(20), dp(20), dp(20), dp(28))
+            setPadding(dp(20), 0, dp(20), dp(28))
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = android.view.View.OVER_SCROLL_NEVER
             addView(LinearLayout(this@AboutActivity).apply {
                 orientation = LinearLayout.VERTICAL
-                addView(mainCard)
+                addView(card1)
+                addView(card2)
+                addView(card3)
             })
         }
 

@@ -27,7 +27,7 @@
             android:layout_height="wrap_content"
             android:orientation="vertical"
             android:paddingHorizontal="@dimen/spacing_lg"
-            android:paddingTop="@dimen/spacing_md"
+            android:paddingTop="0dp"
             android:paddingBottom="@dimen/spacing_xl">
 
             <!-- 当前状态 -->
