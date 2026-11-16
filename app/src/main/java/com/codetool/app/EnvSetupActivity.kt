@@ -53,17 +53,14 @@ class EnvSetupActivity : AppCompatActivity() {
         btnNext = findViewById(R.id.envNext)
         btnInstall = findViewById(R.id.envInstallBtn)
 
+        // 两种模式统一：检测到缺项就显示「一键修复环境」（apt 安装入口在此按钮），
+        // 全绿则隐藏；「开始使用/返回」始终可点，不强制。
         btnInstall.setOnClickListener { install() }
         btnNext.setOnClickListener {
             setResult(RESULT_OK)
             finish()
         }
-        // 引导模式（首次启动）：不执行任何 apt（更新/安装统一归「环境修复」），
-        // 本页只做状态展示 + 指引用户去 包管理 单独安装 CLI / 一键修复。
-        if (!fixMode) {
-            btnInstall.visibility = android.view.View.GONE
-            btnNext.isEnabled = true
-        }
+        if (fixMode) btnNext.text = "返回"
         refreshStatus()
     }
 
@@ -79,20 +76,16 @@ class EnvSetupActivity : AppCompatActivity() {
         } else {
             buildString {
                 if (!st.rootfsReady) append("\n✗ rootfs 未解压（进入主页后自动解压）")
-                if (!st.python3Installed) append("\n✗ 缺少 python3（MCP 无法启动，可在包管理一键修复）")
+                if (!st.python3Installed) append("\n✗ 缺少 python3（MCP 无法启动）")
                 if (!st.mcpScriptOk) append("\n✗ MCP 桥脚本缺失")
                 if (!st.mcpConfigured) append("\n✗ MCP 配置未注册")
             }.trim().ifEmpty { "环境异常" }
         }
-        if (fixMode) {
-            // 环境修复模式：唯一执行 apt 的入口
-            btnInstall.visibility = android.view.View.VISIBLE
-            btnInstall.text = "一键修复环境"
-            btnInstall.isEnabled = true
-            btnNext.text = "返回"
-            btnNext.isEnabled = true
-        }
-        // 引导模式：始终可「开始使用」，环境问题到包管理解决
+        // 缺项 → 一键修复按钮出现（唯一 apt 安装入口）；全绿 → 隐藏
+        btnInstall.visibility =
+            if (st.allOk) android.view.View.GONE else android.view.View.VISIBLE
+        btnInstall.isEnabled = true
+        btnNext.isEnabled = true
     }
 
     private fun install() {
