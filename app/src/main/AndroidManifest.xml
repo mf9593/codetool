@@ -34,7 +34,7 @@
         android:label="@string/app_name"
         android:roundIcon="@mipmap/ic_launcher_round"
         android:supportsRtl="true"
-        android:theme="@style/Theme.CodeTool"
+        android:theme="@style/Theme.CodeTool.Starting"
         android:largeHeap="true"
         android:requestLegacyExternalStorage="true"
         android:extractNativeLibs="true"
@@ -55,6 +55,12 @@
         <!-- 关于页（二级页面：标题栏 + 返回按钮，背景跟随主题） -->
         <activity
             android:name=".AboutActivity"
+            android:exported="false"
+            android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
+
+        <!-- 更新日志全屏页（标题栏 + 返回，长文本滚动阅读） -->
+        <activity
+            android:name=".ChangelogActivity"
             android:exported="false"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 

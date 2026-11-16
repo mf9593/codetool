@@ -230,6 +230,8 @@ class AboutActivity : Activity() {
             context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
             setBackgroundResource(ripple.resourceId)
             setOnClickListener { UpdateUi.manualCheck(this@AboutActivity, scope) }
+            // 长按 = 更新弹窗预览（假数据不上网），方便开发/验收弹窗样式
+            setOnLongClickListener { UpdateUi.previewDialog(this@AboutActivity); true }
         }
         ImageView(this).apply {
             setImageResource(R.drawable.ic_refresh)
@@ -355,13 +357,16 @@ class AboutActivity : Activity() {
             context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
             setBackgroundResource(ripple.resourceId)
             setOnClickListener {
+                // 只清除标记，不立即跳转：下次冷启动 App 时自然重走「用户协议 → 权限设置 → 环境安装」引导。
+                // 不立刻 startActivity 重建 MainActivity，可避免任务重建时的起始窗口闪白。
                 com.codetool.app.util.AppSettings.resetOnboarding(this@AboutActivity)
-                Toast.makeText(this@AboutActivity, "引导状态已清除，下次启动会重走协议/权限/AI 环境引导", Toast.LENGTH_LONG).show()
-                // 直接重新进 MainActivity 走引导链
-                val i = android.content.Intent(this@AboutActivity, MainActivity::class.java).apply {
-                    addFlags(android.content.Intent.FLAG_ACTIVITY_CLEAR_TOP or android.content.Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
-                startActivity(i)
+                com.codetool.app.util.AppSettings.forceEnvSetupOnce(this@AboutActivity)
+                com.codetool.app.UserAgreement.resetAccepted(this@AboutActivity)
+                Toast.makeText(
+                    this@AboutActivity,
+                    "已重置引导状态，重启 App 后将重新走「用户协议 → 权限设置 → 环境安装」",
+                    Toast.LENGTH_LONG
+                ).show()
                 finish()
             }
         }
@@ -382,7 +387,7 @@ class AboutActivity : Activity() {
                 setTypeface(typeface, android.graphics.Typeface.BOLD)
             })
             addView(TextView(this@AboutActivity).apply {
-                text = "清除权限/环境引导状态，下次启动从头走"
+                text = "清除协议/权限/环境引导状态，重启 App 后重新走三页"
                 textSize = 13f
                 setTextColor(onSurfaceVariant)
             })
@@ -531,40 +536,9 @@ class AboutActivity : Activity() {
         }
     }
 
-    /** 弹窗展示更新日志（各版本标题加粗，滚动查看）。 */
+    /** 更新日志：跳全屏页（不用弹窗，长文本可滚动阅读）。 */
     private fun showChangelog() {
-        val onSurface = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorOnSurface, 0xFF1B1B1B.toInt())
-        val onSurfaceVariant = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF44474A.toInt())
-        val sb = android.text.SpannableStringBuilder()
-        Changelog.entries.forEachIndexed { i, e ->
-            if (i > 0) sb.append("\n\n")
-            val start = sb.length
-            sb.append("${e.version}（${e.date}）")
-            sb.setSpan(
-                android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
-                start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-            e.items.forEach { sb.append("\n· ").append(it) }
-        }
-        val tv = TextView(this).apply {
-            text = sb
-            textSize = 14f
-            setTextColor(onSurface)
-            setLineSpacing(0f, 1.15f)
-            setPadding(0, 0, 0, 0)
-        }
-        val scroll = ScrollView(this).apply {
-            isVerticalScrollBarEnabled = false
-            isHorizontalScrollBarEnabled = false
-            setPadding(24, 20, 24, 4)
-            addView(tv)
-        }
-        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
-            .setTitle("更新日志")
-            .setView(scroll)
-            .setPositiveButton("好的", null)
-            .show()
+        startActivity(android.content.Intent(this, ChangelogActivity::class.java))
     }
 
     /** 跳转 QQ 群 559711374（mqqwpa 协议；未装手机 QQ 时提示）。 */

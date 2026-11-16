@@ -144,6 +144,34 @@
                         android:text="终端服务: ..." />
                 </LinearLayout>
 
+                <!-- 终端时间：北京时间（UTC+8），与容器 date 一致，用于校准 -->
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:orientation="horizontal"
+                    android:gravity="center_vertical"
+                    android:baselineAligned="false">
+
+                    <ImageView
+                        android:id="@+id/timeIcon"
+                        android:layout_width="20dp"
+                        android:layout_height="20dp"
+                        android:scaleType="fitCenter"
+                        android:src="@drawable/ic_schedule"
+                        android:contentDescription="@null" />
+
+                    <com.google.android.material.textview.MaterialTextView
+                        android:id="@+id/timeText"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:layout_marginStart="8dp"
+                        android:fontFamily="monospace"
+                        android:textAppearance="?attr/textAppearanceBodySmall"
+                        android:text="终端时间: --" />
+                </LinearLayout>
+
                 <!-- AI CLI 安装状态/版本 -->
                 <LinearLayout
                     android:layout_width="match_parent"

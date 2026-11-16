@@ -69,6 +69,53 @@ object AppSettings {
             .edit().putBoolean(KEY_ONBOARDING_DONE, false).apply()
     }
 
+    private const val KEY_FORCE_ENV_SETUP = "force_env_setup"
+
+    /** 标记「下次进主页前强制进 AI 环境安装页」（关于页重置引导用）。 */
+    fun forceEnvSetupOnce(context: Context) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_FORCE_ENV_SETUP, true).apply()
+    }
+
+    /** 读取并清除「强制进环境安装页」标记；没标记返回 false。 */
+    fun consumeForceEnvSetup(context: Context): Boolean {
+        val p = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        val v = p.getBoolean(KEY_FORCE_ENV_SETUP, false)
+        if (v) p.edit().remove(KEY_FORCE_ENV_SETUP).apply()
+        return v
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // 发布新版本时强制用户「重走引导 / 重新阅读设置」的开关（默认关闭）。
+    //
+    // 用法：要构建一个需要用户重新走引导、重新确认设置的新版本时，把
+    // [FORCE_REONBOARD_AFTER_VERSION] 改成该版本的 versionCode（例如 2.1.0 的
+    // versionCode=5 就写 5），并在 MainActivity.onCreate 调用 [maybeForceReOnboard]。
+    // 首次以 >= 该版本的代码启动时会把 onboarding_done 清掉，引导链自动重跑。
+    //
+    // 注意两件事（缺一不可）：
+    //  - 只清引导，**不清协议同意状态**。协议正文有实质变更时，还必须把
+    //    com.codetool.app.UserAgreement.VERSION +1，已同意旧版协议的用户才会
+    //    重新走一次同意流程（两套机制独立，别混淆）。
+    //  - 阈值只生效一次（按 versionCode 记 applied），之后改回 0 即可永久关闭，
+    //    不会每次启动都骚扰用户。
+    // ─────────────────────────────────────────────────────────────────────────
+    private const val FORCE_REONBOARD_AFTER_VERSION = 0   // 0 = 不启用
+    private const val KEY_REONBOARD_APPLIED_VERSION = "reonboard_applied_version"
+
+    /** 达到 [FORCE_REONBOARD_AFTER_VERSION] 版本后首次启动清除引导标记（幂等）。 */
+    fun maybeForceReOnboard(context: Context) {
+        if (FORCE_REONBOARD_AFTER_VERSION <= 0) return
+        val vc = runCatching {
+            context.packageManager.getPackageInfo(context.packageName, 0).longVersionCode
+        }.getOrNull() ?: return
+        if (vc < FORCE_REONBOARD_AFTER_VERSION) return
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        if (prefs.getLong(KEY_REONBOARD_APPLIED_VERSION, 0) >= vc) return
+        prefs.edit().putLong(KEY_REONBOARD_APPLIED_VERSION, vc).apply()
+        resetOnboarding(context)
+    }
+
     /** 容器挂载 Android 共享存储的模式。 */
     object MountMode {
         const val DOWNLOAD = "download"   // 仅 Download（默认，最小暴露）

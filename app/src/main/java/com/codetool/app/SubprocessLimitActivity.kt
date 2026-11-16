@@ -120,30 +120,36 @@ class SubprocessLimitActivity : AppCompatActivity() {
     }
 
     private fun detectPhantomState(): PhantomState {
-        // ① Shizuku（shell 身份跑 dumpsys，免 root/adb，最可靠）
+        // ① 免 Shizuku 主路径：Settings.Global 对普通 App 全局可读，「停用子进程限制」
+        //    开关（Android 14+ 开发者选项 / adb 命令）就写 settings_enable_monitor_phantom_procs；
+        //    max_phantom_processes 是上限（未写=Android 12+ 默认 32）。无需任何授权即可判定。
         runCatching {
-            val (ok, out) = ShizukuBridge.execShell("dumpsys activity settings")
-            if (ok) {
-                // 宽松正则：namespace 可能是 activity_manager 或 activity，字段 max_phantom_processes
-                val m = Regex("max_phantom_processes=(\\d+)").find(out)
-                val max = m?.groupValues?.get(1)?.toIntOrNull()
-                if (max != null) {
-                    return if (max >= Int.MAX_VALUE - 1) PhantomState.Unrestricted("Shizuku")
-                    else PhantomState.Limited(max, "Shizuku")
+            val monitor = Settings.Global.getInt(
+                contentResolver, "settings_enable_monitor_phantom_procs", -1)
+            val max = Settings.Global.getInt(contentResolver, "max_phantom_processes", -1)
+            if (monitor == 0) return PhantomState.Unrestricted("系统设置（免 Shizuku）")
+            if (max >= Int.MAX_VALUE - 1) return PhantomState.Unrestricted("系统设置（免 Shizuku）")
+            // monitor 开着：上限已写用实际值，没写用 Android 12+ 默认 32
+            val effMax = if (max in 1..100) max else 32
+            val via = if (max in 1..100) "系统设置（免 Shizuku）" else "Android 默认（免 Shizuku）"
+            return PhantomState.Limited(effMax, via)
+        }
+        // ② 已授权 Shizuku 时用 dumpsys 交叉校验（运行时真实值，最权威）；未授权则跳过。
+        if (ShizukuManager.status(this).granted) {
+            runCatching {
+                val (ok, out) = ShizukuBridge.execShell("dumpsys activity settings")
+                if (ok) {
+                    val m = Regex("max_phantom_processes=(\\d+)").find(out)
+                    val max = m?.groupValues?.get(1)?.toIntOrNull()
+                    if (max != null) {
+                        return if (max >= Int.MAX_VALUE - 1) PhantomState.Unrestricted("Shizuku")
+                        else PhantomState.Limited(max, "Shizuku")
+                    }
                 }
             }
         }
-        // ② Settings.Global 试探（辅助：部分机型 monitor 开关在 Global 表）
-        runCatching {
-            if (Settings.Global.getString(contentResolver, "settings_enable_monitor_phantom_procs") == "0") {
-                return PhantomState.Unrestricted("Settings")
-            }
-            val max = Settings.Global.getInt(contentResolver, "max_phantom_processes", -1)
-            if (max >= Int.MAX_VALUE - 1) return PhantomState.Unrestricted("Settings")
-            if (max in 1..100) return PhantomState.Limited(max, "Settings")
-        }
-        // ③ 都读不到：诚实返回 Unknown
-        return PhantomState.Unknown("App 进程无权限读取子进程限制（需 Shizuku 或 root）")
+        // ③ Settings 读不到且无 Shizuku：返回 Unknown，诚实引导手动确认
+        return PhantomState.Unknown("无法读取子进程限制（可按下方方式手动确认）")
     }
 
     private fun renderState(state: PhantomState) {
@@ -155,17 +161,20 @@ class SubprocessLimitActivity : AppCompatActivity() {
             this, com.google.android.material.R.attr.colorSecondary, 0)
         val neutral = com.google.android.material.color.MaterialColors.getColor(
             this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0)
-        // Unknown 且 Shizuku 未就绪时，显示「授权 Shizuku」引导
-        val showShizukuGuide = state is PhantomState.Unknown && !ShizukuManager.status(this).granted
+        // Unknown 且 Shizuku「已装 + 运行中但未授权」时才显示「授权 Shizuku」引导；
+        // 未安装/未运行时不显示按钮（点了只会报错），状态文案已给出对应指引。
+        val shizSt = ShizukuManager.status(this)
+        val showShizukuGuide = state is PhantomState.Unknown &&
+            shizSt.installed && shizSt.running && !shizSt.granted
         tvShizukuHint.visibility = if (showShizukuGuide) View.VISIBLE else View.GONE
         btnShizuku.visibility = if (showShizukuGuide) View.VISIBLE else View.GONE
         when (state) {
             is PhantomState.Unrestricted -> {
-                tvStatus.text = "✓ 已解除（子进程限制已关闭 / 上限已放宽）· 经 ${state.via} 检测"
+                tvStatus.text = "✓ 已解除（子进程限制已关闭 / 上限已放宽）"
                 tvStatus.setTextColor(ok)
             }
             is PhantomState.Limited -> {
-                tvStatus.text = "⚠ 仍受限：最多 ${state.max} 个子进程 · 经 ${state.via} 检测，请按下方方式解除"
+                tvStatus.text = "⚠ 仍受限：最多 ${state.max} 个子进程，请按下方方式解除"
                 tvStatus.setTextColor(warn)
             }
             is PhantomState.Unknown -> {

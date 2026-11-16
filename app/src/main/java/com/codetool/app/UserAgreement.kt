@@ -31,6 +31,12 @@ object UserAgreement {
             .edit().putInt(KEY_ACCEPTED_VERSION, VERSION).apply()
     }
 
+    /** 清除「已同意」记录（关于页重置引导用）：下次启动会重新走协议页。 */
+    fun resetAccepted(ctx: Context) {
+        ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_ACCEPTED_VERSION, 0).apply()
+    }
+
     /** 读取协议正文（内置 raw，离线可用）。 */
     fun loadText(ctx: Context): String = runCatching {
         ctx.resources.openRawResource(R.raw.user_agreement).bufferedReader().use { it.readText() }

@@ -7,6 +7,8 @@ import android.content.Intent
 import android.content.IntentFilter
 import android.net.Uri
 import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
@@ -32,6 +34,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.util.Calendar
+import java.util.TimeZone
 
 /**
  * 首页：状态显示 + 终端开关。
@@ -52,6 +56,7 @@ class HomeFragment : Fragment() {
     private lateinit var aiStatusIcon: ImageView
     private lateinit var shizukuText: TextView
     private lateinit var shizukuIcon: ImageView
+    private lateinit var timeText: TextView
     private lateinit var progressBar: LinearProgressIndicator
     private lateinit var scriptFavList: android.widget.LinearLayout
     private lateinit var scriptFavEmpty: TextView
@@ -61,6 +66,21 @@ class HomeFragment : Fragment() {
     private var receiver: BroadcastReceiver? = null
     /** 版本探测只在本页面生命周期内尝试一次，避免每次 onResume 都起 tawcroot。 */
     private var versionProbeAttempted = false
+
+    /** 终端时间每秒刷新（北京时间，与容器 date 一致，供校准）。 */
+    private val timeHandler = Handler(Looper.getMainLooper())
+    private val timeTick = object : Runnable {
+        override fun run() {
+            if (!isAdded) return
+            val now = Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"))
+            timeText.text = String.format(
+                "终端时间: %04d-%02d-%02d %02d:%02d:%02d（北京时间，与终端 date 一致）",
+                now.get(Calendar.YEAR), now.get(Calendar.MONTH) + 1, now.get(Calendar.DAY_OF_MONTH),
+                now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), now.get(Calendar.SECOND)
+            )
+            timeHandler.postDelayed(this, 1000)
+        }
+    }
 
     /** 图标颜色语义：三个 tone 都是引用主题属性的 ColorStateList，切主题自动跟随。 */
     private enum class IconTone(val csl: Int) {
@@ -120,6 +140,8 @@ class HomeFragment : Fragment() {
         aiStatusIcon = v.findViewById(R.id.aiStatusIcon)
         shizukuText = v.findViewById(R.id.shizukuText)
         shizukuIcon = v.findViewById(R.id.shizukuIcon)
+        timeText = v.findViewById(R.id.timeText)
+        applyIcon(v.findViewById(R.id.timeIcon), R.drawable.ic_schedule, IconTone.NEUTRAL)
         progressBar = v.findViewById(R.id.progressBar)
         applyIcon(v.findViewById(R.id.pathIcon), R.drawable.ic_folder, IconTone.NEUTRAL)
         // Shizuku：点击状态行申请授权（未装/未运行时点按提示指引）
@@ -178,11 +200,20 @@ class HomeFragment : Fragment() {
         super.onResume()
         refreshStatus()
         refreshFavorites()
+        // 终端时间（北京时间）每秒刷新，便于与终端 date 校准
+        timeHandler.removeCallbacks(timeTick)
+        timeHandler.post(timeTick)
         // 应用内更新：静默检查 GitHub 最新 Release（6 小时一次，仅发现新版本时弹窗）
         UpdateUi.autoCheck(this)
     }
 
+    override fun onPause() {
+        timeHandler.removeCallbacks(timeTick)
+        super.onPause()
+    }
+
     override fun onDestroyView() {
+        timeHandler.removeCallbacks(timeTick)
         ShizukuManager.removePermissionResultListener(shizukuPermListener)
         receiver?.let { requireContext().unregisterReceiver(it) }
         receiver = null

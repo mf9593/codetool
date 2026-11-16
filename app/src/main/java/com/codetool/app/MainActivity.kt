@@ -110,6 +110,16 @@ class MainActivity : AppCompatActivity() {
             }
         }
 
+        // 更新弹窗预览（仅 debug 构建，假数据不上网）：
+        // adb shell am start -n com.codetool.app/.MainActivity --ez codetool_debug_update_dialog true
+        if (isDebug && intent?.getBooleanExtra("codetool_debug_update_dialog", false) == true) {
+            window.decorView.post { com.codetool.app.util.UpdateUi.previewDialog(this) }
+        }
+
+        // 发布新版本强制重走引导的开关（默认 0=关闭；见 AppSettings.FORCE_REONBOARD_AFTER_VERSION）。
+        // 必须在下方「未同意协议 / 引导未完成」判断之前执行，清掉标记后本次启动自然重跑引导。
+        com.codetool.app.util.AppSettings.maybeForceReOnboard(this)
+
         // 底部导航 ↔ ViewPager2 联动
         bottomNav.setOnItemSelectedListener { item ->
             val idx = when (item.itemId) {
@@ -166,10 +176,12 @@ class MainActivity : AppCompatActivity() {
         maybeAutoInstallRootfs()
     }
 
-    /** 引导完成后的环境判断：AI 环境（python3/MCP 桥）未就绪 → 第三引导页，否则正常初始化。 */
+    /** 引导完成后的环境判断：AI 环境（python3/MCP 桥）未就绪 → 第三引导页，否则正常初始化。
+     *  重置引导时置 forceEnvSetup 标记，会强制再进一次环境安装页（已装好也重看一遍）。 */
     private fun maybeGoEnvSetupOrFully() {
+        val force = com.codetool.app.util.AppSettings.consumeForceEnvSetup(this)
         val envOk = com.codetool.app.ai.AiEnvHelper.check(this).allOk
-        if (!envOk) {
+        if (force || !envOk) {
             EnvSetupActivity.startForResult(this, REQUEST_ENV)
         } else {
             onFullyOnboarded()

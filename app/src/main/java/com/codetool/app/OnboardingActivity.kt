@@ -82,13 +82,13 @@ class OnboardingActivity : Activity() {
             ) { requestNotif() }
         } else null  // Android 13 以下无运行时通知权限，视为已满足
         // 全部文件访问（Android 11+）：容器要读写共享存储（Download/ 下的项目、脚本库），
-        // 普通分区存储不够，需「管理所有文件」权限。点卡片跳系统开关页（列表式，不是直接弹授权框）。
+        // 普通分区存储不够，需「管理所有文件」权限。点卡片直跳本应用的系统开关页（打开开关即可）。
         storageBadge = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
             makeCard(
                 key = "storage",
                 icon = R.drawable.ic_folder,
                 title = "全部文件访问权限",
-                desc = "允许管理所有文件，容器才能读写共享存储里的项目、脚本（跳转系统开关页，找到本应用打开开关）。",
+                desc = "允许管理所有文件，容器才能读写共享存储里的项目、脚本（点击直跳本应用的开关页，打开开关即可）。",
             ) { requestStorage() }
         } else null  // Android 11 以下用传统存储权限，视为已满足
 
@@ -259,9 +259,10 @@ class OnboardingActivity : Activity() {
 
     private fun requestStorage() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
-        // 跳系统「所有文件访问」开关页（列表式，用户找到本应用打开开关），不是直接弹授权框。
+        // 直跳本应用的「所有文件访问」开关页（带 package URI 的 APP_ALL_FILES），打开开关即可；
+        // 部分机型不支持该 action 时降级到通用列表。
         try {
-            startActivity(Intent(Settings.ACTION_MANAGE_ALL_FILES_ACCESS_PERMISSION,
+            startActivity(Intent(Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
                 Uri.parse("package:$packageName")))
         } catch (_: Exception) {
             try {

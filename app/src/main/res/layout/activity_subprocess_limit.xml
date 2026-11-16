@@ -83,7 +83,7 @@
                         android:layout_height="wrap_content"
                         android:layout_marginTop="@dimen/spacing_sm"
                         android:visibility="gone"
-                        android:text="自动检测需要 Shizuku 授权（免 root 读取系统子进程限制）。点下方按钮授权，成功后自动检测。"
+                        android:text="读取系统设置失败、无法自动检测。可授权 Shizuku（免 root）用 dumpsys 精确读取子进程限制；也可直接用下方开发者选项/无线调试手动确认。"
                         android:textAppearance="?attr/textAppearanceBodySmall"
                         android:textColor="?attr/colorOnSurfaceVariant" />
                     <com.google.android.material.button.MaterialButton
