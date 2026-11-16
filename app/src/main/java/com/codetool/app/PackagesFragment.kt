@@ -135,6 +135,22 @@ class PackagesFragment : Fragment() {
                     "echo '网页商店：https://erotica.spark-app.store/arm64-apm/'"
             )
         }
+        // 安装 ADB：Ubuntu rootfs 不带 adb，apt 装官方 android-tools 包；
+        // 容器与 App 共享网络命名空间（tawcroot 不隔离 netns），可直连本机无线调试。
+        v.findViewById<MaterialButton>(R.id.btnAdbInstall).setOnClickListener {
+            runInTerminal(
+                "安装 ADB",
+                "command -v adb >/dev/null 2>&1 || { apt-get update && apt-get install -y adb; }\n" +
+                    "echo ''\n" +
+                    "echo '=== 安装结果（真实自检）==='\n" +
+                    "command -v adb >/dev/null 2>&1 && adb version 2>/dev/null | head -1 || echo '[ERROR] adb 未装上，看上方 apt 报错（网络/软件源）'\n" +
+                    "echo ''\n" +
+                    "echo '连接本机（容器与 Android 共享网络，无需外接电脑）：'\n" +
+                    "echo '  1) 设置 → 开发者选项 → 无线调试，保持开启并记下端口'\n" +
+                    "echo '  2) adb connect 127.0.0.1:<端口>'\n" +
+                    "echo '  3) adb devices 确认为 device（首次连接要配对：adb pair 127.0.0.1:<配对端口>）'"
+            )
+        }
         // 安装浏览器：Chrome / Firefox 拆成两个独立按钮，共用前置修复段
         val browserPrereq = "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
             "command -v gpg >/dev/null 2>&1 || apt-get install -y gnupg\n" +
@@ -193,12 +209,13 @@ class PackagesFragment : Fragment() {
         refreshBrowserStatus()
     }
 
-    /** 浏览器/星火都是「不预装、包管理一键装」：按钮各自实时反映 rootfs 里是否已装。 */
+    /** 浏览器/星火/ADB 都是「不预装、包管理一键装」：按钮各自实时反映 rootfs 里是否已装。 */
     private fun refreshBrowserStatus() {
         val ctx = requireContext()
         val chrome = view?.findViewById<MaterialButton>(R.id.btnChromeInstall) ?: return
         val firefox = view?.findViewById<MaterialButton>(R.id.btnFirefoxInstall)
         val spark = view?.findViewById<MaterialButton>(R.id.btnSpark)
+        val adb = view?.findViewById<MaterialButton>(R.id.btnAdbInstall)
         val da = com.codetool.app.gui.DesktopApps
         chrome.text = if (da.browserInstalled(ctx)) "Chrome 已安装 · 点此重装"
                       else "安装 Chrome（Google 官方版）"
@@ -206,6 +223,8 @@ class PackagesFragment : Fragment() {
                         else "安装 Firefox（Mozilla 官方版）"
         spark?.text = if (da.sparkStoreInstalled(ctx)) "启动星火商店"
                       else "安装星火商店"
+        adb?.text = if (da.resolveBinary(ctx, "adb") != null) "ADB 已安装 · 点此重装"
+                    else "安装 ADB（Android 调试桥）"
     }
 
     /** 把命令发到当前终端标签，并切到终端页显示执行过程。 */
