@@ -55,6 +55,13 @@ class AboutActivity : Activity() {
         window.navigationBarColor = android.graphics.Color.TRANSPARENT
 
         val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        // 主题 actionBarSize（56dp）：与 XML 页面的 MaterialToolbar 高度一致，
+        // 返回按钮和标题才能垂直对齐（48dp 太窄会错位）。
+        val actionBarSize = {
+            val tv = android.util.TypedValue()
+            theme.resolveAttribute(android.R.attr.actionBarSize, tv, true)
+            android.util.TypedValue.complexToDimensionPixelSize(tv.data, resources.displayMetrics)
+        }
         val pInfo = try { packageManager.getPackageInfo(packageName, 0) } catch (_: Exception) { null }
         val versionName = pInfo?.versionName ?: "debug"
         val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -440,11 +447,11 @@ class AboutActivity : Activity() {
         card3.addView(layout3)
 
         // ─── 滚动容器：背景跟随主题（隐藏滚动条，内容超出仍可滑动）───
-        // 顶部 padding 0：内容紧贴标题栏（用户反馈标题栏下方多余空隙）。
+        // 顶部 12dp：标题栏与第一张卡之间留一点呼吸间距（用户反馈完全贴上不行）。
         val scroll = ScrollView(this).apply {
             isFillViewport = true
             setBackgroundColor(bg)
-            setPadding(dp(20), 0, dp(20), dp(28))
+            setPadding(dp(20), dp(12), dp(20), dp(28))
             isVerticalScrollBarEnabled = false
             isHorizontalScrollBarEnabled = false
             overScrollMode = android.view.View.OVER_SCROLL_NEVER
@@ -461,7 +468,7 @@ class AboutActivity : Activity() {
             orientation = LinearLayout.VERTICAL
             setBackgroundColor(bg)
             addView(toolbar, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, dp(48)))
+                ViewGroup.LayoutParams.MATCH_PARENT, actionBarSize()))
             addView(scroll, LinearLayout.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
         }
@@ -473,7 +480,7 @@ class AboutActivity : Activity() {
             val navBars = insets.getInsets(WindowInsetsCompat.Type.navigationBars())
             // 标题栏延伸到状态栏下：高度 = 48dp + 状态栏高度，标题内容让出状态栏。
             val lp = toolbar.layoutParams
-            lp.height = dp(48) + status.top
+            lp.height = actionBarSize() + status.top
             toolbar.layoutParams = lp
             toolbar.updatePadding(top = status.top)
             // 底部间距 0：内容直达底部（小白条沉浸，透明导航栏显示页面背景）
