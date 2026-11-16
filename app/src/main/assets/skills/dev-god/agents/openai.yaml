@@ -1,0 +1,4 @@
+interface:
+  display_name: "编程大神"
+  short_description: "高阶全栈接管复杂项目，推进实现、修复、联调与真实交付"
+  default_prompt: "使用 $dev-god 理解当前项目，完成我的开发任务并给出实际验证结果。"
