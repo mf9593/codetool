@@ -33,7 +33,7 @@
             <com.google.android.material.textview.MaterialTextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="AI 助手 / CLI 需要容器里能跑 python3（内置 MCP 靠它启动）。环境未就绪时 MCP 服务会起不来，浏览器调试等功能不可用。"
+                android:text="首次使用请到「工具 → 包管理」单独安装 CLI（安装 MiMo Code / 安装 opencode），安装脚本会自动补齐缺失的下载依赖（curl / npm 等）。\n\n内置 MCP（浏览器调试）需要容器里有 python3，下方检测若显示缺失，装完 CLI 后回包管理点「一键修复 AI 环境」即可。"
                 android:textAppearance="?attr/textAppearanceBodyMedium"
                 android:textColor="?attr/colorOnSurface"
                 android:lineSpacingMultiplier="1.35" />
@@ -130,8 +130,7 @@
             android:id="@+id/envNext"
             android:layout_width="match_parent"
             android:layout_height="56dp"
-            android:text="开始使用"
-            android:enabled="false" />
+            android:text="开始使用" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/envInstallBtn"
@@ -139,6 +138,7 @@
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="@dimen/spacing_sm"
-            android:text="安装环境" />
+            android:text="一键修复环境"
+            android:visibility="gone" />
     </LinearLayout>
 </LinearLayout>

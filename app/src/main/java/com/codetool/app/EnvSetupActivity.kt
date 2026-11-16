@@ -58,7 +58,12 @@ class EnvSetupActivity : AppCompatActivity() {
             setResult(RESULT_OK)
             finish()
         }
-
+        // 引导模式（首次启动）：不执行任何 apt（更新/安装统一归「环境修复」），
+        // 本页只做状态展示 + 指引用户去 包管理 单独安装 CLI / 一键修复。
+        if (!fixMode) {
+            btnInstall.visibility = android.view.View.GONE
+            btnNext.isEnabled = true
+        }
         refreshStatus()
     }
 
@@ -73,31 +78,25 @@ class EnvSetupActivity : AppCompatActivity() {
             "✓ 环境就绪（python3 ✓ MCP 桥 ✓ 配置 ✓）"
         } else {
             buildString {
-                if (!st.rootfsReady) append("\n✗ rootfs 未解压")
-                if (!st.python3Installed) append("\n✗ 缺少 python3（MCP 无法启动）")
+                if (!st.rootfsReady) append("\n✗ rootfs 未解压（进入主页后自动解压）")
+                if (!st.python3Installed) append("\n✗ 缺少 python3（MCP 无法启动，可在包管理一键修复）")
                 if (!st.mcpScriptOk) append("\n✗ MCP 桥脚本缺失")
                 if (!st.mcpConfigured) append("\n✗ MCP 配置未注册")
-                if (st.python3Installed && !st.mcpScriptOk) append("\n提示：点「安装环境」重注入桥")
             }.trim().ifEmpty { "环境异常" }
         }
-        if (st.allOk) {
-            btnInstall.isEnabled = false
-            btnNext.isEnabled = true
-            btnNext.visibility = android.view.View.VISIBLE
-        } else if (fixMode) {
-            // 修复模式：装不装都能返回（不强制）
-            btnNext.isEnabled = true
+        if (fixMode) {
+            // 环境修复模式：唯一执行 apt 的入口
+            btnInstall.visibility = android.view.View.VISIBLE
             btnInstall.text = "一键修复环境"
-        } else {
-            btnNext.isEnabled = false
-            btnInstall.text = "安装环境"
+            btnInstall.isEnabled = true
+            btnNext.text = "返回"
+            btnNext.isEnabled = true
         }
+        // 引导模式：始终可「开始使用」，环境问题到包管理解决
     }
 
     private fun install() {
         btnInstall.isEnabled = false
-        btnNext.isEnabled = false
-        if (!fixMode) btnNext.visibility = android.view.View.GONE
         progressCard.visibility = android.view.View.VISIBLE
         progressTitle.visibility = android.view.View.VISIBLE
         progress.visibility = android.view.View.VISIBLE
@@ -111,10 +110,9 @@ class EnvSetupActivity : AppCompatActivity() {
             progress.visibility = android.view.View.GONE
             progressTitle.visibility = android.view.View.GONE
             refreshStatus()
-            if (!ok && !fixMode) {
-                tvStatus.text = "安装未完成，请重试或查看上方输出"
+            if (!ok) {
+                tvStatus.text = "修复未完成，请重试或查看上方输出"
                 btnInstall.isEnabled = true
-                btnNext.isEnabled = false
             }
         }
     }

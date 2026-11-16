@@ -21,7 +21,15 @@ object AiEnvHelper {
 
     private const val TAG = "AiEnvHelper"
     private const val MCP_SCRIPT = "/usr/local/bin/codetool-mcp"
-    private const val PYTHON_CHECK = "command -v python3 || ls /usr/bin/python3"
+
+    /**
+     * shell 片段：CLI（mimo / opencode）安装完成后检测 python3，缺则提示去环境修复。
+     * 注意：**不在这里 apt 装 python3**——apt 更新/安装统一归「一键修复 AI 环境」
+     * （[ensure]），CLI 安装脚本只负责装 CLI 本体 + 自动补 curl/npm 等下载依赖。
+     */
+    const val PY3_CHECK_SCRIPT =
+        "command -v python3 >/dev/null 2>&1 || " +
+            "echo '[提示] 容器缺 python3：内置 MCP（浏览器调试）暂不可用，请到 工具 → 包管理 点「一键修复 AI 环境」安装'"
 
     data class Status(
         val rootfsReady: Boolean,
@@ -67,27 +75,38 @@ object AiEnvHelper {
         val rt = rootfs(ctx)
         if (rt == null) { onLog("rootfs 不可用"); return false }
 
-        // 1. rootfs 未解压则解压（内部幂等：marker 存在即跳过）
+        // 1. rootfs 未解压则解压（内部幂等：marker 存在即跳过）；解压完继续装 python3，
+        //    不能解压完就返回（否则 python3 仍缺，却报「环境就绪」）。
         if (!rootfsReady(ctx)) {
             onLog("正在解压 rootfs（首次约数十秒）…")
-            return try {
+            try {
                 RootfsManager.get(ctx.applicationContext).ensureExtractedSync()
                 onLog("rootfs 就绪")
-                true
             } catch (t: Throwable) {
                 onLog("rootfs 解压失败：${t.message}")
                 FileLog.e(ctx, TAG, "rootfs extract failed", t)
-                false
+                return false
             }
         }
 
-        // 2. apt 装 python3（幂等：command -v 已有则跳）
+        // 1.5 老版本解压的 rootfs 可能缺 resolv.conf（当时没有 DNS 配置逻辑），
+        //     apt 全靠域名解析，缺了必失败。幂等：存在即跳过，内容与 RootfsManager.setupContainer 一致。
+        val resolv = File(rt, "etc/resolv.conf")
+        if (!resolv.exists()) {
+            resolv.parentFile?.mkdirs()
+            resolv.writeText("nameserver 223.5.5.5\nnameserver 119.29.29.29\nnameserver 8.8.8.8\n")
+            onLog("已补写 DNS 配置（rootfs 缺 resolv.conf）")
+        }
+
+        // 2. apt 装 python3（幂等：已存在则跳过）。
+        //    注意：tawcroot 不做 PATH 查找，guest 可执行文件必须传绝对路径（/bin/sh），
+        //    传 "sh" 会 ENOENT（errno=-2）——踩过的坑。
         if (!File(rt, "usr/bin/python3").exists()) {
             onLog("容器缺 python3，正在安装（apt-get update + install，约 1-2 分钟）…")
-            val okUpdate = runInContainer(ctx, rt, "sh", "-c",
+            val okUpdate = runInContainer(ctx, rt, "/bin/sh", "-c",
                 "apt-get update -qq >/dev/null 2>&1 || true")
             if (!okUpdate.first) onLog("apt update 警告：${okUpdate.second.take(120)}")
-            val okInstall = runInContainer(ctx, rt, "sh", "-c",
+            val okInstall = runInContainer(ctx, rt, "/bin/sh", "-c",
                 "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3")
             if (!okInstall.first) {
                 onLog("python3 安装失败：${okInstall.second.take(300)}")
@@ -115,7 +134,11 @@ object AiEnvHelper {
         return true
     }
 
-    /** 在容器内跑一条命令，返回 (exitOk, 输出)。 */
+    /**
+     * 在容器内跑一条命令，返回 (exitOk, 输出)。
+     * cmd[0] 必须是容器内**绝对路径**（如 /bin/sh、/usr/bin/apt-get）：
+     * tawcroot 不做 PATH 查找，短名会 ENOENT。
+     */
     private fun runInContainer(ctx: Context, rootfs: File, vararg cmd: String): Pair<Boolean, String> {
         val rt = TawcrootRuntime.get(ctx)
         return try {

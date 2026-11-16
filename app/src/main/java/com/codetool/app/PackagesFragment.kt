@@ -39,7 +39,8 @@ class PackagesFragment : Fragment() {
                 "安装 MiMo Code",
                 "command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y curl ca-certificates; }\n" +
                     "curl -fsSL https://mimo.xiaomi.com/install | bash\n" +
-                    com.codetool.app.ai.AiModelManager.FIX_PATH_SCRIPT
+                    com.codetool.app.ai.AiModelManager.FIX_PATH_SCRIPT + "\n" +
+                    com.codetool.app.ai.AiEnvHelper.PY3_CHECK_SCRIPT
             )
         }
         // 安装 opencode：官方脚本安装（curl 不存在时先装 curl；失败时回退 npm）
@@ -55,7 +56,8 @@ class PackagesFragment : Fragment() {
                     "  npm install -g opencode-ai\n" +
                     "fi\n" +
                     "command -v opencode >/dev/null 2>&1 && echo '[OK] opencode 安装完成：opencode' || echo '[ERROR] opencode 安装失败'\n" +
-                    com.codetool.app.ai.AiModelManager.FIX_PATH_SCRIPT
+                    com.codetool.app.ai.AiModelManager.FIX_PATH_SCRIPT + "\n" +
+                    com.codetool.app.ai.AiEnvHelper.PY3_CHECK_SCRIPT
             )
         }
         v.findViewById<MaterialButton>(R.id.btnSpark).setOnClickListener {
