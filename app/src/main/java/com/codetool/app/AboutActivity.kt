@@ -260,6 +260,48 @@ class AboutActivity : Activity() {
         }.also { updateRow.addView(it) }
         layout2.addView(updateRow)
 
+        // ─── 更新日志行（弹窗展示各版本变更）───
+        val changelogRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(16), 0, dp(16))
+            isClickable = true
+            isFocusable = true
+            val ripple = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+            setBackgroundResource(ripple.resourceId)
+            setOnClickListener { showChangelog() }
+        }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_history)
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+            setColorFilter(accent)
+        }.also { changelogRow.addView(it) }
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).also { it.leftMargin = dp(12) }
+            addView(TextView(this@AboutActivity).apply {
+                text = "更新日志"
+                textSize = 14f
+                setTextColor(onSurface)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@AboutActivity).apply {
+                text = "查看 v${Changelog.entries.first().version} 起的功能变更"
+                textSize = 13f
+                setTextColor(onSurfaceVariant)
+            })
+        }.also { changelogRow.addView(it) }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
+            setColorFilter(onSurfaceVariant)
+        }.also { changelogRow.addView(it) }
+        layout2.addView(divider())
+        layout2.addView(changelogRow)
+
         // ─── 用户协议与免责声明行 ───
         val agreementRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -487,6 +529,42 @@ class AboutActivity : Activity() {
             scroll.updatePadding(bottom = navBars.bottom)
             insets
         }
+    }
+
+    /** 弹窗展示更新日志（各版本标题加粗，滚动查看）。 */
+    private fun showChangelog() {
+        val onSurface = MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorOnSurface, 0xFF1B1B1B.toInt())
+        val onSurfaceVariant = MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF44474A.toInt())
+        val sb = android.text.SpannableStringBuilder()
+        Changelog.entries.forEachIndexed { i, e ->
+            if (i > 0) sb.append("\n\n")
+            val start = sb.length
+            sb.append("${e.version}（${e.date}）")
+            sb.setSpan(
+                android.text.style.StyleSpan(android.graphics.Typeface.BOLD),
+                start, sb.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+            e.items.forEach { sb.append("\n· ").append(it) }
+        }
+        val tv = TextView(this).apply {
+            text = sb
+            textSize = 14f
+            setTextColor(onSurface)
+            setLineSpacing(0f, 1.15f)
+            setPadding(0, 0, 0, 0)
+        }
+        val scroll = ScrollView(this).apply {
+            isVerticalScrollBarEnabled = false
+            isHorizontalScrollBarEnabled = false
+            setPadding(24, 20, 24, 4)
+            addView(tv)
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("更新日志")
+            .setView(scroll)
+            .setPositiveButton("好的", null)
+            .show()
     }
 
     /** 跳转 QQ 群 559711374（mqqwpa 协议；未装手机 QQ 时提示）。 */
