@@ -158,24 +158,42 @@ object ShizukuBridge {
 
     private fun ensureService(): IShizukuUserService? {
         userService?.let { return it }
+        val ctx = appContext ?: return null
         return try {
             val args = userServiceArgs()
             serviceArgs = args
             Shizuku.bindUserService(args, createConnection())
-            // onServiceConnected 在主线程回调，这里轮询等绑定完成（最多 3s）
+            // onServiceConnected 在主线程回调，这里轮询等绑定完成（最多 6s）
             var i = 0
-            while (userService == null && i < 30) {
+            while (userService == null && i < 60) {
                 Thread.sleep(100); i++
+            }
+            if (userService == null) {
+                com.codetool.app.util.FileLog.w(
+                    ctx, "ShizukuBridge",
+                    "bindUserService 6s 未回调：Shizuku 未运行/版本过旧/授权状态异常"
+                )
             }
             userService
         } catch (e: Exception) {
+            // 之前异常被静默吞掉，出错只能猜——必须落日志。
+            com.codetool.app.util.FileLog.e(ctx, "ShizukuBridge", "bindUserService failed", e)
             null
         }
     }
 
     private fun userServiceArgs(): Shizuku.UserServiceArgs {
         val comp = ComponentName("com.codetool.app", "com.codetool.app.shizuku.ShizukuUserService")
+        val ctx = appContext
+        // **关键**：version 必须随安装变化（用 lastUpdateTime，单位压成秒防 Int 溢出）。
+        // 不传（默认 0）时 Shizuku 端按 (包名+versionCode+tag) 复用旧 user-service 进程：
+        // app 重装后 APK 路径已变，旧 service 的 dex 路径失效 → onServiceConnected 永不回调
+        // → 表现为「已授权但绑定失败」（真实踩坑，debug 反复装机必现）。
+        val lastUpdateSec = runCatching {
+            ctx?.packageManager?.getPackageInfo(ctx.packageName, 0)?.lastUpdateTime ?: 0L
+        }.getOrDefault(0L) / 1000L
         return Shizuku.UserServiceArgs(comp)
+            .version(lastUpdateSec.toInt())
             .daemon(false)
             .processNameSuffix("shizuku")
     }

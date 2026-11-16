@@ -203,6 +203,19 @@ class TawcrootRuntime private constructor(private val context: Context) {
                 shizuku.setExecutable(true, false)
             }
 
+            // 注入 pm：容器里没有 Android 的 /system/bin/pm（rootfs 是 Ubuntu），
+            // wrapper 把 pm <args> 转发到 codetool-shizuku 以 shell 身份执行真实 pm。
+            // 单一来源 assets/scripts/pm.sh，内容变化自动覆盖。
+            val pm = File(rootfsDir, "usr/local/bin/pm")
+            val pmScript = runCatching {
+                context.assets.open("scripts/pm.sh").bufferedReader().use { it.readText() }
+            }.getOrNull()
+            if (pmScript != null && (!pm.exists() || pm.readText() != pmScript)) {
+                pm.parentFile?.mkdirs()
+                pm.writeText(pmScript)
+                pm.setExecutable(true, false)
+            }
+
             // 模型能力「默认就绪」：容器一启动就把内置 skill 与 MCP server 写进 CLI
             // 默认扫描路径，不依赖用户先进工具页。两个 ensureBuiltin 都幂等。
             runCatching {
