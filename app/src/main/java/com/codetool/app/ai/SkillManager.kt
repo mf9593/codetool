@@ -380,10 +380,41 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
         if (end < 0) return "" to ""
         var name = ""
         var desc = ""
-        txt.substring(3, end).lineSequence().forEach { line ->
-            val t = line.trim()
-            if (t.startsWith("name:")) name = t.removePrefix("name:").trim().trim('"', '\'')
-            if (t.startsWith("description:")) desc = t.removePrefix("description:").trim().trim('"', '\'')
+        // description 支持 YAML 块标量（|- / | / >- / >，值在后续缩进行里）：
+        // 踩坑记录——裸逐行解析只能读到字面量「|-」，技能页说明列显示成「|-」，
+        // 真实描述全丢（multi-search-engine 3.0.4 实测）。| 按换行拼接，> 折叠为空格。
+        val lines = txt.substring(3, end).lineSequence().toList()
+        var i = 0
+        while (i < lines.size) {
+            val t = lines[i].trim()
+            if (t.startsWith("name:")) {
+                name = t.removePrefix("name:").trim().trim('"', '\'')
+            } else if (t.startsWith("description:")) {
+                val value = t.removePrefix("description:").trim()
+                if (value in setOf("|", "|-", "|+", ">", ">-", ">+")) {
+                    val fold = value.startsWith(">")
+                    val parts = mutableListOf<String>()
+                    var j = i + 1
+                    while (j < lines.size) {
+                        val l = lines[j]
+                        if (l.isBlank()) {
+                            // 块内空行：后面还有缩进行则属于内容（跳过），否则块结束
+                            val nxt = lines.getOrNull(j + 1) ?: break
+                            if (nxt.isNotBlank() && !nxt[0].isWhitespace()) break
+                            j++
+                            continue
+                        }
+                        if (!l[0].isWhitespace()) break
+                        parts.add(l.trim())
+                        j++
+                    }
+                    desc = parts.joinToString(if (fold) " " else "\n").trim()
+                    i = j - 1
+                } else {
+                    desc = value.trim('"', '\'')
+                }
+            }
+            i++
         }
         return name to desc
     }

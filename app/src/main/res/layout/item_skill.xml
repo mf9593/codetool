@@ -48,7 +48,7 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <!-- 说明：最多两行，长描述不撑乱布局 -->
+        <!-- 说明：卡片只显示前两行，省略部分点「编辑」查看完整描述 -->
         <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
