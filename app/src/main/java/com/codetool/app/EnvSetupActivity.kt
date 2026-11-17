@@ -37,6 +37,9 @@ class EnvSetupActivity : AppCompatActivity() {
     /** 一键修复模式（包管理进入）不要求「开始使用」禁用到装完，检测完即可回。 */
     private var fixMode = false
 
+    /** 安装日志是否展开（点安装卡片标题切换）。安装中/失败展开，成功收起。 */
+    private var logExpanded = false
+
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(ThemeManager.resolveStyle(this))
         super.onCreate(savedInstanceState)
@@ -56,6 +59,16 @@ class EnvSetupActivity : AppCompatActivity() {
         // 两种模式统一：检测到缺项就显示「一键修复环境」（apt 安装入口在此按钮），
         // 全绿则隐藏；「开始使用/返回」始终可点，不强制。
         btnInstall.setOnClickListener { install() }
+        // 点安装过程卡片的标题 → 展开/收起终端日志（报错时用户可展开看终端代码）
+        progressTitle.setOnClickListener {
+            logExpanded = !logExpanded
+            applyLogVisibility()
+        }
+        progressTitle.isClickable = true
+        progressCard.setOnClickListener {
+            logExpanded = !logExpanded
+            applyLogVisibility()
+        }
         btnNext.setOnClickListener {
             setResult(RESULT_OK)
             finish()
@@ -94,6 +107,10 @@ class EnvSetupActivity : AppCompatActivity() {
         progressTitle.visibility = android.view.View.VISIBLE
         progress.visibility = android.view.View.VISIBLE
         tvLog.text = ""
+        logExpanded = true   // 安装中自动展开，实时看进度/报错
+        applyLogVisibility()
+        // 提示可点标题收起/展开日志
+        progressTitle.text = "正在安装…（点此收起/展开日志）"
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 AiEnvHelper.ensure(this@EnvSetupActivity) { line ->
@@ -101,13 +118,24 @@ class EnvSetupActivity : AppCompatActivity() {
                 }
             }
             progress.visibility = android.view.View.GONE
-            progressTitle.visibility = android.view.View.GONE
             refreshStatus()
-            if (!ok) {
-                tvStatus.text = "修复未完成，请重试或查看上方输出"
+            if (ok) {
+                // 成功后自动收起日志，界面干净；失败保持展开让用户看终端报错
+                logExpanded = false
+                progressTitle.text = "安装完成（点此展开/收起日志）"
+            } else {
+                logExpanded = true
+                progressTitle.text = "修复未完成（点此展开/收起日志）"
+                tvStatus.text = "修复未完成，请重试或点上方卡片展开查看终端报错"
                 btnInstall.isEnabled = true
             }
+            applyLogVisibility()
         }
+    }
+
+    /** 日志展开/收起（点安装卡片标题切换）。 */
+    private fun applyLogVisibility() {
+        tvLog.visibility = if (logExpanded) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     companion object {

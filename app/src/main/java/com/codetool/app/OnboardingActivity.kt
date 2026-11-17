@@ -65,6 +65,16 @@ class OnboardingActivity : Activity() {
         refreshUi()  // 从系统设置/权限弹窗返回后刷新状态
     }
 
+    /**
+     * 焦点变化时刷新：电池优化（ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS）等是 overlay
+     * 弹窗，授权后返回可能不触发 onResume，导致徽标不更新（用户点别的卡片才「顺带」刷新）。
+     * 这里在重新拿到焦点（从任何系统 UI 返回）时刷一次，保证当前卡片状态即时更新。
+     */
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) refreshUi()
+    }
+
     private fun buildCards() {
         cardsContainer.removeAllViews()
         batteryBadge = makeCard(
@@ -172,7 +182,7 @@ class OnboardingActivity : Activity() {
             setBackgroundResource(ripple.resourceId)
             setOnClickListener {
                 tapped.add(key)  // 点过即视为已处理，解锁下一步（兼容无法授权的 ROM）
-                refreshUi()
+                updateNextState()  // 只解锁「下一步」，不刷其他卡片徽标（避免点一个刷新一片）
                 onClick()
             }
         }
@@ -214,21 +224,28 @@ class OnboardingActivity : Activity() {
         return badge
     }
 
-    private fun refreshUi() {
-        val batOk = batteryGranted()
-        val ntfOk = notifGranted()
-        val stoOk = storageGranted()
-        updateBadge(batteryBadge, batOk)
-        updateBadge(notifyBadge, ntfOk)
-        updateBadge(storageBadge, stoOk)
-        // 解锁「下一步」：真实授权成功 或 用户点过该卡片（部分 ROM 无法授权，点过即视为已处理）
-        val batSatisfied = batOk || "battery" in tapped
-        val ntfSatisfied = ntfOk || "notify" in tapped
-        val stoSatisfied = stoOk || "storage" in tapped
+    /** 只刷新三个权限徽标（已开启/待授权），不动「下一步」状态。 */
+    private fun refreshBadges() {
+        updateBadge(batteryBadge, batteryGranted())
+        updateBadge(notifyBadge, notifGranted())
+        updateBadge(storageBadge, storageGranted())
+    }
+
+    /** 只根据「真实授权 或 点过卡片」更新「下一步」按钮与提示，不刷徽标。 */
+    private fun updateNextState() {
+        val batSatisfied = batteryGranted() || "battery" in tapped
+        val ntfSatisfied = notifGranted() || "notify" in tapped
+        val stoSatisfied = storageGranted() || "storage" in tapped
         val allOk = batSatisfied && ntfSatisfied && stoSatisfied
         next.isEnabled = allOk
         hint.text = if (allOk) "已完成全部授权，可以开始使用了"
         else "请先完成以上授权（点卡片跳转授权；若系统无法授权，点过卡片即可继续）"
+    }
+
+    /** 全量刷新：徽标 + 下一步状态。用于 onResume / 焦点返回（从系统设置回来）。 */
+    private fun refreshUi() {
+        refreshBadges()
+        updateNextState()
     }
 
     private fun updateBadge(badge: TextView?, ok: Boolean) {
