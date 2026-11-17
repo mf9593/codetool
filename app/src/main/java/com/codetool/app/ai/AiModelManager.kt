@@ -46,6 +46,10 @@ object AiModelManager {
             listOf("mimo-v2-flash", "mimo-v2-pro")),
         Provider("sensenova", "商汤 SenseNova", "https://token.sensenova.cn/v1",
             listOf("deepseek-v4.1-flash", "SenseNova-V6-Turbo")),
+        // 国家超算互联网（SCNet）：OpenAI 兼容协议，base_url 必须带 /v1（仅接口版本）。
+        // 模型名以「模型列表」页为准；填完 Key 用「测试连接」会拉真实 /models 校验。
+        Provider("scnet", "国家超算互联网", "https://api.scnet.cn/api/llm/v1",
+            listOf("DeepSeek-V4.1-Flash-1017", "DeepSeek-V4-Pro-0813", "Qwen3.8-Max", "Qwen3.8-Flash", "GLM-5.3", "MiniMax-M2.5")),
         Provider("deepseek", "DeepSeek", "https://api.deepseek.com/v1",
             listOf("deepseek-chat", "deepseek-reasoner")),
         Provider("moonshot", "月之暗面 Kimi", "https://api.moonshot.cn/v1",
