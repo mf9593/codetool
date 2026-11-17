@@ -23,8 +23,11 @@ android {
     signingConfigs {
         // 可复用 debug/release 签名：keystore 放在仓库外层 keystore/ 目录，
         // 换环境开发用同一个签名（覆盖安装不冲突）。密码明文仅用于 debug；release 建议走环境变量/不入库。
-        // CI（GitHub Actions）上仓库外 keystore 不存在，回退 AGP 默认 debug 签名，构建不中断。
-        val codetoolKeystore = rootProject.file("../keystore/codetool-debug.jks")
+        // 路径可用 -PCODETOOL_KEYSTORE=<路径> 覆盖（CI 从 Secret 解出 keystore 后传入相对仓库根的路径）；
+        // 找不到 keystore 时回退 AGP 默认 debug 签名，构建不中断。
+        val codetoolKeystorePath = project.findProperty("CODETOOL_KEYSTORE")?.toString()
+            ?: "../keystore/codetool-debug.jks"
+        val codetoolKeystore = rootProject.file(codetoolKeystorePath)
         if (codetoolKeystore.exists()) {
             create("codetool") {
                 storeFile = codetoolKeystore

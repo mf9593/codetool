@@ -56,11 +56,27 @@ jobs:
           key: gradle-${{ runner.os }}-${{ hashFiles('**/*.gradle.kts', 'gradle/libs.versions.toml') }}
           restore-keys: gradle-${{ runner.os }}-
 
+      - name: Decode signing keystore
+        # 用固定 keystore 签名，保证 CI 打的包与本地包签名一致（跨环境/跨 runner 覆盖安装不冲突）。
+        # 未配置 Secret 时跳过，回退 AGP 默认 debug 签名。
+        if: ${{ secrets.CODETOOL_KEYSTORE_BASE64 != '' }}
+        env:
+          KEYSTORE_B64: ${{ secrets.CODETOOL_KEYSTORE_BASE64 }}
+        run: |
+          set -e
+          printf '%s' "$KEYSTORE_B64" | base64 -d > codetool-debug.jks
+          ls -l codetool-debug.jks
+
       - name: Build debug APK
         run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
+          # ORG_GRADLE_PROJECT_ 前缀 = Gradle 项目属性（等价 -P）
+          ORG_GRADLE_PROJECT_CODETOOL_KEYSTORE: codetool-debug.jks
+          ORG_GRADLE_PROJECT_CODETOOL_STORE_PW: ${{ secrets.CODETOOL_STORE_PW }}
+          ORG_GRADLE_PROJECT_CODETOOL_KEY_ALIAS: ${{ secrets.CODETOOL_KEY_ALIAS }}
+          ORG_GRADLE_PROJECT_CODETOOL_KEY_PW: ${{ secrets.CODETOOL_KEY_PW }}
 
       - name: Rename APK (带 commit/时间)
         run: |
