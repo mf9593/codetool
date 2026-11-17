@@ -58,12 +58,15 @@ jobs:
 
       - name: Decode signing keystore
         # 用固定 keystore 签名，保证 CI 打的包与本地包签名一致（跨环境/跨 runner 覆盖安装不冲突）。
-        # 未配置 Secret 时跳过，回退 AGP 默认 debug 签名。
-        if: ${{ secrets.CODETOOL_KEYSTORE_BASE64 != '' }}
+        # 未配置 Secret 时直接跳过（空值），回退 AGP 默认 debug 签名。
+        # 注意：secrets 上下文不能用在 if 里，只能在 env/run 中用。
         env:
           KEYSTORE_B64: ${{ secrets.CODETOOL_KEYSTORE_BASE64 }}
         run: |
-          set -e
+          if [ -z "$KEYSTORE_B64" ]; then
+            echo "没配置 CODETOOL_KEYSTORE_BASE64，将使用 AGP 默认 debug 签名"
+            exit 0
+          fi
           printf '%s' "$KEYSTORE_B64" | base64 -d > codetool-debug.jks
           ls -l codetool-debug.jks
 
