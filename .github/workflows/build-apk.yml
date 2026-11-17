@@ -62,8 +62,9 @@ jobs:
         # 注意：secrets 上下文不能用在 if 里，只能在 env/run 中用。
         env:
           KEYSTORE_B64: ${{ secrets.CODETOOL_KEYSTORE_BASE64 }}
-          STORE_PW: ${{ secrets.CODETOOL_STORE_PW }}
-          KEY_ALIAS: ${{ secrets.CODETOOL_KEY_ALIAS }}
+          # 缺省用 debug keystore 的固定密码/别名（私钥本身在 Secret 里，密码单独泄露也拿不到私钥）
+          STORE_PW: ${{ secrets.CODETOOL_STORE_PW || 'codetool-debug' }}
+          KEY_ALIAS: ${{ secrets.CODETOOL_KEY_ALIAS || 'codetool-debug' }}
         run: |
           set -e
           if [ -z "$KEYSTORE_B64" ]; then
@@ -72,7 +73,7 @@ jobs:
           fi
           printf '%s' "$KEYSTORE_B64" | base64 -d > codetool-debug.jks
           sha256sum codetool-debug.jks
-          [ -n "$STORE_PW" ] || { echo "::error::CODETOOL_STORE_PW 为空"; exit 1; }
+          [ -n "$STORE_PW" ] || { echo "::error::CODETOOL_STORE_PW 为空且默认值未生效"; exit 1; }
           [ -n "$KEY_ALIAS" ] || { echo "::error::CODETOOL_KEY_ALIAS 为空"; exit 1; }
           if ! keytool -list -keystore codetool-debug.jks -storepass "$STORE_PW" > /tmp/ks.txt 2>&1; then
             echo "::error::keystore 无法用 CODETOOL_STORE_PW 打开（文件或密码不对）"
@@ -93,9 +94,9 @@ jobs:
           ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
           # ORG_GRADLE_PROJECT_ 前缀 = Gradle 项目属性（等价 -P）
           ORG_GRADLE_PROJECT_CODETOOL_KEYSTORE: codetool-debug.jks
-          ORG_GRADLE_PROJECT_CODETOOL_STORE_PW: ${{ secrets.CODETOOL_STORE_PW }}
-          ORG_GRADLE_PROJECT_CODETOOL_KEY_ALIAS: ${{ secrets.CODETOOL_KEY_ALIAS }}
-          ORG_GRADLE_PROJECT_CODETOOL_KEY_PW: ${{ secrets.CODETOOL_KEY_PW }}
+          ORG_GRADLE_PROJECT_CODETOOL_STORE_PW: ${{ secrets.CODETOOL_STORE_PW || 'codetool-debug' }}
+          ORG_GRADLE_PROJECT_CODETOOL_KEY_ALIAS: ${{ secrets.CODETOOL_KEY_ALIAS || 'codetool-debug' }}
+          ORG_GRADLE_PROJECT_CODETOOL_KEY_PW: ${{ secrets.CODETOOL_KEY_PW || 'codetool-debug' }}
 
       - name: Report build failure
         if: steps.build.outcome == 'failure'
