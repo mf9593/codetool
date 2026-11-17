@@ -235,7 +235,8 @@ object DesktopApps {
             File(root, "usr/local/share/applications"),
             File(root, "root/.local/share/applications"),
         )
-        val curated = apps.map { it.id }.toSet()
+        val curatedIds = apps.map { it.id.lowercase() }.toSet()
+        val curatedCmds = apps.map { it.cmd.substringAfterLast('/').lowercase() }.toSet()
         val out = LinkedHashMap<String, DiscoveredApp>()
         for (dir in dirs) {
             val files = dir.listFiles { f -> f.isFile && f.name.endsWith(".desktop") } ?: continue
@@ -255,7 +256,12 @@ object DesktopApps {
                 // 去重：同 Exec 二进制只留一条；跳过 curated 列表已覆盖的。
                 if (out.containsKey(execBin)) continue
                 val name = entry.name.ifBlank { execBin }
-                if (curated.any { it.equals(execBin, ignoreCase = true) }) continue
+                // 同时比对 curated 的 id 与 cmd：Chrome 的 id 是 "chrome"，但 .desktop 里
+                // 二进制是 "google-chrome-stable"，只比 id 会漏判导致桌面出现两个 Google 图标。
+                val binLower = binName.lowercase()
+                if (binLower in curatedIds || binLower in curatedCmds) continue
+                // 前缀兜底：google-chrome-stable / google-chrome-beta 等变体都算已覆盖
+                if (curatedCmds.any { it.isNotEmpty() && binLower.startsWith(it) }) continue
                 // exec 去掉 %占位符，作为可点击启动的命令行（保留原参数）。
                 val launchExec = entry.exec.replace(Regex("%[fFuUdDnNiCkvvm]"), "").trim()
                 out[execBin] = DiscoveredApp(name = name, exec = launchExec, icon = entry.icon)

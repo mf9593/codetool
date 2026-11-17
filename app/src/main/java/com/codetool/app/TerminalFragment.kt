@@ -241,6 +241,24 @@ class TerminalFragment : Fragment() {
         }
 
         /**
+         * 运行一段内联脚本文本，但不把源码回显到终端。
+         *
+         * 直接 sendCommand 多行脚本时，终端会把「输入」也回显出来（整段 echo/if 源码 +
+         * `>` 续行），用户看不到干净的结果。这里先把脚本文本写成缓存文件，再复用
+         * runScript 的「复制进容器 + sh 路径执行」流程，终端只显示一行 sh 命令和真正输出。
+         */
+        fun runInlineScript(context: android.content.Context, name: String, script: String) {
+            val tmp = java.io.File(context.cacheDir, "inline-${System.currentTimeMillis()}.sh")
+            val ok = runCatching { tmp.writeText(script) }.isSuccess
+            if (ok && tmp.length() > 0) {
+                runScript(context, tmp, name)
+            } else {
+                // 兜底：写文件失败时退回直接发送
+                sendCommand(context, script)
+            }
+        }
+
+        /**
          * 运行脚本前先选目标终端标签：底部弹窗列出已打开的标签。
          * 没有标签（或只有一个）时直接走默认逻辑（自动创建/当前标签）。
          */

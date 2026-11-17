@@ -99,8 +99,10 @@ class PackagesFragment : Fragment() {
                 } catch (_: Throwable) {
                 }
                 Handler(Looper.getMainLooper()).postDelayed({
-                    TerminalFragment.sendCommand(
+                    // 走 runInlineScript：不发源码到终端，只显示输出
+                    TerminalFragment.runInlineScript(
                         ctx,
+                        "启动星火商店",
                         "echo '--- 启动星火商店（Wayland + 软件渲染）---'\n" +
                             "unset XKB_CONFIG_ROOT TAWC_XKB_CONFIG_ROOT\n" +
                             "export WAYLAND_DISPLAY=/usr/share/tawc/wayland-0\n" +
@@ -283,9 +285,12 @@ class PackagesFragment : Fragment() {
     }
 
     /** 把命令发到当前终端标签，并切到终端页显示执行过程。 */
+    /**
+     * 在终端运行安装脚本（不回显源码）。
+     * 直接 sendCommand 多行脚本会把 echo/if 源码和 `>` 续行也打到终端，
+     * 统一走 runInlineScript：写入临时文件 → 复制进容器 → `sh 路径`，只显示输出。
+     */
     private fun runInTerminal(name: String, command: String) {
-        val ctx = requireContext()
-        TerminalFragment.sendCommand(ctx, command)
-        Toast.makeText(ctx, "已在终端执行：$name", Toast.LENGTH_SHORT).show()
+        TerminalFragment.runInlineScript(requireContext(), name, command)
     }
 }

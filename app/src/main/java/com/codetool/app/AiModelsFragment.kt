@@ -48,7 +48,10 @@ class AiModelsFragment : Fragment() {
         modelList = v.findViewById(R.id.aiModelList)
 
         v.findViewById<MaterialButton>(R.id.btnAiFixPath).setOnClickListener {
-            TerminalFragment.sendCommand(requireContext(), AiModelManager.FIX_PATH_SCRIPT)
+            // 走 runInlineScript：脚本写入临时文件再执行，终端不回显整段源码
+            TerminalFragment.runInlineScript(
+                requireContext(), "修复 PATH", AiModelManager.FIX_PATH_SCRIPT
+            )
             toast("已写入 PATH（新开终端会话生效）")
         }
         v.findViewById<MaterialButton>(R.id.btnAiRefreshVersion).setOnClickListener { refreshVersions() }
