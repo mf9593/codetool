@@ -97,6 +97,21 @@ object DesktopApps {
             ") || echo '[ERROR] Chrome 安装中断，看上方报错'\n" +
             "command -v google-chrome >/dev/null 2>&1 && echo '[OK] Chrome 已可用' || echo '[ERROR] Chrome 未装上，看上方 apt 报错（大陆网络可能需代理）'"
 
+    // Firefox tarball 直装，绕开 apt/snapd（Mozilla apt 包硬依赖 snapd，容器里必崩）。
+    private val FIREFOX_INSTALL =
+        "command -v wget >/dev/null 2>&1 || { echo '$PRE_DEP_HINT'; exit 1; }\n" +
+            "echo '=== 安装 Mozilla Firefox (arm64 官方版，tarball 直装绕开 snapd) ==='\n" +
+            "( set -e\n" +
+            "  rm -rf /opt/firefox\n" +
+            "  cd /opt\n" +
+            "  wget -q --show-progress -O firefox.tar.xz 'https://ftp.mozilla.org/pub/firefox/releases/146.0/linux-aarch64/en-US/firefox-146.0.tar.xz'\n" +
+            "  tar -xJf firefox.tar.xz -C /opt\n" +
+            "  rm -f firefox.tar.xz\n" +
+            "  ln -sf /opt/firefox/firefox /usr/local/bin/firefox\n" +
+            "  [ -x /opt/firefox/firefox ] || { echo '[ERROR] firefox 解压后二进制不存在（下载损坏？）'; exit 1; }\n" +
+            ") || echo '[ERROR] Firefox 安装中断，看上方报错'\n" +
+            "command -v firefox >/dev/null 2>&1 && echo \"[OK] Firefox 已可用：$(firefox --version 2>/dev/null)\" || echo '[WARN] Firefox 未装上'"
+
     val apps: List<DesktopApp> = listOf(
         DesktopApp(
             id = "spark-store",
@@ -116,6 +131,14 @@ object DesktopApps {
             install = BROWSER_INSTALL,
         ),
         DesktopApp(
+            id = "firefox",
+            name = "Firefox",
+            cmd = "firefox",
+            iconRes = R.drawable.ic_files,
+            // Firefox 原生 Wayland（146 自动检测 WAYLAND_DISPLAY），无需 Chrome 那种 ozone 参数
+            install = FIREFOX_INSTALL,
+        ),
+        DesktopApp(
             id = "pcmanfm",
             name = "文件",
             cmd = "pcmanfm",
@@ -127,11 +150,13 @@ object DesktopApps {
         DesktopApp(
             id = "terminal",
             name = "终端",
-            cmd = "weston-terminal",
+            cmd = "foot",
             iconRes = R.drawable.ic_terminal,
+            // foot：原生 Wayland 终端，功能齐全（滚动回看/字体配色/复制粘贴/foot.ini 可配），
+            // 轻量无需 GPU（容器软件渲染也流畅），比 weston-terminal 强得多。
             install = "export DEBIAN_FRONTEND=noninteractive\n" +
-                "apt-get update && apt-get install -y weston-terminal\n" +
-                "command -v weston-terminal >/dev/null 2>&1 && echo '[OK] weston-terminal 已可用' || echo '[ERROR] weston-terminal 未装上，看上方 apt 报错'",
+                "command -v foot >/dev/null 2>&1 || { apt-get update && apt-get install -y foot; }\n" +
+                "command -v foot >/dev/null 2>&1 && echo '[OK] foot 终端已可用' || echo '[ERROR] foot 未装上，看上方 apt 报错'",
         ),
     )
 
