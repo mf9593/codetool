@@ -125,8 +125,12 @@ class TerminalSessionManager(private val context: Context) {
             "SHELL=/bin/bash",
             "TERM=xterm-256color",
             "PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-            "LANG=C.UTF-8",
-            "LC_ALL=C.UTF-8",
+            // 终端默认中文：rootfs 已预置 zh_CN locale（见 RootfsManager.ensureZhLocale），
+            // 交互式 shell 用中文，apt/git 等提示随语言包走中文。
+            // 注意：后台脚本（TawcrootRuntime.runCommand）仍用 C.UTF-8，避免脚本解析英文输出被翻译破坏。
+            "LANG=zh_CN.UTF-8",
+            "LC_ALL=zh_CN.UTF-8",
+            "LANGUAGE=zh_CN:zh",
             // 容器统一按北京时间（UTC+8）：与 AI 模型定时切换、DeepSeek 高峰/闲时计费口径一致，
             // 终端里 date / 脚本取到的时间不再受 Android 系统时区影响。
             "TZ=Asia/Shanghai",
