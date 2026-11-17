@@ -16,6 +16,16 @@ object Changelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "2.0.4",
+            date = "2026-11-17",
+            items = listOf(
+                "修复 Firefox 安装后包管理页仍显示「未安装」的问题（状态检测找错条目，恒返回未安装；现直接检测 Firefox 二进制）。",
+                "合成器桌面新增 Firefox 浏览器图标：装好 Firefox 后桌面直接可启动，不再只显示 Chrome 一个浏览器。",
+                "合成器桌面「终端」从 weston-terminal 换成 foot：原生 Wayland 终端，功能更全（滚动回看、字体配色、复制粘贴、可配置），轻量无需 GPU。",
+                "Firefox 桌面图标安装走 Mozilla 官方 tarball 直装，绕开 apt/snapd（此前 apt 装会被 snapd 卡死）。",
+            ),
+        ),
+        Entry(
             version = "2.0.3",
             date = "2026-11-17",
             items = listOf(
