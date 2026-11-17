@@ -49,7 +49,7 @@
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="20dp"
-            android:text="更新依赖"
+            android:text="更新依赖 · 装常用组件"
             app:icon="@drawable/ic_refresh"
             app:iconGravity="textStart" />
 

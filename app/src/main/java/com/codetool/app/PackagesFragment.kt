@@ -30,8 +30,14 @@ class PackagesFragment : Fragment() {
         val v = inflater.inflate(R.layout.fragment_packages, container, false)
         v.findViewById<MaterialButton>(R.id.btnUpdate).setOnClickListener {
             runInTerminal(
-                "更新依赖",
-                "apt-get update && apt-get -y upgrade"
+                "更新依赖 · 装常用组件",
+                "export DEBIAN_FRONTEND=noninteractive\n" +
+                    "apt-get update\n" +
+                    "echo '=== 安装常用依赖（浏览器/脚本/NDK·JDK 解压都依赖）==='\n" +
+                    "apt-get install -y ca-certificates wget curl gnupg git unzip xz-utils bzip2\n" +
+                    "echo '=== 升级已装软件包 ==='\n" +
+                    "apt-get -y upgrade\n" +
+                    "echo '[OK] 常用组件就绪：wget / curl / gpg / unzip / xz 已可用'"
             )
         }
         v.findViewById<MaterialButton>(R.id.btnMimo).setOnClickListener {
@@ -151,23 +157,34 @@ class PackagesFragment : Fragment() {
                     "echo '  3) adb devices 确认为 device（首次连接要配对：adb pair 127.0.0.1:<配对端口>）'"
             )
         }
-        // 安装浏览器：Chrome / Firefox 拆成两个独立按钮，共用前置修复段
-        val browserPrereq = "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
-            "command -v gpg >/dev/null 2>&1 || apt-get install -y gnupg\n" +
-            "export DEBIAN_FRONTEND=noninteractive\n" +
+        // 安装浏览器：Chrome / Firefox 拆成两个独立按钮，共用前置修复段。
+        // 注意：不再在这里 inline 装 wget/gnupg（旧行 `command -v xxx || apt-get install -y ...`
+        // 可能在 export DEBIAN_FRONTEND 之前跑、apt 配置弹窗会卡死）。wget/gnupg 改由
+        // 「更新依赖 · 装常用组件」预装；Chrome 按钮里有缺 gpg 的友好检查（不卡死）。
+        val browserPrereq = "export DEBIAN_FRONTEND=noninteractive\n" +
             "echo '=== 0/1 修复上次中断残留 + 清理容器跑不了的 snapd ==='\n" +
-            "dpkg --configure -a\n" +
-            "dpkg -l snapd >/dev/null 2>&1 && { echo '移除 snapd（容器不支持，会让 dpkg 报错）'; dpkg --remove --force-depends snapd 2>/dev/null; dpkg --configure -a; }\n"
+            // dpkg --configure -a 遇到损坏的 snapd（proot 下 CAP_SETFCAP 设不了）会报错返回 1，
+            // 不容错会把整段中断、走不到下面的 snapd 移除。加 || true 让它活到移除 snapd。
+            "dpkg --configure -a || true\n" +
+            // 移除残留 snapd 并 hold 锁死：否则后面 apt-get install 会把它当依赖/推荐拉回来重装，
+            // 又在容器里 CAP_SETFCAP 失败炸掉整个安装。
+            "dpkg -l snapd >/dev/null 2>&1 && { echo '移除 snapd（容器不支持，会让 dpkg 报错）'; dpkg --remove --force-depends snapd 2>/dev/null || true; dpkg --purge snapd 2>/dev/null || true; }\n" +
+            "echo 'snapd hold' | dpkg --set-selections 2>/dev/null || true\n" +
+            "dpkg --configure -a || true\n" +
+            "echo '[OK] snapd 已清理并锁死，继续安装'\n"
         v.findViewById<MaterialButton>(R.id.btnChromeInstall).setOnClickListener {
             runInTerminal(
                 "安装 Chrome",
                 browserPrereq +
                     "echo '=== 1/1 安装 Google Chrome (arm64 官方版) ==='\n" +
                     "( set -e\n" +
+                    "  command -v gpg >/dev/null 2>&1 || { echo '[ERROR] 缺少 gpg：请先在包管理点「更新依赖 · 装常用组件」安装 gnupg'; exit 1; }\n" +
                     "  wget -qO- https://dl.google.com/linux/linux_signing_key.pub | gpg --batch --yes --dearmor -o /usr/share/keyrings/google-chrome.gpg\n" +
                     "  [ -s /usr/share/keyrings/google-chrome.gpg ] || { echo '[ERROR] Chrome 密钥下载失败（网络问题）'; exit 1; }\n" +
                     "  echo 'deb [signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main' > /etc/apt/sources.list.d/google-chrome.list\n" +
-                    "  apt-get update && apt-get install -y google-chrome-stable\n" +
+                    // 容错：update 失败（失效第三方源）不中断，继续尝试装 chrome
+                    "  apt-get update || echo '[WARN] 部分软件源拉取失败，继续尝试安装'\n" +
+                    "  apt-get install -y google-chrome-stable\n" +
                     ") || echo '[ERROR] Chrome 安装中断，看上方报错'\n" +
                     "echo ''\n" +
                     "echo '=== 安装结果（真实自检）==='\n" +
@@ -179,16 +196,21 @@ class PackagesFragment : Fragment() {
             runInTerminal(
                 "安装 Firefox",
                 browserPrereq +
-                    "echo '=== 1/1 安装 Mozilla Firefox (arm64 官方版) ==='\n" +
+                    "echo '=== 1/1 安装 Mozilla Firefox (arm64 官方版，tarball 直装绕开 snapd) ==='\n" +
                     "( set -e\n" +
-                    "  install -d -m 0755 /etc/apt/keyrings\n" +
-                    "  wget -qO- https://packages.mozilla.org/apt/repo-signing-key.gpg | tee /etc/apt/keyrings/packages.mozilla.org.asc >/dev/null\n" +
-                    "  echo 'deb [signed-by=/etc/apt/keyrings/packages.mozilla.org.asc] https://packages.mozilla.org/apt mozilla main' > /etc/apt/sources.list.d/mozilla.list\n" +
-                    "  apt-get update && apt-get install -y firefox\n" +
+                    "  command -v wget >/dev/null 2>&1 || { echo '[ERROR] 缺 wget：请先在包管理点「更新依赖 · 装常用组件」'; exit 1; }\n" +
+                    "  rm -rf /opt/firefox\n" +
+                    "  cd /opt\n" +
+                    "  echo '--- 下载 Mozilla Firefox 官方 tarball（arm64）---'\n" +
+                    "  wget -q --show-progress -O firefox.tar.xz 'https://ftp.mozilla.org/pub/firefox/releases/146.0/linux-aarch64/en-US/firefox-146.0.tar.xz'\n" +
+                    "  tar -xJf firefox.tar.xz -C /opt\n" +
+                    "  rm -f firefox.tar.xz\n" +
+                    "  ln -sf /opt/firefox/firefox /usr/local/bin/firefox\n" +
+                    "  [ -x /opt/firefox/firefox ] || { echo '[ERROR] firefox 解压后二进制不存在（下载损坏？）'; exit 1; }\n" +
                     ") || echo '[ERROR] Firefox 安装中断，看上方报错'\n" +
                     "echo ''\n" +
                     "echo '=== 安装结果（真实自检）==='\n" +
-                    "command -v firefox >/dev/null 2>&1 && echo \"[OK] Firefox 已可用：$(firefox --version 2>/dev/null)\" || echo '[WARN] Firefox 未装上（不影响内置浏览器）'\n" +
+                    "command -v firefox >/dev/null 2>&1 && echo \"[OK] Firefox 已可用：$(firefox --version 2>/dev/null)\" || echo '[WARN] Firefox 未装上（不影响内置浏览器，Chrome 优先）'\n" +
                     "echo '装好后：终端点「显示」打开 GUI；工具 → MCP 页可查看浏览器状态'"
             )
         }

@@ -56,6 +56,47 @@ object DesktopApps {
     )
 
 
+    /**
+     * 默认桌面图标的安装脚本（点未安装的图标时走这里）。
+     * 原则与包管理一致：不在脚本里 inline `apt-get install -y wget/gnupg`（会卡死），
+     * 缺前置工具只报错并指引先点「更新依赖 · 装常用组件」。
+     */
+    private const val PRE_DEP_HINT =
+        "[ERROR] 缺少前置工具（wget/gpg），请先到「工具 → 包管理」点「更新依赖 · 装常用组件」"
+
+    private val SPARK_INSTALL =
+        "export DEBIAN_FRONTEND=noninteractive\n" +
+            "command -v wget >/dev/null 2>&1 || { echo '$PRE_DEP_HINT'; exit 1; }\n" +
+            "cd /tmp && rm -f spark-store.deb\n" +
+            "echo '=== 下载星火商店 deb ==='\n" +
+            "( set -e\n" +
+            "  wget -L -O spark-store.deb 'https://gitee.com/spark-store-project/spark-store/releases/download/5.3.2/spark-store_5.3.2_arm64.deb'\n" +
+            "  dpkg-deb -I spark-store.deb >/dev/null 2>&1 || { echo '[ERROR] deb 文件下载损坏或无效'; exit 1; }\n" +
+            "  echo '[OK] deb 文件有效，开始安装'\n" +
+            "  apt-get update\n" +
+            "  for i in 1 2 3 4 5 6 7 8 9 10; do\n" +
+            "    if apt-get install -yf ./spark-store.deb; then echo '[OK] 安装成功'; break; fi\n" +
+            "    echo '本次安装未成功（可能 apt 锁被占），2 秒后重试…'; sleep 2\n" +
+            "  done\n" +
+            ") || echo '[ERROR] 星火商店安装中断，看上方报错'\n" +
+            "command -v spark-store >/dev/null 2>&1 && echo '[OK] spark-store 已可用' || echo '[ERROR] spark-store 未装上，看上方报错'"
+
+    private val BROWSER_INSTALL =
+        "export DEBIAN_FRONTEND=noninteractive\n" +
+            "command -v wget >/dev/null 2>&1 || { echo '$PRE_DEP_HINT'; exit 1; }\n" +
+            "command -v gpg >/dev/null 2>&1 || { echo '$PRE_DEP_HINT'; exit 1; }\n" +
+            "echo '=== 安装 Google Chrome (arm64 官方版) ==='\n" +
+            "( set -e\n" +
+            "  dpkg --configure -a || true\n" +
+            "  dpkg -l snapd >/dev/null 2>&1 && { dpkg --remove --force-depends snapd 2>/dev/null; dpkg --configure -a || true; }\n" +
+            "  wget -qO- https://dl.google.com/linux/linux_signing_key.pub | gpg --batch --yes --dearmor -o /usr/share/keyrings/google-chrome.gpg\n" +
+            "  [ -s /usr/share/keyrings/google-chrome.gpg ] || { echo '[ERROR] Chrome 密钥下载失败（网络问题）'; exit 1; }\n" +
+            "  echo 'deb [signed-by=/usr/share/keyrings/google-chrome.gpg] https://dl.google.com/linux/chrome/deb/ stable main' > /etc/apt/sources.list.d/google-chrome.list\n" +
+            "  apt-get update || echo '[WARN] 部分软件源拉取失败，继续尝试安装'\n" +
+            "  apt-get install -y google-chrome-stable\n" +
+            ") || echo '[ERROR] Chrome 安装中断，看上方报错'\n" +
+            "command -v google-chrome >/dev/null 2>&1 && echo '[OK] Chrome 已可用' || echo '[ERROR] Chrome 未装上，看上方 apt 报错（大陆网络可能需代理）'"
+
     val apps: List<DesktopApp> = listOf(
         DesktopApp(
             id = "spark-store",
@@ -63,6 +104,7 @@ object DesktopApps {
             cmd = "spark-store",
             iconRes = R.drawable.ic_packages,
             args = "--ozone-platform=wayland --disable-gpu",
+            install = SPARK_INSTALL,
         ),
         DesktopApp(
             id = "chrome",
@@ -71,18 +113,25 @@ object DesktopApps {
             iconRes = R.drawable.ic_files,
             args = "--ozone-platform=wayland --disable-gpu --disable-gpu-compositing " +
                 "--enable-unsafe-swiftshader --no-sandbox --disable-dev-shm-usage",
+            install = BROWSER_INSTALL,
         ),
         DesktopApp(
             id = "pcmanfm",
             name = "文件",
             cmd = "pcmanfm",
             iconRes = R.drawable.ic_folder,
+            install = "export DEBIAN_FRONTEND=noninteractive\n" +
+                "apt-get update && apt-get install -y pcmanfm\n" +
+                "command -v pcmanfm >/dev/null 2>&1 && echo '[OK] pcmanfm 已可用' || echo '[ERROR] pcmanfm 未装上，看上方 apt 报错'",
         ),
         DesktopApp(
             id = "terminal",
             name = "终端",
             cmd = "weston-terminal",
             iconRes = R.drawable.ic_terminal,
+            install = "export DEBIAN_FRONTEND=noninteractive\n" +
+                "apt-get update && apt-get install -y weston-terminal\n" +
+                "command -v weston-terminal >/dev/null 2>&1 && echo '[OK] weston-terminal 已可用' || echo '[ERROR] weston-terminal 未装上，看上方 apt 报错'",
         ),
     )
 
