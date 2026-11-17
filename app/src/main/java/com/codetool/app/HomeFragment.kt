@@ -82,36 +82,25 @@ class HomeFragment : Fragment() {
         }
     }
 
-    /** 图标颜色语义：三个 tone 都是引用主题属性的 ColorStateList，切主题自动跟随。 */
-    private enum class IconTone(val csl: Int) {
-        OK(R.color.icon_tone_ok),
-        ERROR(R.color.icon_tone_error),
-        NEUTRAL(R.color.icon_tone_neutral),
-    }
-
     /**
-     * 状态卡图标统一入口：图形表达「这行是什么」，颜色表达「状态如何」。
-     * 颜色不在布局里各写各的 tint，统一用主题派生的 tone（禁止硬编码色值）。
+     * 状态卡图标统一入口：图形表达「这行是什么」，颜色统一用主题主色（colorPrimary），
+     * 切主题变体自动跟随。状态差异靠文字表达，不再用红/灰区分。
+     * 颜色不在布局里各写各的 tint（禁止硬编码色值）。
      */
-    private fun applyIcon(iv: ImageView, res: Int, tone: IconTone) {
+    private fun applyIcon(iv: ImageView, res: Int) {
         iv.setImageResource(res)
-        ContextCompat.getColorStateList(requireContext(), tone.csl)?.let {
+        ContextCompat.getColorStateList(requireContext(), R.color.icon_tone_ok)?.let {
             ImageViewCompat.setImageTintList(iv, it)
         }
     }
 
-    /** 刷新 Shizuku 状态行：图形贴合语义（代码=运行时），颜色表达状态。 */
+    /** 刷新 Shizuku 状态行：图标统一主题色，状态靠文字。 */
     private fun updateShizukuStatus() {
         if (!isAdded) return
         // runCatching：Shizuku 服务未就绪/binder 异常时不让首页崩掉
         val st = runCatching { ShizukuManager.status(requireContext()) }.getOrNull() ?: return
         shizukuText.text = "Shizuku: ${st.label}"
-        val tone = when {
-            st.granted -> IconTone.OK
-            st.installed -> IconTone.NEUTRAL
-            else -> IconTone.ERROR
-        }
-        applyIcon(shizukuIcon, R.drawable.ic_wireless, tone)
+        applyIcon(shizukuIcon, R.drawable.ic_wireless)
     }
 
     /** Shizuku 授权结果回调：授权成功刷新状态，被拒提示。 */
@@ -141,9 +130,9 @@ class HomeFragment : Fragment() {
         shizukuText = v.findViewById(R.id.shizukuText)
         shizukuIcon = v.findViewById(R.id.shizukuIcon)
         timeText = v.findViewById(R.id.timeText)
-        applyIcon(v.findViewById(R.id.timeIcon), R.drawable.ic_schedule, IconTone.NEUTRAL)
+        applyIcon(v.findViewById(R.id.timeIcon), R.drawable.ic_schedule)
         progressBar = v.findViewById(R.id.progressBar)
-        applyIcon(v.findViewById(R.id.pathIcon), R.drawable.ic_folder_path, IconTone.NEUTRAL)
+        applyIcon(v.findViewById(R.id.pathIcon), R.drawable.ic_folder_path)
         // Shizuku：点击状态行申请授权（未装/未运行时点按提示指引）
         v.findViewById<View>(R.id.shizukuRow).setOnClickListener {
             val st = runCatching { ShizukuManager.status(requireContext()) }.getOrNull()
@@ -286,8 +275,8 @@ class HomeFragment : Fragment() {
 
     /** refreshStatus 里 IO 计算的结果集合（避免嵌套 Pair）。 */
     private data class StatusSnapshot(
-        val rootfsLabel: String, val rootfsTone: IconTone,
-        val aiLabel: String, val aiTone: IconTone,
+        val rootfsLabel: String,
+        val aiLabel: String,
     )
 
     private fun refreshStatus() {
@@ -301,14 +290,11 @@ class HomeFragment : Fragment() {
             // 不再统计 rootfs 占用大小——全盘 walkTopDown 遍历几万文件极慢，
             // 这个数字对用户也没什么用，直接显示「已就绪」。
             val snapshot = withContext(Dispatchers.IO) {
-                val (label, tone) = when (val st = rootfs.state) {
-                    is RootfsManager.State.Extracting ->
-                        "解压中 ${st.percent}%" to IconTone.NEUTRAL
-                    is RootfsManager.State.Failed ->
-                        "失败: ${st.error}" to IconTone.ERROR
-                    is RootfsManager.State.Ready ->
-                        "已就绪" to IconTone.OK
-                    else -> "待解压（首次启动自动解压）" to IconTone.NEUTRAL
+                val label = when (val st = rootfs.state) {
+                    is RootfsManager.State.Extracting -> "解压中 ${st.percent}%"
+                    is RootfsManager.State.Failed -> "失败: ${st.error}"
+                    is RootfsManager.State.Ready -> "已就绪"
+                    else -> "待解压（首次启动自动解压）"
                 }
                 // AI CLI：规范——必须显示真实版本号，拿不到明确写「版本未知」
                 val mimo = AiModelManager.mimoStatus(ctx)
@@ -323,28 +309,25 @@ class HomeFragment : Fragment() {
                     oc.version.isEmpty() -> "opencode 已装·版本未知"
                     else -> "opencode ${oc.version}"
                 }
-                val aiTone = if (mimo.installed || oc.installed) IconTone.OK else IconTone.NEUTRAL
-                StatusSnapshot(label, tone, "$m · $o", aiTone)
+                StatusSnapshot(label, "$m · $o")
             }
             val path = rootfs.containerRoot.absolutePath
             val tawOk = runtime.binaryExists()
             val tawLabel = if (tawOk) "可用" else "缺失（需编译）"
-            val tawTone = if (tawOk) IconTone.OK else IconTone.ERROR
             val svcRunning = TerminalService.instance != null
             val svcLabel = if (svcRunning) "运行中" else "未启动"
             val svcIcon = R.drawable.ic_terminal_prompt  // 运行/未启动都用终端造型，状态靠文字区分
-            val svcTone = if (svcRunning) IconTone.OK else IconTone.NEUTRAL
 
-            // 更新行：图形贴合该行文字语义，颜色跟随主题
+            // 更新行：图形贴合该行文字语义，颜色统一跟随主题主色
             rootfsText.text = "Rootfs: ${snapshot.rootfsLabel}"
-            applyIcon(rootfsIcon, R.drawable.ic_storage, snapshot.rootfsTone)
+            applyIcon(rootfsIcon, R.drawable.ic_storage)
             pathText.text = "路径: $path"
             tawcrootText.text = "tawcroot: $tawLabel"
-            applyIcon(tawcrootIcon, R.drawable.ic_monitor, tawTone)
+            applyIcon(tawcrootIcon, R.drawable.ic_monitor)
             serviceText.text = "终端服务: $svcLabel"
-            applyIcon(serviceIcon, svcIcon, svcTone)
+            applyIcon(serviceIcon, svcIcon)
             aiStatusText.text = "AI: ${snapshot.aiLabel}"
-            applyIcon(aiStatusIcon, R.drawable.ic_ai_model, snapshot.aiTone)
+            applyIcon(aiStatusIcon, R.drawable.ic_ai_model)
 
             // 进度条显示/隐藏
             when (val st = rootfs.state) {
