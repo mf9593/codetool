@@ -144,3 +144,19 @@ jobs:
         with:
           files: app/build/outputs/apk/debug/codetool-debug-*.apk
           generate_release_notes: true
+
+      - name: Prune stale release assets
+        # softprops 只追加不清理；重打同一个 tag 会残留旧 APK，这里只留本次构建产物
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          KEEP=$(basename "$(ls app/build/outputs/apk/debug/codetool-debug-*.apk | head -1)")
+          echo "保留: $KEEP"
+          gh release view "$GITHUB_REF_NAME" --json assets --jq '.assets[].name' | while read -r n; do
+            [ -z "$n" ] && continue
+            if [ "$n" != "$KEEP" ]; then
+              echo "删除旧附件: $n"
+              gh release delete-asset "$GITHUB_REF_NAME" "$n" --yes
+            fi
+          done
