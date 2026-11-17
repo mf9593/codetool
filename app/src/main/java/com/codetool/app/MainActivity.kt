@@ -67,6 +67,11 @@ class MainActivity : AppCompatActivity() {
     /** 当前页位置（用于键盘切换按钮的显隐）。 */
     private var currentPage = 0
 
+    companion object {
+        /** 合成器桌面点「终端」→ 关闭合成器回到这里时，请求切到终端 tab（复用 CodeTool 自带终端）。 */
+        @JvmField var pendingTerminalTab = false
+    }
+
     /** 模型定时切换：前台边界自检 + 防误触重启提示弹窗。 */
     private val scheduleHandler = android.os.Handler(android.os.Looper.getMainLooper())
     private var scheduleTickRunnable: Runnable? = null
@@ -223,6 +228,11 @@ class MainActivity : AppCompatActivity() {
 
     override fun onResume() {
         super.onResume()
+        // 合成器桌面点「终端」→ 关闭合成器回到这里，切到终端 tab 复用 CodeTool 自带终端。
+        if (pendingTerminalTab) {
+            pendingTerminalTab = false
+            viewPager.currentItem = 1
+        }
         // 冷启动 / 热恢复兜底：默认首页不该弹输入法。
         // ViewPager 预加载的 TerminalFragment 会在稍后异步 requestFocus 弹 IME，
         // 单次 hide 会与之竞态（时弹时不弹），故立即 + 延迟各收一次。

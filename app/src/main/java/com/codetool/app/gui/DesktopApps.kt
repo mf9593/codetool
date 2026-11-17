@@ -150,13 +150,11 @@ object DesktopApps {
         DesktopApp(
             id = "terminal",
             name = "终端",
-            cmd = "foot",
+            cmd = "terminal",
             iconRes = R.drawable.ic_terminal,
-            // foot：原生 Wayland 终端，功能齐全（滚动回看/字体配色/复制粘贴/foot.ini 可配），
-            // 轻量无需 GPU（容器软件渲染也流畅），比 weston-terminal 强得多。
-            install = "export DEBIAN_FRONTEND=noninteractive\n" +
-                "command -v foot >/dev/null 2>&1 || { apt-get update && apt-get install -y foot; }\n" +
-                "command -v foot >/dev/null 2>&1 && echo '[OK] foot 终端已可用' || echo '[ERROR] foot 未装上，看上方 apt 报错'",
+            // 不再安装 foot/weston-terminal（容器 GUI 终端打不开且与 CodeTool 终端重复）。
+            // 桌面「终端」图标由合成器特判：关闭合成器、切回 CodeTool 底部「终端」tab 复用自带终端。
+            install = "",
         ),
     )
 

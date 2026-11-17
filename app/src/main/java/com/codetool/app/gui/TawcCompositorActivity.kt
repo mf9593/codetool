@@ -1175,6 +1175,13 @@ open class TawcCompositorActivity : Activity() {
 
 
     private fun onDesktopAppClick(app: DesktopApp) {
+        // 桌面「终端」：不装容器 GUI 终端（foot/weston-terminal 打不开且与 CodeTool 终端重复），
+        // 直接关闭合成器、切回 CodeTool 底部「终端」tab 复用自带终端。
+        if (app.id == "terminal") {
+            com.codetool.app.MainActivity.pendingTerminalTab = true
+            finish()
+            return
+        }
         if (app.id in installing) {
             toast("${app.name} 正在安装，请稍候…")
             return
