@@ -192,7 +192,11 @@ class PackagesFragment : Fragment() {
             "dpkg -l snapd >/dev/null 2>&1 && { echo '移除 snapd（容器不支持，会让 dpkg 报错）'; dpkg --remove --force-depends snapd 2>/dev/null || true; dpkg --purge snapd 2>/dev/null || true; }\n" +
             "echo 'snapd hold' | dpkg --set-selections 2>/dev/null || true\n" +
             "dpkg --configure -a || true\n" +
-            "echo '[OK] snapd 已清理并锁死，继续安装'\n"
+            "echo '[OK] snapd 已清理并锁死，继续安装'\n" +
+            // 自愈：确保 wget/gnupg/ca-certificates 在（Chrome 下载密钥要用）。以前靠用户先手动
+            // 点「更新依赖」，容易漏。现在 DEBIAN_FRONTEND 已 export + 已等锁，inline 装不会卡死。
+            "echo '=== 确保前置工具（wget / gnupg / ca-certificates）==='\n" +
+            "if dpkg -s wget >/dev/null 2>&1 && dpkg -s gnupg >/dev/null 2>&1; then echo '[OK] wget / gnupg 已就绪'; else apt-get update && apt-get install -y wget gnupg ca-certificates || echo '[WARN] 前置工具安装失败，继续尝试（可能已部分安装）'; fi\n"
         v.findViewById<MaterialButton>(R.id.btnChromeInstall).setOnClickListener {
             runInTerminal(
                 "安装 Chrome",
