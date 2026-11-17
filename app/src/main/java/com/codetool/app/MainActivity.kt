@@ -57,6 +57,7 @@ class MainActivity : AppCompatActivity() {
     private val MENU_DISPLAY = 500
     private val MENU_COPY = 600
     private val MENU_CLEAR = 700
+    private val MENU_SEARCH = 650
     private val MENU_ABOUT = 750
 
     /** 首次启动用户协议页的请求码。 */
@@ -387,6 +388,11 @@ class MainActivity : AppCompatActivity() {
         disp.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         disp.isVisible = (currentPage == 1)
         // 日志页：复制 / 清空移到标题栏（仅日志页可见）
+        val search = menu.add(0, MENU_SEARCH, 3, "搜索")
+        search.setIcon(R.drawable.ic_search)
+        search.icon?.mutate()?.setTint(iconColor)
+        search.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        search.isVisible = currentPage == 4
         val copy = menu.add(0, MENU_COPY, 4, "复制")
         copy.setIcon(R.drawable.ic_copy)
         copy.icon?.mutate()?.setTint(iconColor)
@@ -412,6 +418,11 @@ class MainActivity : AppCompatActivity() {
         if (item.itemId == MENU_COPY) {
             supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()
                 ?.copyLog()
+            return true
+        }
+        if (item.itemId == MENU_SEARCH) {
+            supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()
+                ?.toggleSearch()
             return true
         }
         if (item.itemId == MENU_CLEAR) {

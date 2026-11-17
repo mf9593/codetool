@@ -348,7 +348,14 @@ class FilesFragment : Fragment() {
         override fun onBindViewHolder(h: VH, pos: Int) {
             val f = data[pos]
             val isDir = f.isDirectory
-            h.icon.setImageResource(if (isDir) R.drawable.ic_folder else R.drawable.ic_files)
+            val isApk = !isDir && f.name.lowercase(Locale.US).endsWith(".apk")
+            h.icon.setImageResource(
+                when {
+                    isDir -> R.drawable.ic_folder
+                    isApk -> R.drawable.ic_apk
+                    else -> R.drawable.ic_files
+                }
+            )
             h.name.text = f.name
             val info = if (isDir) {
                 val n = f.listFiles()?.size ?: 0
@@ -357,18 +364,18 @@ class FilesFragment : Fragment() {
                 val kb = f.length() / 1024.0
                 val size = if (kb < 1) "${f.length()} B" else if (kb < 1024) "%.1f KB".format(kb) else "%.1f MB".format(kb / 1024.0)
                 val mtime = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault()).format(Date(f.lastModified()))
-                "$size · $mtime"
+                if (isApk) "安装包 · $size · $mtime" else "$size · $mtime"
             }
             h.info.text = info
             val fav = ScriptManager.isPathFav(ctx, f.absolutePath)
             h.fav.setImageResource(if (fav) R.drawable.ic_star else R.drawable.ic_star_outline)
             h.itemView.setOnClickListener {
-                if (isDir) { currentDir = f; refresh() }
-                else if (isTextFile(f)) {
+                when {
+                    isDir -> { currentDir = f; refresh() }
+                    isApk -> installApk(f)
                     // 文本文件（含 .log）：单击直接用内置编辑器打开，不走弹窗
-                    ScriptEditActivity.launch(requireContext(), f.absolutePath)
-                } else {
-                    showFileActions(f)
+                    isTextFile(f) -> ScriptEditActivity.launch(requireContext(), f.absolutePath)
+                    else -> showFileActions(f)
                 }
             }
             h.itemView.setOnLongClickListener {
@@ -467,6 +474,28 @@ class FilesFragment : Fragment() {
         val cm = ctx.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("path", f.absolutePath))
         Toast.makeText(ctx, "已复制路径", Toast.LENGTH_SHORT).show()
+    }
+
+    /**
+     * 点击 APK：经 FileProvider 生成 content:// URI，用系统安装器打开安装。
+     * Android 8+ 需要 REQUEST_INSTALL_PACKAGES + 用户在系统设置里给本应用「安装未知应用」授权。
+     * 未授权时系统会弹授权页；若仍无法打开，给出提示。
+     */
+    private fun installApk(f: File) {
+        val ctx = requireContext()
+        runCatching {
+            val uri: Uri = FileProvider.getUriForFile(
+                ctx, "${ctx.packageName}.fileprovider", f
+            )
+            val intent = Intent(Intent.ACTION_VIEW).apply {
+                setDataAndType(uri, "application/vnd.android.package-archive")
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            }
+            ctx.startActivity(intent)
+        }.onFailure { e ->
+            Toast.makeText(ctx, "无法调起安装器：${e.message}", Toast.LENGTH_LONG).show()
+        }
     }
 
     /**

@@ -62,7 +62,7 @@ object DesktopApps {
      * 缺前置工具只报错并指引先点「更新依赖 · 装常用组件」。
      */
     private const val PRE_DEP_HINT =
-        "[ERROR] 缺少前置工具（wget/gpg），请先到「工具 → 包管理」点「更新依赖 · 装常用组件」"
+        "[ERROR] 缺少前置工具（wget/xz/gpg），请先到「工具 → 包管理」点「更新依赖 · 装常用组件」"
 
     private val SPARK_INSTALL =
         "export DEBIAN_FRONTEND=noninteractive\n" +
@@ -99,7 +99,9 @@ object DesktopApps {
 
     // Firefox tarball 直装，绕开 apt/snapd（Mozilla apt 包硬依赖 snapd，容器里必崩）。
     private val FIREFOX_INSTALL =
-        "command -v wget >/dev/null 2>&1 || { echo '$PRE_DEP_HINT'; exit 1; }\n" +
+        "export DEBIAN_FRONTEND=noninteractive\n" +
+            "command -v wget >/dev/null 2>&1 || { echo '$PRE_DEP_HINT'; exit 1; }\n" +
+            "command -v xz >/dev/null 2>&1 || { echo '$PRE_DEP_HINT'; exit 1; }\n" +
             "echo '=== 安装 Mozilla Firefox (arm64 官方版，tarball 直装绕开 snapd) ==='\n" +
             "( set -e\n" +
             "  rm -rf /opt/firefox\n" +

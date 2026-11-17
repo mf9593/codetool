@@ -32,18 +32,91 @@
             android:textColor="?attr/colorOnSurfaceVariant"
             android:text="暂无日志" />
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/btnLogFilter"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="6dp"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textColor="?attr/colorPrimary"
-            android:text="筛选" />
     </LinearLayout>
 
-    <!-- 搜索栏：按关键字过滤日志行（默认收起，点「筛选」展开） -->
+    <!-- 筛选行：级别 / 标签 / 时间 三个下拉（独立常显，范围更细） -->
+    <LinearLayout
+        android:id="@+id/logFilterRow"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:paddingHorizontal="12dp"
+        android:paddingTop="2dp">
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:hint="级别"
+            app:boxStrokeColor="?attr/colorPrimary">
+
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/logLevelDropdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="4dp"
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.3"
+            android:layout_marginStart="8dp"
+            android:hint="标签"
+            app:boxStrokeColor="?attr/colorPrimary">
+
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/logTagDropdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="4dp"
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1.2"
+            android:layout_marginStart="8dp"
+            android:hint="时间"
+            app:boxStrokeColor="?attr/colorPrimary">
+
+            <com.google.android.material.textfield.MaterialAutoCompleteTextView
+                android:id="@+id/logTimeDropdown"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="44dp"
+                android:gravity="center_vertical"
+                android:paddingStart="8dp"
+                android:paddingEnd="4dp"
+                android:textSize="12sp"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:ellipsize="end"
+                android:inputType="none" />
+        </com.google.android.material.textfield.TextInputLayout>
+    </LinearLayout>
+
+    <!-- 搜索栏（标题栏放大镜展开）：关键词过滤 -->
     <LinearLayout
         android:id="@+id/logSearchBar"
         android:layout_width="match_parent"
@@ -54,26 +127,23 @@
         android:paddingBottom="6dp"
         android:visibility="gone">
 
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/logSearchInput"
-            android:layout_width="0dp"
+        <com.google.android.material.textfield.TextInputLayout
+            style="@style/Widget.Material3.TextInputLayout.OutlinedBox"
+            android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:hint="搜索关键字过滤日志"
-            android:inputType="text"
-            android:maxLines="1"
-            android:textSize="14sp" />
+            android:hint="搜索关键字"
+            app:boxStrokeColor="?attr/colorPrimary"
+            app:startIconDrawable="@drawable/ic_search"
+            app:endIconMode="clear_text">
 
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/btnLogLevel"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:layout_marginStart="10dp"
-            android:paddingHorizontal="10dp"
-            android:paddingVertical="6dp"
-            android:textAppearance="?attr/textAppearanceBodyMedium"
-            android:textColor="?attr/colorPrimary"
-            android:text="全部级别" />
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/logSearchInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:inputType="text"
+                android:maxLines="1"
+                android:textSize="14sp" />
+        </com.google.android.material.textfield.TextInputLayout>
     </LinearLayout>
 
     <FrameLayout
@@ -125,6 +195,17 @@
                 android:textColor="?attr/colorOnSurfaceVariant"
                 android:text="暂无日志。执行命令或操作应用后，日志会显示在这里。" />
         </LinearLayout>
+
+        <!-- 悬浮：回到底部 / 回到顶部（按当前滚动位置切换） -->
+        <com.google.android.material.floatingactionbutton.FloatingActionButton
+            android:id="@+id/btnLogScroll"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_gravity="bottom|end"
+            android:layout_margin="16dp"
+            android:contentDescription="回到底部"
+            app:fabSize="mini"
+            app:srcCompat="@drawable/ic_arrow_down" />
     </FrameLayout>
 
 </LinearLayout>

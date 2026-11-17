@@ -193,10 +193,15 @@ class PackagesFragment : Fragment() {
             "echo 'snapd hold' | dpkg --set-selections 2>/dev/null || true\n" +
             "dpkg --configure -a || true\n" +
             "echo '[OK] snapd 已清理并锁死，继续安装'\n" +
-            // 自愈：确保 wget/gnupg/ca-certificates 在（Chrome 下载密钥要用）。以前靠用户先手动
-            // 点「更新依赖」，容易漏。现在 DEBIAN_FRONTEND 已 export + 已等锁，inline 装不会卡死。
-            "echo '=== 确保前置工具（wget / gnupg / ca-certificates）==='\n" +
-            "if dpkg -s wget >/dev/null 2>&1 && dpkg -s gnupg >/dev/null 2>&1; then echo '[OK] wget / gnupg 已就绪'; else apt-get update && apt-get install -y wget gnupg ca-certificates || echo '[WARN] 前置工具安装失败，继续尝试（可能已部分安装）'; fi\n"
+            // 自愈：确保 wget/gnupg/xz-utils/ca-certificates 在（Chrome 下密钥、Firefox 解压 .tar.xz 都要用）。
+            // 以前靠用户先手动点「更新依赖」，容易漏；缺 xz 时 `tar -xJf` 会直接失败。
+            "echo '=== 确保前置工具（wget / gnupg / xz-utils / ca-certificates）==='\n" +
+            "if dpkg -s wget >/dev/null 2>&1 && dpkg -s gnupg >/dev/null 2>&1 && dpkg -s xz-utils >/dev/null 2>&1; then echo '[OK] wget / gnupg / xz 已就绪'; else apt-get update && apt-get install -y wget gnupg xz-utils ca-certificates || echo '[WARN] 前置工具安装失败，继续尝试（可能已部分安装）'; fi\n"
+        // Firefox 走 tarball 直装，不需要 snapd 清理，但同样需要 wget（下载）+ xz-utils（解压）+ ca-certificates（https）。
+        val firefoxPrereq = aptWaitLock +
+            "export DEBIAN_FRONTEND=noninteractive\n" +
+            "echo '=== 确保下载/解压工具（wget / xz-utils / ca-certificates）==='\n" +
+            "if dpkg -s wget >/dev/null 2>&1 && dpkg -s xz-utils >/dev/null 2>&1; then echo '[OK] wget / xz 已就绪'; else apt-get update && apt-get install -y wget xz-utils ca-certificates || echo '[WARN] 前置工具安装失败，继续尝试'; fi\n"
         v.findViewById<MaterialButton>(R.id.btnChromeInstall).setOnClickListener {
             runInTerminal(
                 "安装 Chrome",
@@ -220,11 +225,13 @@ class PackagesFragment : Fragment() {
         v.findViewById<MaterialButton>(R.id.btnFirefoxInstall).setOnClickListener {
             runInTerminal(
                 "安装 Firefox",
-                // Firefox 走 tarball 直装，完全不碰 apt/snapd，所以不再拼 browserPrereq
-                // （那段 apt + snapd 清理对 tarball 无意义，还会误导以为仍在装 apt）。
-                "echo '=== 安装 Mozilla Firefox (arm64 官方版，tarball 直装绕开 snapd) ==='\n" +
+                // Firefox 走 tarball 直装，不需要 snapd 清理；但仍需 wget/xz-utils/ca-certificates，
+                // 由 firefoxPrereq 自愈（缺 xz 时 tar -xJf 会失败）。
+                firefoxPrereq +
+                    "echo '=== 安装 Mozilla Firefox (arm64 官方版，tarball 直装绕开 snapd) ==='\n" +
                     "( set -e\n" +
                     "  command -v wget >/dev/null 2>&1 || { echo '[ERROR] 缺 wget：请先在包管理点「更新依赖 · 装常用组件」'; exit 1; }\n" +
+                    "  command -v xz >/dev/null 2>&1 || { echo '[ERROR] 缺 xz（xz-utils），无法解压 .tar.xz'; exit 1; }\n" +
                     "  rm -rf /opt/firefox\n" +
                     "  cd /opt\n" +
                     "  echo '--- 下载 Mozilla Firefox 官方 tarball（arm64）---'\n" +
