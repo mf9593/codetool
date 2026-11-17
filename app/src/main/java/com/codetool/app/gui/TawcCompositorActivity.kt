@@ -1197,7 +1197,7 @@ open class TawcCompositorActivity : Activity() {
         }
         installing.add(app.id)
         refreshDesktop()
-        toast("开始安装 ${app.name}…")
+        toast("开始安装 ${app.name}…（实时输出见「日志」页，可搜索/看报错）")
         DesktopApps.runScript(this, "Install", app.install)
         pollInstallDone(app, System.currentTimeMillis())
     }
