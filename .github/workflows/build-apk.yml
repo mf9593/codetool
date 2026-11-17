@@ -62,16 +62,32 @@ jobs:
         # 注意：secrets 上下文不能用在 if 里，只能在 env/run 中用。
         env:
           KEYSTORE_B64: ${{ secrets.CODETOOL_KEYSTORE_BASE64 }}
+          STORE_PW: ${{ secrets.CODETOOL_STORE_PW }}
+          KEY_ALIAS: ${{ secrets.CODETOOL_KEY_ALIAS }}
         run: |
+          set -e
           if [ -z "$KEYSTORE_B64" ]; then
-            echo "没配置 CODETOOL_KEYSTORE_BASE64，将使用 AGP 默认 debug 签名"
+            echo "::warning::没配置 CODETOOL_KEYSTORE_BASE64，将使用 AGP 默认 debug 签名"
             exit 0
           fi
           printf '%s' "$KEYSTORE_B64" | base64 -d > codetool-debug.jks
-          ls -l codetool-debug.jks
+          sha256sum codetool-debug.jks
+          [ -n "$STORE_PW" ] || { echo "::error::CODETOOL_STORE_PW 为空"; exit 1; }
+          [ -n "$KEY_ALIAS" ] || { echo "::error::CODETOOL_KEY_ALIAS 为空"; exit 1; }
+          if ! keytool -list -keystore codetool-debug.jks -storepass "$STORE_PW" > /tmp/ks.txt 2>&1; then
+            echo "::error::keystore 无法用 CODETOOL_STORE_PW 打开（文件或密码不对）"
+            tail -3 /tmp/ks.txt | while IFS= read -r l; do echo "::error::$l"; done
+            exit 1
+          fi
+          grep -q "PrivateKeyEntry" /tmp/ks.txt || echo "::error::keystore 里没有私钥条目"
 
       - name: Build debug APK
-        run: ./gradlew :app:assembleDebug --stacktrace --no-daemon
+        id: build
+        # 失败不立即中断，先让下一步把关键错误写成注解（Annotations），便于无日志权限时定位
+        continue-on-error: true
+        run: |
+          set -o pipefail
+          ./gradlew :app:assembleDebug --stacktrace --no-daemon 2>&1 | tee /tmp/build.log
         env:
           ANDROID_HOME: ${{ env.ANDROID_HOME }}
           ANDROID_SDK_ROOT: ${{ env.ANDROID_HOME }}
@@ -80,6 +96,17 @@ jobs:
           ORG_GRADLE_PROJECT_CODETOOL_STORE_PW: ${{ secrets.CODETOOL_STORE_PW }}
           ORG_GRADLE_PROJECT_CODETOOL_KEY_ALIAS: ${{ secrets.CODETOOL_KEY_ALIAS }}
           ORG_GRADLE_PROJECT_CODETOOL_KEY_PW: ${{ secrets.CODETOOL_KEY_PW }}
+
+      - name: Report build failure
+        if: steps.build.outcome == 'failure'
+        run: |
+          echo "::error::Gradle 构建失败，关键行如下"
+          grep -aiE "keystore|alias|signing|Execution failed|Caused by|error:" /tmp/build.log | tail -12 | while IFS= read -r l; do
+            l=${l//'%'/'%25'}
+            l=${l//$'\r'/}
+            echo "::error::$l"
+          done
+          exit 1
 
       - name: Rename APK (带 commit/时间)
         run: |
