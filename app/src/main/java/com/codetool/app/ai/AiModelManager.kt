@@ -50,6 +50,19 @@ object AiModelManager {
         // 模型名以「模型列表」页为准；填完 Key 用「测试连接」会拉真实 /models 校验。
         Provider("scnet", "国家超算互联网", "https://api.scnet.cn/api/llm/v1",
             listOf("DeepSeek-V4.1-Flash-1017", "DeepSeek-V4-Pro-0813", "Qwen3.8-Max", "Qwen3.8-Flash", "GLM-5.3", "MiniMax-M2.5")),
+        Provider("openrouter", "OpenRouter", "https://openrouter.ai/api/v1",
+            listOf("deepseek/deepseek-chat", "anthropic/claude-sonnet-4.5", "openai/gpt-4o", "google/gemini-2.5-pro")),
+        Provider("modelscope", "魔搭 ModelScope", "https://api-inference.modelscope.cn/v1",
+            listOf("Qwen/Qwen3-Coder-480B-A35B-Instruct", "deepseek-ai/DeepSeek-V3.2-Exp", "moonshotai/Kimi-K2-Instruct", "ZhipuAI/GLM-4.6")),
+        Provider("nvidia", "NVIDIA NIM", "https://integrate.api.nvidia.com/v1",
+            listOf("deepseek-ai/deepseek-r1", "meta/llama-3.3-70b-instruct", "qwen/qwen2.5-coder-32b-instruct", "nvidia/llama-3.3-nemotron-super-49b-v1")),
+        // 讯飞星辰 MaaS：模型 id 是平台自己的写法（xop 前缀），以「模型列表」页为准。
+        Provider("xfyun", "讯飞星辰 MaaS", "https://maas-api.cn-huabei-1.xf-yun.com/v1",
+            listOf("xopdeepseekv4pro", "xopglm53", "xopqwen35397b", "xminimaxm25")),
+        // 腾讯 TokenHub（Token Plan）：完整 URL 是 .../plan/v3/chat/completions，
+        // 这里存 base（.../plan/v3），程序/CLI 会自动再拼 /chat/completions。
+        Provider("tencent", "腾讯 TokenHub", "https://tokenhub.tencentmaas.com/plan/v3",
+            listOf("deepseek-v4.1-flash", "deepseek-v4-pro", "glm-5.3", "kimi-k3", "minimax-m3", "hy4")),
         Provider("deepseek", "DeepSeek", "https://api.deepseek.com/v1",
             listOf("deepseek-chat", "deepseek-reasoner")),
         Provider("moonshot", "月之暗面 Kimi", "https://api.moonshot.cn/v1",
