@@ -2,6 +2,7 @@ package com.codetool.app.runtime
 
 import android.content.Context
 import android.os.Environment
+import com.codetool.app.util.FileLog
 import java.io.File
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -42,6 +43,30 @@ object RootfsBackupManager {
     @Volatile private var currentProcess: Process? = null
     @Volatile private var cancelled = false
 
+    /**
+     * 备份时跳过的目录（相对 rootfs 根）。
+     * 这些是 proot 运行时挂进来的伪文件系统 / 易变运行状态：里面有 socket、设备节点、
+     * 会变动的锁文件，tar 归档时要么报 "unknown file type"，要么 "file changed as we read it"，
+     * 让 tar 返回非 0（旧逻辑据此判定失败并删掉整包）。而且它们本来就不属于镜像内容。
+     */
+    private val EXCLUDE_DIRS = listOf("proc", "sys", "dev", "run", "tmp", "var/tmp")
+
+    /**
+     * 判断 tar 的非 0 退出是否是「无伤大雅」的警告。
+     * toybox tar 遇到 socket：`tar: unknown file type '140000'` + `tar: had errors`，退出码 1；
+     * GNU tar 对应 `socket ignored` / `file changed as we read it`。归档本身仍是可用的。
+     */
+    private fun isBenignTarWarning(out: String): Boolean {
+        val lines = out.lines().map { it.trim() }.filter { it.isNotEmpty() }
+        if (lines.isEmpty()) return true
+        return lines.all { l ->
+            l.contains("unknown file type") ||
+                l.contains("socket ignored") ||
+                l.contains("file changed as we read it") ||
+                l == "tar: had errors"
+        }
+    }
+
     /** 通知栏/页面「取消」调用。destroy 进程后 runTar 自然返回失败 → 触发清理或回滚。 */
     fun cancelCurrent() {
         cancelled = true
@@ -50,18 +75,18 @@ object RootfsBackupManager {
 
     /**
      * 执行 tar。stderr 合并进 stdout（readText 阻塞到进程结束，进度由独立 poller 线程上报）。
-     * 返回 Pair(成功, 输出)。
+     * 返回 Pair(退出码, 输出)；启动异常时退出码为 -1。
      */
-    private fun runTar(args: Array<String>): Pair<Boolean, String> = try {
+    private fun runTar(args: Array<String>): Pair<Int, String> = try {
         val p = ProcessBuilder(args.toList()).redirectErrorStream(true).start()
         currentProcess = p
         val out = p.inputStream.bufferedReader().readText()
         val code = p.waitFor()
         currentProcess = null
-        (code == 0 && !cancelled) to out.trim()
+        code to out.trim()
     } catch (e: Exception) {
         currentProcess = null
-        false to (e.message ?: "tar 执行异常")
+        -1 to (e.message ?: "tar 执行异常")
     }
 
     /** 用 toybox du -sk 快速取目录占用字节；失败返回 0（→ 不确定进度）。 */
@@ -128,15 +153,33 @@ object RootfsBackupManager {
         val dest = newBackupFile()
         val label = "正在打包 ${dest.name}…"
         val total = duBytes(root.absolutePath)
+        // 空间预检：tar 不压缩，归档≈占用字节（外加少量块开销）；不够就别开始，避免留下半个文件。
+        if (total > 0) {
+            val need = total + total / 20
+            val usable = dir.usableSpace
+            if (usable in 1 until need) {
+                return false to "磁盘空间不足：备份约需 ${need / 1048576} MB，可用 ${usable / 1048576} MB"
+            }
+        }
         val poller = ProgressPoller(total, { dest.length() }, label, onProgress).also { it.start() }
-        val (ok, out) = runTar(arrayOf("tar", "-cf", dest.absolutePath, "-C", root.parent, root.name))
+        val excludes = EXCLUDE_DIRS.map { "--exclude=${root.name}/$it/*" }
+        val (code, out) = runTar(
+            (excludes + arrayOf("-cf", dest.absolutePath, "-C", root.parent, root.name)).toTypedArray()
+        )
         poller.finish()
 
-        if (cancelled || !ok) {
+        val ok = !cancelled && (code == 0 || (code == 1 && isBenignTarWarning(out)))
+        if (!ok) {
             dest.delete()   // 删掉不完整归档，避免出现在列表里
+            FileLog.w(context, "RootfsBackup", "备份失败(code=$code): ${out.take(800)}")
             return false to if (cancelled) "备份已取消" else "备份失败：$out"
         }
+        if (out.isNotBlank()) {
+            // 归档可用，但有被跳过的特殊文件（socket 等）：记日志，方便排查
+            FileLog.w(context, "RootfsBackup", "备份完成但有警告: ${out.take(800)}")
+        }
         val msg = "备份完成：${dest.name} (${dest.length() / 1048576} MB)"
+        FileLog.i(context, "RootfsBackup", "备份完成 ${dest.absolutePath} ${dest.length()} 字节")
         onProgress(100, msg)
         return true to dest.absolutePath
     }
@@ -167,10 +210,11 @@ object RootfsBackupManager {
             { duBytes(File(parent, root.name).absolutePath) },
             label, onProgress,
         ).also { it.start() }
-        val (ok, out) = runTar(arrayOf("tar", "-xf", backup.absolutePath, "-C", parent.absolutePath))
+        val (code, out) = runTar(arrayOf("tar", "-xf", backup.absolutePath, "-C", parent.absolutePath))
         poller.finish()
 
         val extracted = File(parent, root.name)
+        val ok = !cancelled && (code == 0 || (code == 1 && isBenignTarWarning(out)))
         if (ok && extracted.isDirectory) {
             // 确保 marker 存在（备份里一般有；没有也补上，避免首页判定成未解压）
             val marker = File(extracted, ".codetool_ready")
@@ -183,6 +227,7 @@ object RootfsBackupManager {
         // 失败（含取消）回滚：删半成品，把 .bak 改回来
         if (extracted.exists()) deleteRecursively(extracted)
         if (bak.exists()) bak.renameTo(root)
+        FileLog.w(context, "RootfsBackup", "恢复失败(code=$code): ${out.take(800)}")
         return false to if (cancelled) "恢复已取消（已回滚）" else "恢复失败，已回滚：$out"
     }
 

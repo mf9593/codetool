@@ -92,7 +92,7 @@ class RootfsBackupFragment : Fragment() {
         if (::backupList.isInitialized) refreshBackupList()
     }
 
-    /** 可恢复备份列表：文件名 + 本地时间 + 大小（只读展示）。 */
+    /** 可恢复备份列表：文件名 + 本地时间 + 大小；右侧可删除（二次确认）。 */
     private fun refreshBackupList() {
         if (!::backupList.isInitialized) return
         val files = RootfsBackupManager.listBackups()
@@ -105,8 +105,32 @@ class RootfsBackupFragment : Fragment() {
             item.findViewById<TextView>(R.id.backupItemName).text = f.name
             item.findViewById<TextView>(R.id.backupItemMeta).text =
                 "${fmt.format(java.util.Date(f.lastModified()))} · ${humanSize(f.length())}"
+            item.findViewById<android.widget.ImageButton>(R.id.backupItemDelete)
+                .setOnClickListener { confirmDelete(f) }
             backupList.addView(item)
         }
+    }
+
+    /**
+     * 删除备份：破坏性且不可撤销，必须二次确认。
+     * 任务进行中不允许删（恢复可能正在读这个文件）。
+     */
+    private fun confirmDelete(f: File) {
+        if (RootfsBackupService.snapshot() != null) {
+            toast("有备份/恢复任务进行中，稍后再删")
+            return
+        }
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("删除备份")
+            .setMessage("将永久删除：\n${f.name}\n(${humanSize(f.length())})\n\n删除后无法恢复，rootfs 不会受影响。")
+            .setPositiveButton("删除") { _, _ ->
+                val ok = RootfsBackupManager.deleteBackup(f)
+                refreshBackupList()
+                refreshBackupStatus()
+                toast(if (ok) "已删除 ${f.name}" else "删除失败（文件可能被占用）")
+            }
+            .setNegativeButton("取消", null)
+            .show()
     }
 
     private fun humanSize(bytes: Long): String = when {
