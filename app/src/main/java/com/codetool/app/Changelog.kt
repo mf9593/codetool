@@ -16,6 +16,13 @@ object Changelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "2.0.5",
+            date = "2026-11-17",
+            items = listOf(
+                "合成器桌面「终端」不再安装 foot/weston-terminal（容器 GUI 终端打不开，且与 CodeTool 自带终端重复）：点桌面终端图标直接关闭合成器、切回 CodeTool 底部「终端」页，复用自带终端。",
+            ),
+        ),
+        Entry(
             version = "2.0.4",
             date = "2026-11-17",
             items = listOf(
