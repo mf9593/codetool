@@ -24,6 +24,18 @@ import com.google.android.material.button.MaterialButton
  */
 class PackagesFragment : Fragment() {
 
+    /**
+     * 等待 apt/dpkg 锁释放：容器里可能有残留 apt-get（上次安装没跑完/被切走）占着 dpkg 锁，
+     * 直接 apt-get install 会报 "Could not get lock"。先等其它 apt/dpkg 进程结束（最多 120 秒）。
+     * 定义成函数 + 立即调用，各安装脚本前置引用。
+     */
+    private val aptWaitLock =
+        "wait_apt_lock() { for i in \$(seq 1 60); do " +
+            "if ! pgrep -x apt-get >/dev/null 2>&1 && ! pgrep -x apt >/dev/null 2>&1 && ! pgrep -x dpkg >/dev/null 2>&1; then return 0; fi; " +
+            "[ \$i -eq 1 ] && echo '检测到其他 apt/dpkg 进程在跑，等待其结束（最多 120 秒）…'; " +
+            "sleep 2; done; echo '[WARN] 等待 apt 锁超时，尝试继续（若仍报锁占用，请稍后重试或重启容器）'; }\n" +
+            "wait_apt_lock\n"
+
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
@@ -31,19 +43,24 @@ class PackagesFragment : Fragment() {
         v.findViewById<MaterialButton>(R.id.btnUpdate).setOnClickListener {
             runInTerminal(
                 "更新依赖 · 装常用组件",
-                "export DEBIAN_FRONTEND=noninteractive\n" +
+                aptWaitLock +
+                    "export DEBIAN_FRONTEND=noninteractive\n" +
                     "apt-get update\n" +
                     "echo '=== 安装常用依赖（浏览器/脚本/NDK·JDK 解压都依赖）==='\n" +
-                    "apt-get install -y ca-certificates wget curl gnupg git unzip xz-utils bzip2\n" +
+                    "if apt-get install -y ca-certificates wget curl gnupg git unzip xz-utils bzip2; then\n" +
+                    "  echo '[OK] 常用组件安装成功：wget / curl / gpg / unzip / xz 已可用'\n" +
+                    "else\n" +
+                    "  echo '[ERROR] 常用组件安装失败（看上方报错，常见原因：apt 锁被占 / 网络问题）'\n" +
+                    "fi\n" +
                     "echo '=== 升级已装软件包 ==='\n" +
-                    "apt-get -y upgrade\n" +
-                    "echo '[OK] 常用组件就绪：wget / curl / gpg / unzip / xz 已可用'"
+                    "apt-get -y upgrade || true\n"
             )
         }
         v.findViewById<MaterialButton>(R.id.btnMimo).setOnClickListener {
             runInTerminal(
                 "安装 MiMo Code",
-                "command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y curl ca-certificates; }\n" +
+                aptWaitLock +
+                    "command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y curl ca-certificates; }\n" +
                     "curl -fsSL https://mimo.xiaomi.com/install | bash\n" +
                     com.codetool.app.ai.AiModelManager.FIX_PATH_SCRIPT + "\n" +
                     com.codetool.app.ai.AiEnvHelper.PY3_CHECK_SCRIPT
@@ -53,7 +70,8 @@ class PackagesFragment : Fragment() {
         v.findViewById<MaterialButton>(R.id.btnOpencode).setOnClickListener {
             runInTerminal(
                 "安装 opencode",
-                "command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y curl ca-certificates; }\n" +
+                aptWaitLock +
+                    "command -v curl >/dev/null 2>&1 || { apt-get update && apt-get install -y curl ca-certificates; }\n" +
                     "echo '=== 1/2 官方脚本安装 opencode ==='\n" +
                     "curl -fsSL https://opencode.ai/v2/install | bash\n" +
                     "if ! command -v opencode >/dev/null 2>&1; then\n" +
@@ -122,7 +140,8 @@ class PackagesFragment : Fragment() {
         v.findViewById<MaterialButton>(R.id.btnApmInstall).setOnClickListener {
             runInTerminal(
                 "安装 APM",
-                "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
+                aptWaitLock +
+                    "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
                     "export DEBIAN_FRONTEND=noninteractive\n" +
                     "dpkg --configure -a\n" +
                     "mkdir -p /etc/apt/trusted.gpg.d\n" +
@@ -146,7 +165,8 @@ class PackagesFragment : Fragment() {
         v.findViewById<MaterialButton>(R.id.btnAdbInstall).setOnClickListener {
             runInTerminal(
                 "安装 ADB",
-                "command -v adb >/dev/null 2>&1 || { apt-get update && apt-get install -y adb; }\n" +
+                aptWaitLock +
+                    "command -v adb >/dev/null 2>&1 || { apt-get update && apt-get install -y adb; }\n" +
                     "echo ''\n" +
                     "echo '=== 安装结果（真实自检）==='\n" +
                     "command -v adb >/dev/null 2>&1 && adb version 2>/dev/null | head -1 || echo '[ERROR] adb 未装上，看上方 apt 报错（网络/软件源）'\n" +
@@ -161,7 +181,8 @@ class PackagesFragment : Fragment() {
         // 注意：不再在这里 inline 装 wget/gnupg（旧行 `command -v xxx || apt-get install -y ...`
         // 可能在 export DEBIAN_FRONTEND 之前跑、apt 配置弹窗会卡死）。wget/gnupg 改由
         // 「更新依赖 · 装常用组件」预装；Chrome 按钮里有缺 gpg 的友好检查（不卡死）。
-        val browserPrereq = "export DEBIAN_FRONTEND=noninteractive\n" +
+        val browserPrereq = aptWaitLock +
+            "export DEBIAN_FRONTEND=noninteractive\n" +
             "echo '=== 0/1 修复上次中断残留 + 清理容器跑不了的 snapd ==='\n" +
             // dpkg --configure -a 遇到损坏的 snapd（proot 下 CAP_SETFCAP 设不了）会报错返回 1，
             // 不容错会把整段中断、走不到下面的 snapd 移除。加 || true 让它活到移除 snapd。
