@@ -195,8 +195,9 @@ class PackagesFragment : Fragment() {
         v.findViewById<MaterialButton>(R.id.btnFirefoxInstall).setOnClickListener {
             runInTerminal(
                 "安装 Firefox",
-                browserPrereq +
-                    "echo '=== 1/1 安装 Mozilla Firefox (arm64 官方版，tarball 直装绕开 snapd) ==='\n" +
+                // Firefox 走 tarball 直装，完全不碰 apt/snapd，所以不再拼 browserPrereq
+                // （那段 apt + snapd 清理对 tarball 无意义，还会误导以为仍在装 apt）。
+                "echo '=== 安装 Mozilla Firefox (arm64 官方版，tarball 直装绕开 snapd) ==='\n" +
                     "( set -e\n" +
                     "  command -v wget >/dev/null 2>&1 || { echo '[ERROR] 缺 wget：请先在包管理点「更新依赖 · 装常用组件」'; exit 1; }\n" +
                     "  rm -rf /opt/firefox\n" +
