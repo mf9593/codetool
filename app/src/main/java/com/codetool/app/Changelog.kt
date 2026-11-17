@@ -16,6 +16,16 @@ object Changelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "2.0.3",
+            date = "2026-11-17",
+            items = listOf(
+                "修复浏览器安装被 snapd 卡死的问题：Mozilla Firefox 的 apt 包硬依赖 snapd，而 snapd 在容器里无法完成配置导致安装必然失败。现改从 Mozilla 官方源下载 tarball 直装（解压到 /opt/firefox + 软链），完全绕开 apt/snapd。实机验证 Firefox 146.0 装上。",
+                "Google Chrome 安装前置段容错加固：dpkg --configure -a 遇残留 snapd 报错不再中断整段；apt-get update 因失效第三方源失败也不再用一票否决中断安装。",
+                "「更新依赖」升级为「更新依赖 · 装常用组件」：一键安装 ca-certificates、wget、curl、gnupg、git、unzip、xz-utils、bzip2，覆盖浏览器安装与 NDK/JDK 等脚本所需的下载和解压工具，各安装脚本不再各自临时装依赖（避免卡在 apt 上）。",
+                "合成器首页默认应用图标（星火商店 / 浏览器 / 文件 / 终端）接上安装命令：点未安装的图标会真正执行对应安装脚本，不再只提示「暂无自动安装方式」。安装脚本统一在缺前置工具时给出指引而非卡死。",
+            ),
+        ),
+        Entry(
             version = "2.0.2",
             date = "2026-11-16",
             items = listOf(
