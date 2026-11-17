@@ -6,7 +6,7 @@
     android:orientation="vertical"
     android:background="?android:attr/colorBackground">
 
-    <!-- 日志页签：正常日志 / 崩溃日志 -->
+    <!-- 日志页签：运行日志 / 崩溃日志 -->
     <com.google.android.material.tabs.TabLayout
         android:id="@+id/logTabs"
         android:layout_width="match_parent"

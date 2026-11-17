@@ -21,7 +21,7 @@ import java.util.Date
 import java.util.Locale
 
 /**
- * 日志页：正常日志（codetool.log） + 崩溃日志（files/crash 下的时间戳文件）。
+ * 日志页：运行日志（codetool.log） + 崩溃日志（files/crash 下的时间戳文件）。
  * - 每 2 秒自动刷新（可在设置底部弹窗里关闭）；
  * - 标题栏复制/清空按钮作用于当前标签页；
  * - 崩溃标签页按文件时间倒序合并显示。
@@ -49,7 +49,7 @@ class TasksFragment : Fragment() {
     private var followBottom = true
     /** 正在程序化滚动（避免滚动监听把自己贴底误判成用户上滑）。 */
     private var followingScroll = false
-    /** 当前标签页：0=正常日志 1=崩溃日志 */
+    /** 当前标签页：0=运行日志 1=崩溃日志 */
     private var currentTab = 0
     /** 搜索关键字（空=不过滤）。日志行包含该关键字才显示。 */
     private var searchQuery = ""
@@ -59,9 +59,14 @@ class TasksFragment : Fragment() {
     /** 标签筛选：空=全部，否则按日志模块 tag 过滤。 */
     private var tagFilter = ""
     private var tagOptions: List<String> = listOf("全部")
-    /** 时间筛选：0=全部 1=最近1小时 2=最近24小时 3=今天。 */
+    /** 时间筛选：0=全部 1=最近1小时 2=最近24小时 3=今天 4=自定义时间段。 */
     private var timeFilter = 0
-    private val timeNames = arrayOf("全部", "最近1小时", "最近24小时", "今天")
+    private val timeNames = arrayOf("全部", "最近1小时", "最近24小时", "今天", "自定义…")
+    /** 自定义时间段的起止（毫秒时间戳，0=未设置）。仅 timeFilter==4 时生效。 */
+    private var rangeStart = 0L
+    private var rangeEnd = 0L
+    /** 时间下拉当前显示文字（自定义时显示具体区间）。 */
+    private var timeLabel = "全部"
     private val lineTimeFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
     private val tsPrefix = Regex("""^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}""")
 
@@ -128,8 +133,18 @@ class TasksFragment : Fragment() {
         )
         logTimeDropdown.setText(timeNames[timeFilter], false)
         logTimeDropdown.setOnItemClickListener { _, _, position, _ ->
-            timeFilter = position
-            loadLog()
+            if (position == 4) {
+                // 自定义：先把显示还原成当前值，等弹窗确认后再写区间
+                logTimeDropdown.setText(timeLabel, false)
+                showTimeRangeDialog()
+            } else {
+                timeFilter = position
+                rangeStart = 0L
+                rangeEnd = 0L
+                timeLabel = timeNames[position]
+                logTimeDropdown.setText(timeLabel, false)
+                loadLog()
+            }
         }
 
         // 悬浮「回到底部 / 回到顶部」按钮
@@ -162,7 +177,7 @@ class TasksFragment : Fragment() {
             override fun onTabUnselected(tab: TabLayout.Tab) {}
             override fun onTabReselected(tab: TabLayout.Tab) {}
         })
-        logTabs.addTab(logTabs.newTab().setText("正常日志"), true)
+        logTabs.addTab(logTabs.newTab().setText("运行日志"), true)
         logTabs.addTab(logTabs.newTab().setText("崩溃日志"))
 
         // 标题栏复制 / 清空由 MainActivity 转发，这里直接操作当前标签页
@@ -372,21 +387,114 @@ class TasksFragment : Fragment() {
         if (idx == 0) tagFilter = ""
     }
 
+    /** 自定义时间段：起止时间选择弹窗（日期 → 时刻 两段式）。 */
+    private fun showTimeRangeDialog() {
+        if (!isAdded || view == null) return
+        val ctx = requireContext()
+        val v = layoutInflater.inflate(R.layout.dlg_log_time_range, null)
+        val etStart = v.findViewById<android.widget.EditText>(R.id.etRangeStart)
+        val etEnd = v.findViewById<android.widget.EditText>(R.id.etRangeEnd)
+        val fmt = SimpleDateFormat("yyyy-MM-dd HH:mm", Locale.getDefault())
+        val now = System.currentTimeMillis()
+        var start = if (rangeStart > 0) rangeStart else now - 3600_000L
+        var end = if (rangeEnd > 0) rangeEnd else now
+        fun render() {
+            etStart.setText(fmt.format(Date(start)))
+            etEnd.setText(fmt.format(Date(end)))
+        }
+        render()
+        etStart.setOnClickListener { pickDateTime(start) { start = it; render() } }
+        etEnd.setOnClickListener { pickDateTime(end) { end = it; render() } }
+
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(ctx)
+            .setTitle("自定义时间段")
+            .setView(v)
+            .setPositiveButton("确定") { _, _ ->
+                if (end < start) {
+                    Toast.makeText(ctx, "结束时间不能早于开始时间", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                rangeStart = start
+                rangeEnd = end
+                timeFilter = 4
+                timeLabel = rangeLabel(start, end)
+                logTimeDropdown.setText(timeLabel, false)
+                loadLog()
+            }
+            .setNeutralButton("清除") { _, _ ->
+                rangeStart = 0L
+                rangeEnd = 0L
+                timeFilter = 0
+                timeLabel = timeNames[0]
+                logTimeDropdown.setText(timeLabel, false)
+                loadLog()
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 先选日期再选时刻。MaterialDatePicker 的 selection 是 UTC 零点，需换回当地日期。 */
+    private fun pickDateTime(base: Long, onPicked: (Long) -> Unit) {
+        val seed = java.util.Calendar.getInstance().apply { if (base > 0) timeInMillis = base }
+        val dp = com.google.android.material.datepicker.MaterialDatePicker.Builder.datePicker()
+            .setSelection(seed.timeInMillis)
+            .setTitleText("选择日期")
+            .build()
+        dp.addOnPositiveButtonClickListener { sel ->
+            val utc = java.util.Calendar.getInstance(java.util.TimeZone.getTimeZone("UTC")).apply {
+                timeInMillis = sel
+            }
+            val tp = com.google.android.material.timepicker.MaterialTimePicker.Builder()
+                .setTimeFormat(com.google.android.material.timepicker.TimeFormat.CLOCK_24H)
+                .setHour(seed.get(java.util.Calendar.HOUR_OF_DAY))
+                .setMinute(seed.get(java.util.Calendar.MINUTE))
+                .setTitleText("选择时刻")
+                .build()
+            tp.addOnPositiveButtonClickListener {
+                val out = java.util.Calendar.getInstance().apply {
+                    clear()
+                    set(
+                        utc.get(java.util.Calendar.YEAR),
+                        utc.get(java.util.Calendar.MONTH),
+                        utc.get(java.util.Calendar.DAY_OF_MONTH),
+                        tp.hour,
+                        tp.minute,
+                        0
+                    )
+                }
+                onPicked(out.timeInMillis)
+            }
+            tp.show(parentFragmentManager, "logTimePick")
+        }
+        dp.show(parentFragmentManager, "logDatePick")
+    }
+
+    /** 下拉里显示的紧凑区间：同一天只在开头写一次日期。 */
+    private fun rangeLabel(start: Long, end: Long): String {
+        val fmt = SimpleDateFormat("MM-dd HH:mm", Locale.getDefault())
+        val a = fmt.format(Date(start))
+        val b = fmt.format(Date(end))
+        return if (a.substring(0, 5) == b.substring(0, 5)) "$a~${b.substring(6)}" else "$a~$b"
+    }
+
     /** 按级别 + 标签 + 时间 + 关键词过滤日志行。日志格式：`时间去 级别/标签: 消息`。 */
     private fun applyFilter(raw: String): String {
         if (!anyFilterActive()) return raw
         val q = searchQuery.lowercase()
-        val cutoff = when (timeFilter) {
-            1 -> System.currentTimeMillis() - 3600_000L
-            2 -> System.currentTimeMillis() - 24 * 3600_000L
+        val now = System.currentTimeMillis()
+        val from = when (timeFilter) {
+            1 -> now - 3600_000L
+            2 -> now - 24 * 3600_000L
             3 -> startOfToday()
+            4 -> if (rangeStart > 0) rangeStart else Long.MIN_VALUE
             else -> Long.MIN_VALUE
         }
+        val to = if (timeFilter == 4 && rangeEnd > 0) rangeEnd else Long.MAX_VALUE
         var lastInTime = true
         return raw.lines().filter { line ->
             // 时间：有时间戳就解析，续行（堆栈）继承上一行的判定
             val ts = parseLineTime(line)
-            lastInTime = if (ts != null) ts >= cutoff else lastInTime
+            lastInTime = if (ts != null) ts in from..to else lastInTime
             val timeOk = timeFilter == 0 || lastInTime
             val levelOk = when (levelFilter) {
                 1 -> line.contains(" D/")
