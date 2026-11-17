@@ -143,7 +143,7 @@ class HomeFragment : Fragment() {
         timeText = v.findViewById(R.id.timeText)
         applyIcon(v.findViewById(R.id.timeIcon), R.drawable.ic_schedule, IconTone.NEUTRAL)
         progressBar = v.findViewById(R.id.progressBar)
-        applyIcon(v.findViewById(R.id.pathIcon), R.drawable.ic_folder, IconTone.NEUTRAL)
+        applyIcon(v.findViewById(R.id.pathIcon), R.drawable.ic_folder_path, IconTone.NEUTRAL)
         // Shizuku：点击状态行申请授权（未装/未运行时点按提示指引）
         v.findViewById<View>(R.id.shizukuRow).setOnClickListener {
             val st = runCatching { ShizukuManager.status(requireContext()) }.getOrNull()

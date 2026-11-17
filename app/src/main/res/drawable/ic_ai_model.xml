@@ -1,6 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
 <vector xmlns:android="http://schemas.android.com/apk/res/android"
-    android:width="24dp" android:height="24dp"
-    android:viewportWidth="24" android:viewportHeight="24">
-    <path android:fillColor="@android:color/white"
-        android:pathData="M12,1.5C12.5,6.5 17.5,11.5 22.5,12C17.5,12.5 12.5,17.5 12,22.5C11.5,17.5 6.5,12.5 1.5,12C6.5,11.5 11.5,6.5 12,1.5Z"/>
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24">
+    <!-- 首页状态卡「AI」行：芯片 + AI 字样。颜色由 HomeFragment.applyIcon 的 tone 控制。 -->
+    <path
+        android:pathData="M21 11V9h-2V7a2.006 2.006 0 0 0-2-2h-2V3h-2v2h-2V3H9v2H7a2.006 2.006 0 0 0-2 2v2H3v2h2v2H3v2h2v2a2.006 2.006 0 0 0 2 2h2v2h2v-2h2v2h2v-2h2a2.006 2.006 0 0 0 2-2v-2h2v-2h-2v-2Zm-4 6H7V7h10Z"
+        android:fillColor="@android:color/white" />
+    <path
+        android:pathData="M11.361 8h-1.345l-2.01 8h1.027l.464-1.875h2.316L12.265 16h1.062Zm-1.729 5.324L10.65 8.95h.046l.983 4.374ZM14.244 8h1v8h-1z"
+        android:fillColor="@android:color/white" />
 </vector>
