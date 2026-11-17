@@ -1036,8 +1036,8 @@ open class TawcCompositorActivity : Activity() {
     }
 
     private fun desktopCell(app: DesktopApp, width: Int): View {
-        // 终端复用 CodeTool 自带终端（非容器程序，永远可用），按「已安装」渲染，避免灰显+「未安装」
-        val installed = app.id == "terminal" || DesktopApps.isInstalled(this, app)
+        // 终端也是容器内 GUI 程序（foot），必须真实安装后才能启动，和其它图标同一套判定
+        val installed = DesktopApps.isInstalled(this, app)
         val busy = app.id in installing
         val cell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
@@ -1176,13 +1176,6 @@ open class TawcCompositorActivity : Activity() {
 
 
     private fun onDesktopAppClick(app: DesktopApp) {
-        // 桌面「终端」：不装容器 GUI 终端（foot/weston-terminal 打不开且与 CodeTool 终端重复），
-        // 直接关闭合成器、切回 CodeTool 底部「终端」tab 复用自带终端。
-        if (app.id == "terminal") {
-            com.codetool.app.MainActivity.pendingTerminalTab = true
-            finish()
-            return
-        }
         if (app.id in installing) {
             toast("${app.name} 正在安装，请稍候…")
             return
