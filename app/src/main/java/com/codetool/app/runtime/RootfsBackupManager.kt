@@ -164,7 +164,9 @@ object RootfsBackupManager {
         val poller = ProgressPoller(total, { dest.length() }, label, onProgress).also { it.start() }
         val excludes = EXCLUDE_DIRS.map { "--exclude=${root.name}/$it/*" }
         val (code, out) = runTar(
-            (excludes + arrayOf("-cf", dest.absolutePath, "-C", root.parent, root.name)).toTypedArray()
+            // 注意：excludes 只是附加参数，必须保留开头的 "tar"，否则 ProcessBuilder 会把
+            // "--exclude=..." 当成可执行文件（error=2, No such file or directory）
+            (listOf("tar") + excludes + listOf("-cf", dest.absolutePath, "-C", root.parent, root.name)).toTypedArray()
         )
         poller.finish()
 
