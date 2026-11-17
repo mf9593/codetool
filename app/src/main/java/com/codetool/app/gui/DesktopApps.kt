@@ -171,9 +171,10 @@ object DesktopApps {
     fun browserInstalled(context: Context): Boolean =
         apps.firstOrNull { it.id == "chrome" }?.let { isInstalled(context, it) } ?: false
 
-    /** Firefox 是否已装进 rootfs。 */
+    /** Firefox 是否已装进 rootfs。注意 apps 列表里没有 firefox 条目（桌面浏览器用 chrome），
+     *  不能走 isInstalled(app)，否则恒为 false；直接按二进制名解析（/usr/local/bin/firefox 软链）。 */
     fun firefoxInstalled(context: Context): Boolean =
-        apps.firstOrNull { it.id == "firefox" }?.let { isInstalled(context, it) } ?: false
+        resolveBinary(context, "firefox") != null
 
     /** 星火商店是否已装进 rootfs。 */
     fun sparkStoreInstalled(context: Context): Boolean =
