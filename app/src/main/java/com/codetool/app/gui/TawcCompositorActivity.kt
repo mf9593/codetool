@@ -1036,7 +1036,8 @@ open class TawcCompositorActivity : Activity() {
     }
 
     private fun desktopCell(app: DesktopApp, width: Int): View {
-        val installed = DesktopApps.isInstalled(this, app)
+        // 终端复用 CodeTool 自带终端（非容器程序，永远可用），按「已安装」渲染，避免灰显+「未安装」
+        val installed = app.id == "terminal" || DesktopApps.isInstalled(this, app)
         val busy = app.id in installing
         val cell = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL

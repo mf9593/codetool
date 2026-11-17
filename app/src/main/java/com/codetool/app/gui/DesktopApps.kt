@@ -123,7 +123,7 @@ object DesktopApps {
         ),
         DesktopApp(
             id = "chrome",
-            name = "浏览器",
+            name = "Google",
             cmd = "google-chrome",
             iconRes = R.drawable.ic_files,
             args = "--ozone-platform=wayland --disable-gpu --disable-gpu-compositing " +
