@@ -328,7 +328,7 @@
     <color name="light_lime_background">#FFFFFCFD</color>
     <color name="light_lime_on_background">#FF20221C</color>
     <color name="light_lime_outline">#FF7D8273</color>
-    <color name="light_lime_surface_container">#FFF4F5F2</color>
+    <color name="light_lime_surface_container">#FFF5F7F0</color>
 
     <!-- ===== 深色·青柠 ===== -->
     <color name="lime_primary">#FFCAEA86</color>
@@ -346,7 +346,7 @@
     <color name="lime_background">#FF171813</color>
     <color name="lime_on_background">#FFE9EBE5</color>
     <color name="lime_outline">#FF969A8D</color>
-    <color name="lime_surface_container">#FF24271E</color>
+    <color name="lime_surface_container">#FF252A1B</color>
 
     <!-- ===== 浅色·洋红 ===== -->
     <color name="light_magenta_primary">#FFAE2990</color>
@@ -364,7 +364,7 @@
     <color name="light_magenta_background">#FFFFFDFA</color>
     <color name="light_magenta_on_background">#FF221C20</color>
     <color name="light_magenta_outline">#FF82737F</color>
-    <color name="light_magenta_surface_container">#FFF5F2F5</color>
+    <color name="light_magenta_surface_container">#FFF7F0F7</color>
 
     <!-- ===== 深色·洋红 ===== -->
     <color name="magenta_primary">#FFF19DDE</color>
@@ -382,7 +382,7 @@
     <color name="magenta_background">#FF181317</color>
     <color name="magenta_on_background">#FFEBE5EA</color>
     <color name="magenta_outline">#FF9A8D97</color>
-    <color name="magenta_surface_container">#FF271E25</color>
+    <color name="magenta_surface_container">#FF2A1B27</color>
 
     <!-- ===== 浅色·正红 ===== -->
     <color name="light_red_primary">#FFB42227</color>
@@ -400,7 +400,7 @@
     <color name="light_red_background">#FFFFFDFA</color>
     <color name="light_red_on_background">#FF221C1C</color>
     <color name="light_red_outline">#FF827373</color>
-    <color name="light_red_surface_container">#FFF5F2F2</color>
+    <color name="light_red_surface_container">#FFF7F0F0</color>
 
     <!-- ===== 深色·正红 ===== -->
     <color name="red_primary">#FFF2888B</color>
@@ -418,7 +418,7 @@
     <color name="red_background">#FF181313</color>
     <color name="red_on_background">#FFEBE5E5</color>
     <color name="red_outline">#FF9A8D8E</color>
-    <color name="red_surface_container">#FF271E1F</color>
+    <color name="red_surface_container">#FF2A1B1D</color>
 
     <!-- ===== 浅色·靛蓝 ===== -->
     <color name="light_indigo_primary">#FF363AA1</color>
@@ -436,7 +436,7 @@
     <color name="light_indigo_background">#FFFFFAFA</color>
     <color name="light_indigo_on_background">#FF1C1C22</color>
     <color name="light_indigo_outline">#FF737482</color>
-    <color name="light_indigo_surface_container">#FFF2F2F5</color>
+    <color name="light_indigo_surface_container">#FFF0F0F7</color>
 
     <!-- ===== 深色·靛蓝 ===== -->
     <color name="indigo_primary">#FF9DA0E7</color>
@@ -454,5 +454,5 @@
     <color name="indigo_background">#FF131318</color>
     <color name="indigo_on_background">#FFE5E5EB</color>
     <color name="indigo_outline">#FF8D8E9A</color>
-    <color name="indigo_surface_container">#FF1E1F27</color>
+    <color name="indigo_surface_container">#FF1B1D2A</color>
 </resources>
