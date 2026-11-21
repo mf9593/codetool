@@ -33,6 +33,7 @@ class EnvSetupActivity : AppCompatActivity() {
     private lateinit var progress: LinearProgressIndicator
     private lateinit var btnNext: MaterialButton
     private lateinit var btnInstall: MaterialButton
+    private lateinit var logScroll: android.widget.ScrollView
 
     /** 一键修复模式（包管理进入）不要求「开始使用」禁用到装完，检测完即可回。 */
     private var fixMode = false
@@ -53,6 +54,7 @@ class EnvSetupActivity : AppCompatActivity() {
         progressCard = findViewById(R.id.envProgressCard)
         progressTitle = findViewById(R.id.envProgressTitle)
         progress = findViewById(R.id.envProgress)
+        logScroll = findViewById(R.id.envLogScroll)
         btnNext = findViewById(R.id.envNext)
         btnInstall = findViewById(R.id.envInstallBtn)
 
@@ -114,7 +116,11 @@ class EnvSetupActivity : AppCompatActivity() {
         lifecycleScope.launch {
             val ok = withContext(Dispatchers.IO) {
                 AiEnvHelper.ensure(this@EnvSetupActivity) { line ->
-                    runOnUiThread { tvLog.append(line + "\n") }
+                    runOnUiThread {
+                        tvLog.append(line + "\n")
+                        // 流式输出：内部日志区自动滚到底，实时看到最新终端内容
+                        logScroll.post { logScroll.fullScroll(android.view.View.FOCUS_DOWN) }
+                    }
                 }
             }
             progress.visibility = android.view.View.GONE
@@ -133,9 +139,9 @@ class EnvSetupActivity : AppCompatActivity() {
         }
     }
 
-    /** 日志展开/收起（点安装卡片标题切换）。 */
+    /** 日志展开/收起（点安装卡片标题切换）。切换内部日志滚动区，卡片高度始终受限。 */
     private fun applyLogVisibility() {
-        tvLog.visibility = if (logExpanded) android.view.View.VISIBLE else android.view.View.GONE
+        logScroll.visibility = if (logExpanded) android.view.View.VISIBLE else android.view.View.GONE
     }
 
     companion object {

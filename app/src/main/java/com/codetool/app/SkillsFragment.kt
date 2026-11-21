@@ -20,7 +20,6 @@ import com.google.android.material.textview.MaterialTextView
 class SkillsFragment : Fragment() {
 
     private companion object {
-        const val BUILTIN_SKILL = "codetool-browser"
         const val STATE_PENDING_PATH = "pending_edit_path"
     }
 
@@ -112,8 +111,8 @@ class SkillsFragment : Fragment() {
             val path = row.findViewById<MaterialTextView>(R.id.skillPath)
 
             name.text = s.name
-            // 内置徽标放标题右侧，颜色跟随主题
-            if (s.id == BUILTIN_SKILL) {
+            // 内置徽标放标题右侧，颜色跟随主题（5 个内置 skill 都要显示）
+            if (s.id in SkillManager.BUILTIN_IDS) {
                 badge.text = "内置"
                 badge.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_current)
                 badge.setTextColor(MaterialColors.getColor(

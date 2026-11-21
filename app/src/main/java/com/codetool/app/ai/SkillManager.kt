@@ -41,6 +41,16 @@ object SkillManager {
     /** 共享目录：app 新建 skill 写这里，两个 CLI 都识别。 */
     const val SKILLS_REL = "root/.agents/skills"
 
+    /**
+     * 内置 skill 的 id 集合（必须与 [ensureBuiltin] 注册的完全一致）。
+     * Skill 页据此显示「内置」徽标——之前只判断 codetool-browser，
+     * 导致另外 4 个内置 skill 看起来像用户自建。
+     */
+    val BUILTIN_IDS: Set<String> = setOf(
+        "codetool-browser", "codetool-shizuku", "codetool-system",
+        "multi-search-engine", "dev-god",
+    )
+
     /** 标准扫描根（相对容器根）。 */
     private val ROOTS = listOf(
         SKILLS_REL to "共享目录",
@@ -171,8 +181,9 @@ object SkillManager {
 
 ## 前置（每次先确认）
 1. 调 `browser_status` 检查三件事：浏览器是否已装、CDP 9222 是否就绪、文件桥是否可用。
-2. 若浏览器未安装，告诉用户：到 app 的「工具 → 包管理」点「安装浏览器（Chrome / Firefox）」。
+2. 若浏览器未安装，告诉用户：到 app 的「工具 → 包管理」点「安装 Chrome」。
    **不要自行 apt install**，装好后让用户回到终端点「显示」打开 GUI 合成器。
+   （Firefox 可以装在桌面使用，但 browser_* MCP 只支持 Chrome / Chromium 的 CDP。）
 3. CDP / 文件桥未就绪时同样提示用户先点「显示」打开 GUI 合成器。
 
 ## 通过 MCP 工具（推荐）
@@ -194,7 +205,7 @@ browser_dom 或 browser_eval 检查渲染结果 → browser_screenshot 看视觉
 """.trimIndent()
 
     private const val SHIZUKU_DESC =
-        "用 Shizuku 以 shell 身份调试 Android App：截屏、导出界面控件树、跑 dumpsys/logcat/pm 等命令，比无线调试方便，无需连 adb。"
+        "用 Shizuku 以 shell 身份调试 Android App：结构化 UI 自动化（启动、控件树、按文字点击、滑动、输入、按键、通知、分享）以及截屏、跑 dumpsys/logcat/pm 等命令，比无线调试方便，无需连 adb。"
 
     private val SHIZUKU_BODY = """
 # 用 Shizuku 调试 Android App（截屏 / 界面树 / shell 命令）
@@ -222,6 +233,29 @@ browser_dom 或 browser_eval 检查渲染结果 → browser_screenshot 看视觉
 - `shizuku_screenshot()`：截取当前屏幕，返回容器内 PNG 路径（直接看界面长什么样）。
 - `shizuku_ui_dump()`：导出当前界面控件树 XML，返回容器内路径（精确拿每个控件的
   文字 / 坐标 / resource-id，定位 UI 元素比看截图准）。
+
+## 结构化 UI 自动化（`codetool-android` MCP，优先）
+`codetool-android` 在同一个 Shizuku 授权之上提供更安全的固定动作，不需要自己拼 shell 命令；
+`shizuku_exec()` 仍保留给 dumpsys / logcat / pm 等任意命令。
+
+- `android_status()` / `android_current_app()`：先确认授权与当前前台。
+- `android_launch(package, activity?)`：启动 App；`android_open_url(url)`：用系统应用打开 http(s)。
+- `android_ui_dump(include_xml?)`：导出控件树；默认只回路径，避免一次塞入巨大 XML。
+- `android_tap_text(text/resource_id/content_desc, contains?, index?)`：**优先用它**，
+  内部先 dump 再找控件中心点击，避免猜坐标。
+- `android_tap(x,y)` / `android_swipe(x1,y1,x2,y2,duration_ms?)`：找不到控件时才用坐标。
+- `android_type(text)`：向焦点输入 ASCII；中文 / emoji 会明确拒绝，需让用户手动输入。
+- `android_key(key)`：back / home / enter / recents / KEYCODE_* / 数字 keycode。
+- `android_screenshot()`：截屏到容器 `/tmp/codetool-screen.png`，返回路径。
+- `android_notifications(include_content?, limit?)`：默认只回包名；只有用户明确要求时才传
+  `include_content=true`，因为通知正文可能含隐私。
+- `android_share_text(text)`：调起系统分享面板。
+- `android_clipboard(action=get/set, text?)`：**best-effort**。Android 10+ 通常限制 shell
+  访问剪贴板，只有系统提供 `cmd clipboard` 时可用；失败会明确报错，不要假设读写成功。
+  需要可靠粘贴时让用户手动操作，或让用户在前台输入框里输入。
+
+推荐顺序：`android_status` → `android_current_app` → `android_launch` → `android_ui_dump`
+→ `android_tap_text` → `android_type` / `android_key` → 再次 `android_ui_dump` 确认结果。
 
 ## 典型调试流程
 shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿控件树定位元素 →
@@ -304,6 +338,162 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 ## 注意（浏览器等特殊软件）
 - 依赖 app 前置能力的（如内置浏览器调试）走对应 skill（`codetool-browser`），
   它要求检测浏览器是否已装、未装时引导 app 包管理安装——**不要自行 apt install 浏览器**。
+
+## 读取 CodeTool 自身日志（同容器直接读，不需要 MCP）
+- 运行日志镜像在 `/usr/share/tawc/logs/codetool.log`（超过 2MB 轮转为 `.1`），
+  崩溃日志在 `/usr/share/tawc/logs/crash/crash-*.txt`。
+- 直接用 `tail -n 200 /usr/share/tawc/logs/codetool.log`、`grep -n "关键字" ...`
+  或读崩溃文件；这些是 app 应用日志，不是容器系统日志（dmesg/journalctl），
+  Android logcat 用 `shizuku_exec("logcat -d -t 200")`。
+- 日志 MCP 已移除；直接读上面两个路径即可，不需要再调 `codetool_log_*` 工具。
+- 日志可能含文件路径、命令输出等敏感信息，不要原样复述 token / 密钥。
+
+## 在容器内自建 APK（codetool 项目，进阶）
+
+**什么时候用**：改了 codetool 的 Kotlin/Java/XML/assets，要在容器里自己编译出 APK
+（而不是靠 app host 侧构建）。原生库 `libtawcroot.so`/`libtawc_compositor.so` 是**预编译**
+的（直接在 `jniLibs/`，不需要 NDK）；只有 `terminal-emulator` 模块的 `libtermux.so` 是
+**源码编译**（`src/main/jni/termux.c` + Android.mk），走 ndk-build——arm64 容器的坑全在这条链上，
+但**都已由 03-buildenv.sh 自动配好**（HOST_ARCH / NDK host 软链 / GNUMAKE / aapt2 override），照下面流程走即可。
+
+### 前置：装构建环境
+1. 先跑「工具 → 包管理」或脚本库里的 **03-buildenv.sh**（扫 JDK/SDK/NDK/build-tools
+   压缩包，缺的才装）。装完它会把环境写进 `/etc/profile.d/codetool-buildenv.sh`。
+   **路径机制**：脚本扫描**自己所在目录**（`dirname "${'$'}0"`）里的 `*.tar.gz`/`*.xz` 等压缩包，
+   解压到**目标目录** `TARGET`（默认 `/root/buildenv`，可用第一个参数改）；已装的记在
+   `/root/buildenv/.codetool-installed`（按「包名|大小」判重复，跳过），换版本会重装。
+   所以压缩包得和 03-buildenv.sh 在同一目录，或把该目录作为参数传进去。
+2. **每个新终端先 source**（否则 `ndk-build`/`aapt2` 不在 PATH）：
+   ```sh
+   . /etc/profile.d/codetool-buildenv.sh
+   ```
+   它会 export `ANDROID_HOME`/`ANDROID_NDK_HOME`/`JAVA_HOME`/`HOST_OS=linux`/
+   `HOST_TAG=linux-aarch64` 等。
+
+### 七个必踩的坑（按报错对号入座）
+
+1. **`Unable to determine HOST_OS from uname -s:`（uname 输出空）**
+   ndk-build 靠 `uname -s` 探测主机 OS，但 **Gradle 子进程的 PATH 可能不含
+   `/usr/bin`**（容器 uname 在 `/usr/bin/uname`）→ uname 返回空 → 直接 exit 1。
+   手动跑 `uname -s` 正常、Gradle 跑就空，就是这个。
+   **修**：确保 source 了 buildenv（它 export `HOST_OS=linux HOST_TAG=linux-aarch64`），
+   ndk-build 认这两个变量、直接跳过 uname。没生效就构建前手动：
+   ```sh
+   export HOST_OS=linux HOST_TAG=linux-aarch64
+   ```
+
+2. **`Unknown host CPU architecture: aarch64`**
+   AGP 首次构建会把 NDK 自动下载/复制到 `ANDROID_HOME/ndk/<ver>`，这个**副本常是
+   x86_64 host**，容器 aarch64 跑不了。而 03-buildenv.sh 装的预装 NDK
+   （`/root/buildenv/ndk/android-ndk-r27d`）是 aarch64 host、能用。
+   **修**：新版 03-buildenv.sh 会在装完时自动把 SDK 内非 aarch64 的 NDK 副本
+   **替换成软链 → 预装 aarch64 r27d**（看输出 `[NDK-HOST]` 行）。旧装没修的话手动
+   （`NDKVER` 取 terminal-emulator 的 `ndkVersion`，当前 27.3.13750724）：
+   ```sh
+   SDK_NDK=/root/buildenv/sdk/android-sdk/ndk/27.3.13750724
+   rm -rf "${'$'}SDK_NDK" && ln -s /root/buildenv/ndk/android-ndk-r27d "${'$'}SDK_NDK"
+   ndk-build --version                          # 应显示 Built for aarch64
+   ```
+
+3. **local.properties 的 sdk.dir 指向不存在的路径**
+   `local.properties` 里的 sdk.dir/ndk.dir **必须指向当前构建环境真实存在的 SDK/NDK**：
+   - **容器内构建** → 用 buildenv 装的路径（先 `. /etc/profile.d/codetool-buildenv.sh`，
+     再 `echo "${'$'}ANDROID_HOME"` / `echo "${'$'}ANDROID_NDK_HOME"` 看实际值）：
+     ```
+     sdk.dir=<ANDROID_HOME 的值，如 /root/buildenv/sdk/android-sdk>
+     ndk.dir=<ANDROID_NDK_HOME 的值，如 /root/buildenv/ndk/android-ndk-r27d>
+     ```
+   - **host 侧（ACSIDE）构建** → 用 host 路径（如 `/data/data/com.acside/files/home/android-sdk`）。
+   ⚠️ 两个环境共用一份项目目录时，改了 local.properties 会让另一边构建报
+   `sdk.dir ... Directory does not exist`——切环境构建前记得改回对应路径
+   （宿主原值备份在 local.properties.bak）。报这个错就是这个原因。
+
+4. **gradlew 无执行位（FUSE 不认 chmod）**
+   项目在 `/storage/emulated/0`（FUSE 挂载），`chmod +x gradlew` 改了不生效。
+   **修**：别依赖执行位，用解释器跑 `sh gradlew ...`。
+
+5. **AGP 的 SdkHandler 与 CXX 插件解析出两套路径**（`-P` / 环境变量 / 清缓存都压不过）
+   CXX 插件日志里 ndk 解析正确，但 ndk-build 任务实际用的 sdkFolder 仍是旧路径。
+   **修**：别硬压，直接建软链把旧路径指到新 SDK 兜底：
+   ```sh
+   mkdir -p /data/data/com.acside/files/home
+   ln -sfn /root/buildenv/sdk/android-sdk /data/data/com.acside/files/home/android-sdk
+   ```
+   （软链是兜底，正解是问题 3 把 local.properties 改对。）
+
+6. **ndk-build 报 `Error 127`（编 `libtermux.so` 挂，dry-run / 手动 clang 都正常）**
+   现象：Gradle 跑 `:terminal-emulator:buildNdkBuildDebug` 挂
+   `make: *** .../build-binary.mk:418: .../objs-debug/termux] Error 127`，但
+   `ndk-build -n`（dry-run）打印的命令全正常、手动跑 clang 也正常、`ndk-build --version`
+   也正常——没有任何「command not found」输出，极具迷惑性。
+   **根因（本容器实测）**：ndk-build **默认优先用 NDK 自带的 prebuilt make**
+   （`${'$'}ANDROID_NDK_ROOT/prebuilt/<host-tag>/bin/make`，静态 musl 二进制），系统 make
+   存在也被忽略；这个 prebuilt make 在本容器 fork 出的子进程执行**任何** recipe 都静默
+   失败（退出码 127、连 shell 都起不来）。判别：用 NDK prebuilt make 跑一个只含
+   `echo hi` 的 makefile → 127；系统 make 跑同一文件 → 正常。
+   **修**：`export GNUMAKE=/usr/bin/make`（ndk-build 原生支持该变量，指到系统 make）。
+   **新版 03-buildenv.sh 会自动写进 buildenv**（装环境时检测系统 make 并 export，source
+   后即生效）。手动验证：`GNUMAKE=/usr/bin/make ndk-build ...` 能编出 libtermux.so。
+   另：prebuilt 目录缺 `linux-aarch64` 软链、`make` 没装、缺 `/tmp` 也会表现为 127
+   （脚本已自动修，见坑 1 与脚本内注释）。
+
+7. **`AAPT2 ... Daemon startup failed`（arm64 容器资源编译必踩）**
+   资源编译时 AAPT2 daemon 起不来。根因：AGP **不用 build-tools 里的 aapt2**，而是自己从
+   Google Maven 下载一份 bundle 的 aapt2（`aapt2-<ver>-linux`），而 **Google 只发 x86_64**
+   → arm64 容器跑不动（`file` 它是 `x86-64`，直接跑报 `Exec format error`）。你 build-tools
+   里的 aapt2 是 arm64（能跑），但 AGP 默认不理它。
+   **修**：设 `android.aapt2FromMavenOverride` 指向 build-tools 的 arm64 aapt2，强制 AGP 用它：
+   ```sh
+   mkdir -p ~/.gradle
+   echo "android.aapt2FromMavenOverride=/root/buildenv/sdk/android-sdk/build-tools/<版本>/aapt2" \
+     >> ~/.gradle/gradle.properties
+   sh gradlew --stop    # 让 daemon 重读属性
+   ```
+   **新版 03-buildenv.sh 会自动写这条**（装环境时检测 build-tools 的 aapt2 路径写进去），
+   配一次永久生效——重下 gradle/清缓存都不用重配，只有重置整个 rootfs 才丢（那时重跑脚本）。
+
+8. **`mergeDebugNativeLibs` 报「2 files found with path 'lib/arm64-v8a/libtermux.so'」**
+   现象：NDK 构建修好后，`:terminal-emulator:mergeDebugNativeLibs` 挂：
+   `2 files found with path 'lib/arm64-v8a/libtermux.so' from inputs:`，列出
+   `merged_jni_libs/.../libtermux.so` 和 `cxx/Debug/.../obj/local/arm64-v8a/libtermux.so`
+   两个输入。之前能构建成功是因为 merge 任务命中 up-to-date 缓存没重跑，`gradlew clean`
+   后必然暴露。
+   **根因**：`libtermux.so` 有**两个来源**：`terminal-emulator/src/main/jniLibs/arm64-v8a/`
+   里的**预编译副本**（走 mergeDebugJniLibFolders）+ NDK **源码编译**产物（走 cxx obj
+   目录），AGP 拒绝同路径重复输入。规范来源是 NDK 源码编译（build.gradle 的
+   `externalNativeBuild.ndkBuild` + `src/main/jni/`）。
+   **修**：删掉冗余的预编译副本（已从源码树删除；若从旧备份恢复出来再遇到此错，照此删）：
+   ```sh
+   rm -f terminal-emulator/src/main/jniLibs/arm64-v8a/libtermux.so
+   rmdir terminal-emulator/src/main/jniLibs/arm64-v8a terminal-emulator/src/main/jniLibs 2>/dev/null
+   ```
+
+### 构建命令
+```sh
+. /etc/profile.d/codetool-buildenv.sh          # 每个新终端先 source（含 HOST_* / GNUMAKE / aapt2 override）
+cd /storage/emulated/0/Download/code/codetool  # 项目根（含 settings.gradle.kts）
+sh gradlew :app:assembleDebug                  # Debug 包；release 加签名另说
+# 产物：app/build/outputs/apk/debug/app-debug.apk
+```
+
+### 自查清单（构建失败先过一遍）
+- [ ] source 了 buildenv？`echo "${'$'}HOST_OS"` 应为 `linux`、`echo "${'$'}HOST_ARCH"` 应为 `aarch64`
+- [ ] `echo "${'$'}GNUMAKE"` 应为系统 make 路径（如 /usr/bin/make，NDK prebuilt make 坏，坑 6）
+- [ ] `make` 装了没？`command -v make`（arm64 容器最小 rootfs 常缺，坑 3）
+- [ ] `local.properties` 的 sdk.dir/ndk.dir 指向容器内真实路径？（否→坑 3）
+- [ ] 用 `sh gradlew` 而非 `./gradlew`？（FUSE 执行位，坑 4）
+- [ ] `uname -s` 在交互 shell 正常、Gradle 报空 → source buildenv（坑 1）
+- [ ] native 报 Error 127 → 先确认 `GNUMAKE` 指向系统 make（坑 6）；再查 NDK prebuilt 有无 `linux-aarch64` 软链 + `HOST_ARCH`
+- [ ] `mergeDebugNativeLibs` 报 2 files found with path libtermux.so → 删 jniLibs 预编译副本（坑 8）
+- [ ] AAPT2 Daemon startup failed → `grep aapt2FromMavenOverride ~/.gradle/gradle.properties`（坑 7）
+
+## Git 凭据（app 已代管，不要向用户索要）
+- GitHub / Gitee 的凭据分别存在 `~/.git-credentials-github`、`~/.git-credentials-gitee`（各 0600），
+  SSH 私钥在 `~/.ssh/id_ed25519`，均由 app 的「工具 → Git」页面写入；
+  `git clone` / `git push` 会自动使用，**不要向用户索要 GitHub/Gitee token 或私钥**，
+  也不要 `cat` / 打印这些文件，或把凭据写进代码、日志、提交信息。
+- 连接失败或未配置时，引导用户到 app「工具 → Git」配置（页面自带「测试连接」），
+  不要让用户把 token 粘贴到对话里。
 """.trimIndent()
 
     /**
@@ -348,9 +538,9 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 
     fun ensureBuiltin(ctx: Context): Int {
         var n = 0
-        n += ensureOne(ctx, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY, "browser_status")
-        n += ensureOne(ctx, "codetool-shizuku", SHIZUKU_DESC, SHIZUKU_BODY, "shizuku_exec")
-        n += ensureOne(ctx, "codetool-system", SYSTEM_DESC, SYSTEM_BODY, "推荐首选")
+        n += ensureOne(ctx, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY, "Firefox 可以装在桌面使用")
+        n += ensureOne(ctx, "codetool-shizuku", SHIZUKU_DESC, SHIZUKU_BODY, "android_tap_text")
+        n += ensureOne(ctx, "codetool-system", SYSTEM_DESC, SYSTEM_BODY, "读取 CodeTool 自身日志")
         // 多文件内置包（assets/skills/，装前已按规范做安全审查：multi_search.py 的 base64
         // 仅解码 Bing 中转链接、请求目标全为公开搜索引擎；project_probe.py 纯文件探测无网络）
         n += ensureBuiltinPack(ctx, "multi-search-engine", "3.0.4")

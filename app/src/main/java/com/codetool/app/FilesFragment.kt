@@ -22,6 +22,7 @@ import androidx.fragment.app.Fragment
 import androidx.recyclerview.widget.LinearLayoutManager
 import androidx.recyclerview.widget.RecyclerView
 import com.codetool.app.script.ScriptManager
+import com.codetool.app.util.AppSettings
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
@@ -49,6 +50,9 @@ class FilesFragment : Fragment() {
     /** 是否处在容器浏览模式（路径前缀 /data/data/.../rootfs）。 */
     private var inContainer = false
 
+    /** 是否显示以 . 开头的隐藏文件（状态持久化，默认不显示）。 */
+    private var showHidden = false
+
     companion object {
         @Volatile private var pendingPath: String? = null
 
@@ -72,31 +76,63 @@ class FilesFragment : Fragment() {
         list.adapter = adapter
         v.findViewById<ImageView>(R.id.upBtn).setOnClickListener { goUp() }
         v.findViewById<ImageView>(R.id.btnNew).setOnClickListener { showNewSheet() }
-        v.findViewById<Chip>(R.id.btnContainer).setOnClickListener { toggleContainer() }
-        v.findViewById<Chip>(R.id.btnCodeToolDir).setOnClickListener {
-            gotoDir(File(Environment.getExternalStorageDirectory(), "Download/codetool"))
+        // 标题栏复制按钮：复制当前目录完整路径
+        v.findViewById<ImageView>(R.id.btnCopyPath).setOnClickListener { copyPath(currentDir) }
+        // 地址栏：点击跳转、长按复制当前路径
+        pathText.setOnClickListener { showGotoDialog() }
+        pathText.setOnLongClickListener { copyPath(currentDir); true }
+        showHidden = AppSettings.fileShowHidden(requireContext())
+        // 容器根目录：已是容器模式时再点无效（不能把选中态取消掉，与其它 chip 行为一致）
+        v.findViewById<Chip>(R.id.btnContainer).setOnClickListener { c ->
+            val chip = c as Chip
+            if (inContainer) {
+                chip.isChecked = true
+                return@setOnClickListener
+            }
+            toggleContainer()
         }
-        v.findViewById<Chip>(R.id.btnDownloadDir).setOnClickListener {
-            gotoDir(File(Environment.getExternalStorageDirectory(), "Download"))
+        bindDirChip(v.findViewById(R.id.btnCodeToolDir)) {
+            File(Environment.getExternalStorageDirectory(), "Download/codetool")
+        }
+        bindDirChip(v.findViewById(R.id.btnDownloadDir)) {
+            File(Environment.getExternalStorageDirectory(), "Download")
         }
         // 日志目录：外部 Android/data/<pkg>/files/logs（文件管理器可见）
-        v.findViewById<Chip>(R.id.btnLogDir).setOnClickListener {
-            val logs = context?.getExternalFilesDir("logs")
+        bindDirChip(v.findViewById(R.id.btnLogDir)) {
+            context?.getExternalFilesDir("logs")
                 ?: File(Environment.getExternalStorageDirectory(), "Android/data/com.codetool.app/files/logs")
-            logs.mkdirs()
-            gotoDir(logs)
         }
-        // 应用数据根目录：Android/data/com.codetool.app/（files/ 日志都在这，方便找）
-        v.findViewById<Chip>(R.id.btnAppDataDir).setOnClickListener {
-            val appData = File(Environment.getExternalStorageDirectory(), "Android/data/com.codetool.app")
-            appData.mkdirs()
-            gotoDir(appData)
+        // 应用数据根目录（外部）：Android/data/com.codetool.app/
+        bindDirChip(v.findViewById(R.id.btnAppDataDir)) {
+            File(Environment.getExternalStorageDirectory(), "Android/data/com.codetool.app")
+        }
+        // 内部数据根目录：/data/user/0/com.codetool.app（files/rootfs、日志、share 桥都在这）
+        bindDirChip(v.findViewById(R.id.btnInternalDataDir)) {
+            File(requireContext().applicationInfo.dataDir)
         }
         return v
     }
 
+    /**
+     * 固定入口 chip 的统一点击逻辑：
+     * 已经在该目录时再次点击只保持选中，不触发重新加载、也不会取消选中（此前容器根目录会把自己点掉）。
+     */
+    private fun bindDirChip(chip: Chip, dirProvider: () -> File?) {
+        chip.setOnClickListener {
+            val dir = dirProvider() ?: return@setOnClickListener
+            if (!inContainer && currentDir.absolutePath == dir.absolutePath) {
+                chip.isChecked = true
+                return@setOnClickListener
+            }
+            if (!dir.exists()) dir.mkdirs()
+            gotoDir(dir)
+        }
+    }
+
     override fun onResume() {
         super.onResume()
+        // 设置弹窗可能改过隐藏文件开关，回前台重新读一次
+        showHidden = AppSettings.fileShowHidden(requireContext())
         val p = pendingPath
         if (p != null) {
             pendingPath = null
@@ -108,7 +144,7 @@ class FilesFragment : Fragment() {
 
     private fun refresh() {
         val files = currentDir.listFiles()
-            ?.filter { !it.name.startsWith(".") }
+            ?.filter { showHidden || !it.name.startsWith(".") }
             ?.sortedWith(compareByDescending<File> { it.isDirectory }.thenBy { it.name.lowercase() })
             ?: emptyList()
         entries.clear()
@@ -159,6 +195,50 @@ class FilesFragment : Fragment() {
         refresh()
     }
 
+    /** 点击地址栏：弹输入框，输入绝对路径跳转。 */
+    private fun showGotoDialog() {
+        val ctx = requireContext()
+        val v = layoutInflater.inflate(R.layout.dialog_goto_path, null)
+        val input = v.findViewById<com.google.android.material.textfield.TextInputEditText>(R.id.etPath)
+        input.setText(currentDir.absolutePath)
+        input.setSelection(input.text?.length ?: 0)
+        MaterialAlertDialogBuilder(ctx)
+            .setTitle("跳转到路径")
+            .setView(v)
+            .setPositiveButton("跳转") { _, _ ->
+                val target = input.text?.toString()?.trim().orEmpty()
+                if (target.isEmpty()) {
+                    Toast.makeText(ctx, "路径为空", Toast.LENGTH_SHORT).show()
+                    return@setPositiveButton
+                }
+                val f = File(target)
+                if (!f.exists()) {
+                    Toast.makeText(ctx, "目录不存在：$target", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                if (!f.isDirectory) {
+                    Toast.makeText(ctx, "不是目录：$target", Toast.LENGTH_LONG).show()
+                    return@setPositiveButton
+                }
+                gotoDir(f)
+            }
+            .setNegativeButton("取消", null)
+            .show()
+    }
+
+    /** 仅供标题栏「文件设置」弹窗读取当前开关状态。 */
+    fun isShowHidden(): Boolean = showHidden
+
+    /**
+     * 由标题栏「文件设置」弹窗调用：写入开关并立即刷新列表。
+     * 持久化交给调用方（MainActivity）一起做，避免两处反复写 SharedPreferences。
+     */
+    fun setShowHidden(enabled: Boolean) {
+        if (showHidden == enabled) return
+        showHidden = enabled
+        if (view != null) refresh()
+    }
+
     /** 刷新固定入口的激活态（当前所在目录高亮）。 */
     private fun updateQuickEntries() {
         val v = view ?: return
@@ -167,12 +247,16 @@ class FilesFragment : Fragment() {
         val download = File(ext, "Download")
         val logs = requireContext().getExternalFilesDir("logs")
         val appData = File(ext, "Android/data/com.codetool.app")
+        val internalData = File(requireContext().applicationInfo.dataDir)
+        fun same(a: File?, b: File?) =
+            a != null && b != null && a.absolutePath.trimEnd('/') == b.absolutePath.trimEnd('/')
         setChipChecked(v.findViewById(R.id.btnContainer), inContainer)
-        setChipChecked(v.findViewById(R.id.btnCodeToolDir), !inContainer && currentDir == codetool)
-        setChipChecked(v.findViewById(R.id.btnDownloadDir), !inContainer && currentDir == download)
-        setChipChecked(v.findViewById(R.id.btnLogDir), !inContainer && logs != null && currentDir == logs)
+        setChipChecked(v.findViewById(R.id.btnCodeToolDir), !inContainer && same(currentDir, codetool))
+        setChipChecked(v.findViewById(R.id.btnDownloadDir), !inContainer && same(currentDir, download))
+        setChipChecked(v.findViewById(R.id.btnLogDir), !inContainer && same(currentDir, logs))
         // 之前漏了「应用数据」：其它 chip 选中会高亮，它永远不变 → 看起来样式不一致
-        setChipChecked(v.findViewById(R.id.btnAppDataDir), !inContainer && currentDir == appData)
+        setChipChecked(v.findViewById(R.id.btnAppDataDir), !inContainer && same(currentDir, appData))
+        setChipChecked(v.findViewById(R.id.btnInternalDataDir), !inContainer && same(currentDir, internalData))
     }
 
     private fun setChipChecked(chip: Chip, checked: Boolean) {
@@ -275,6 +359,10 @@ class FilesFragment : Fragment() {
                 text = File(p).name.ifEmpty { p }
                 tag = "fav:$p"
                 setOnClickListener {
+                    if (!inContainer && currentDir.absolutePath == p) {
+                        isChecked = true
+                        return@setOnClickListener
+                    }
                     val f = File(p)
                     if (f.isDirectory) { currentDir = f; refresh() }
                 }
@@ -574,7 +662,6 @@ class FilesFragment : Fragment() {
             .setTitle(f.name)
             .setMessage("${f.absolutePath}\n\n${if (f.isDirectory) "目录" else "${f.length()} 字节"}")
             .setPositiveButton("用其他应用打开") { _, _ -> openWithExternal(f) }
-            .setNeutralButton("删除") { _, _ -> deleteItem(f) }
             .setNegativeButton("关闭", null)
             .show()
     }

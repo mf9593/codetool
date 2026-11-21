@@ -32,23 +32,44 @@ object McpManager {
         val url: String = "",
         val enabled: Boolean = true,
         val builtin: Boolean = false,
+        /** 列表里展示的简介；内置服务由 app 提供，自定义服务可用配置里的 description。 */
+        val description: String = "",
         /** 出现在哪些 CLI 配置里：MiMo Code / OpenCode。 */
         val sources: List<String> = emptyList(),
     ) {
         val isRemote: Boolean get() = type != "local"
     }
 
-    const val BUILTIN_NAME = "codetool-browser"
+    const val BROWSER_NAME = "codetool-browser"
+    const val ANDROID_NAME = "codetool-android"
 
-    /** 内置 MCP server：app 自带、默认开启，让模型能调用内置浏览器。 */
-    val BUILTIN = Server(
-        name = BUILTIN_NAME,
-        type = "local",
-        // 绝对路径：CLI 以 stdio 子进程拉起 server，不依赖登录 shell 的 PATH
-        command = listOf("/usr/bin/python3", "/usr/local/bin/codetool-mcp"),
-        enabled = true,
-        builtin = true,
+    /** 已下线的日志 MCP：只用于清理旧配置，避免 CLI 启动时找不到脚本。 */
+    private const val LEGACY_LOGS_NAME = "codetool-logs"
+    private const val LEGACY_LOGS_SCRIPT = "/usr/local/bin/codetool-logs-mcp"
+
+    /** 内置 MCP server：app 自带、默认开启。 */
+    val BUILTINS = listOf(
+        Server(
+            name = BROWSER_NAME,
+            type = "local",
+            // 绝对路径：CLI 以 stdio 子进程拉起 server，不依赖登录 shell 的 PATH
+            command = listOf("/usr/bin/python3", "/usr/local/bin/codetool-mcp"),
+            enabled = true,
+            builtin = true,
+            description = "用 app 内置 Chrome 渲染网页，可打开 URL、执行 JS、查 DOM 和截图，不依赖外部浏览器。",
+        ),
+        Server(
+            name = ANDROID_NAME,
+            type = "local",
+            // 结构化 Android UI 自动化：底层复用 codetool-shizuku，不重复造桥
+            command = listOf("/usr/bin/python3", "/usr/local/bin/codetool-android-mcp"),
+            enabled = true,
+            builtin = true,
+            description = "通过 Shizuku 做结构化 Android UI 自动化：启动应用、导出控件树、按文字点击、输入、通知与截图。",
+        ),
     )
+
+    private val BUILTIN_NAMES = BUILTINS.map { it.name }.toSet()
 
     private fun root(ctx: Context) = RootfsManager.get(ctx.applicationContext).containerRoot
 
@@ -98,7 +119,9 @@ object McpManager {
         },
         url = o.optString("url", ""),
         enabled = o.optBoolean("enabled", true),
-        builtin = name == BUILTIN_NAME,
+        builtin = name in BUILTIN_NAMES,
+        description = o.optString("description", "").trim()
+            .ifBlank { BUILTINS.firstOrNull { it.name == name }?.description.orEmpty() },
         sources = listOf(label),
     )
 
@@ -107,6 +130,7 @@ object McpManager {
         if (s.isRemote) put("url", s.url)
         else put("command", JSONArray().also { a -> s.command.forEach { a.put(it) } })
         put("enabled", s.enabled)
+        put("description", s.description)
     }
 
     /** 合并两个 CLI 配置里的 mcp 段（同名以 MiMo 优先），并标出来源。实时读盘。 */
@@ -126,6 +150,7 @@ object McpManager {
     }
 
     /** 找不到配置可写时返回错误原因；成功返回 null。 */
+    @Synchronized
     private fun mutate(ctx: Context, block: (JSONObject) -> Unit): String? {
         var written = 0
         var skipped = 0
@@ -151,7 +176,13 @@ object McpManager {
                     // JSONC 的注释无法被标准 JSON 序列化保留：先备份原文件再改写
                     File(f.absolutePath + ".codetool.bak").writeText(raw)
                 }
-                f.writeText(obj.toString(2) + "\n")
+                // 先写临时文件再原子替换：避免 MCP 页读盘时看到写了一半的 JSON。
+                val tmp = File(f.parentFile, f.name + ".codetool.tmp")
+                tmp.writeText(obj.toString(2) + "\n")
+                if (!tmp.renameTo(f)) {
+                    f.writeText(obj.toString(2) + "\n")
+                    tmp.delete()
+                }
                 written++
             }
         }
@@ -171,6 +202,7 @@ object McpManager {
             val o = mcp.optJSONObject(s.name) ?: JSONObject()
             o.put("type", s.type)
             o.put("enabled", s.enabled)
+            o.put("description", s.description)
             if (s.isRemote) {
                 o.put("url", s.url)
                 o.remove("command")
@@ -186,19 +218,36 @@ object McpManager {
     fun setEnabled(ctx: Context, name: String, enabled: Boolean): String? = mutate(ctx) { mcp ->
         val o = mcp.optJSONObject(name)
         if (o != null) o.put("enabled", enabled)
-        else if (name == BUILTIN_NAME) mcp.put(name, toJson(BUILTIN.copy(enabled = enabled)))
+        else BUILTINS.firstOrNull { it.name == name }?.let {
+            mcp.put(name, toJson(it.copy(enabled = enabled)))
+        }
     }
 
     fun remove(ctx: Context, name: String): String? = mutate(ctx) { mcp -> mcp.remove(name) }
 
     /**
-     * 注册 / 自愈内置 MCP server（默认开启），让模型开箱可用。
+     * 注册 / 自愈全部内置 MCP server（默认开启），让模型开箱可用。
      * 已存在但命令是旧版时只更新命令与类型，**保留用户的 enabled 开关**。
      */
     fun ensureBuiltin(ctx: Context): Int {
-        val existing = listServers(ctx).firstOrNull { it.name == BUILTIN_NAME }
-            ?: return if (upsert(ctx, BUILTIN) == null) 1 else 0
-        if (existing.command == BUILTIN.command && existing.type == BUILTIN.type) return 0
-        return if (upsert(ctx, BUILTIN.copy(enabled = existing.enabled)) == null) 1 else 0
+        // 日志 MCP 已下线：只移除确实指向旧内置脚本的条目，
+        // 用户自建的同名服务（命令不同）不动。
+        val legacy = listServers(ctx).firstOrNull {
+            it.name == LEGACY_LOGS_NAME && it.command.any { c -> c.contains(LEGACY_LOGS_SCRIPT) }
+        }
+        if (legacy != null) remove(ctx, legacy.name)
+
+        var n = 0
+        val current = listServers(ctx)
+        for (b in BUILTINS) {
+            val existing = current.firstOrNull { it.name == b.name }
+            if (existing == null) {
+                if (upsert(ctx, b) == null) n++
+                continue
+            }
+            if (existing.command == b.command && existing.type == b.type) continue
+            if (upsert(ctx, b.copy(enabled = existing.enabled)) == null) n++
+        }
+        return n
     }
 }

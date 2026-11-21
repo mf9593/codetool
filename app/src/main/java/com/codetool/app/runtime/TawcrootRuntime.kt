@@ -157,6 +157,26 @@ class TawcrootRuntime private constructor(private val context: Context) {
             File(share, "browser").mkdirs()
             // Shizuku 桥挂载点（真实目录由 ShizukuBridge 在 Android 侧 dataDir/share 下创建）
             File(share, "shizuku").mkdirs()
+            // 应用日志镜像目录（Android 侧 dataDir/share/logs），容器内模型可直接读
+            File(share, "logs").mkdirs()
+            File(shareDir(), "logs/crash").mkdirs()
+
+            // 日志 MCP 已下线：清理旧版注入的脚本、Token 与运行文件。
+            // 共享日志目录保留，容器内模型直接读 /usr/share/tawc/logs/codetool.log。
+            runCatching {
+                File(rootfsDir, "usr/local/bin/codetool-logs-mcp").delete()
+                File(rootfsDir, "root/.config/codetool/log-mcp-token").delete()
+                val pidFile = File(shareDir(), "logs/log-mcp.pid")
+                val pid = runCatching { pidFile.readText().trim().toInt() }.getOrNull()
+                if (pid != null && pid > 0) {
+                    val cmdline = runCatching {
+                        File("/proc/$pid/cmdline").readBytes().toString(Charsets.UTF_8)
+                    }.getOrNull().orEmpty()
+                    if (cmdline.contains("codetool-logs-mcp")) android.os.Process.killProcess(pid)
+                }
+                pidFile.delete()
+                File(shareDir(), "logs/log-mcp.stop").delete()
+            }
 
             val profileDir = File(rootfsDir, "etc/profile.d").apply { mkdirs() }
             val profile = File(profileDir, "codetool-wayland.sh")
@@ -206,7 +226,7 @@ class TawcrootRuntime private constructor(private val context: Context) {
                 browser.setExecutable(true, false)
             }
 
-            // 注入 codetool-mcp：mimo / opencode 通过 MCP 调用内置浏览器的 stdio server。
+            // 注入 codetool-mcp：mimo / opencode 通过 MCP 调用浏览器 / Android 自动化的 stdio server。
             // 单一来源 assets/scripts/codetool-mcp.py，内容变化自动覆盖。
             val mcp = File(rootfsDir, "usr/local/bin/codetool-mcp")
             val mcpScript = runCatching {
@@ -216,6 +236,18 @@ class TawcrootRuntime private constructor(private val context: Context) {
                 mcp.parentFile?.mkdirs()
                 mcp.writeText(mcpScript)
                 mcp.setExecutable(true, false)
+            }
+
+            // 注入 codetool-android-mcp：结构化 Android UI 自动化的 stdio server。
+            // 底层复用 codetool-shizuku，不重复实现 Shizuku 文件桥。
+            val androidMcp = File(rootfsDir, "usr/local/bin/codetool-android-mcp")
+            val androidMcpScript = runCatching {
+                context.assets.open("scripts/codetool-android-mcp.py").bufferedReader().use { it.readText() }
+            }.getOrNull()
+            if (androidMcpScript != null && (!androidMcp.exists() || androidMcp.readText() != androidMcpScript)) {
+                androidMcp.parentFile?.mkdirs()
+                androidMcp.writeText(androidMcpScript)
+                androidMcp.setExecutable(true, false)
             }
 
             // 注入 codetool-shizuku：容器内 CLI / AI 模型以 shell 身份调试 App 的统一入口。

@@ -7,6 +7,9 @@ import android.view.MenuItem
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
+import androidx.activity.addCallback
+import com.codetool.app.util.EditorSearchController
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
 import io.github.rosemoe.sora.widget.CodeEditor
 
@@ -28,6 +31,13 @@ class SkillEditorActivity : AppCompatActivity() {
     private lateinit var etDesc: TextInputEditText
     private lateinit var etBody: CodeEditor
 
+    /** 进入时的初始 description / 正文：用于返回时判断「是否有改动」→ 提示保存。 */
+    private var initialDesc: String = ""
+    private var initialBody: String = ""
+
+    /** 内联搜索（点标题栏搜索按钮展开，输入即搜编辑内容）。 */
+    private lateinit var search: EditorSearchController
+
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(com.codetool.app.theme.ThemeManager.resolveStyle(this))
         super.onCreate(savedInstanceState)
@@ -41,17 +51,36 @@ class SkillEditorActivity : AppCompatActivity() {
         etDesc = findViewById(R.id.etSkillDesc)
         etBody = findViewById(R.id.etSkillBody)
 
+        // 内联搜索：点标题栏搜索按钮展开搜索条，输入即搜编辑内容（sora EditorSearcher 高亮）
+        search = EditorSearchController(
+            etBody,
+            findViewById(R.id.searchBar),
+            findViewById(R.id.searchInput),
+            findViewById(R.id.searchCount),
+            findViewById(R.id.searchPrev),
+            findViewById(R.id.searchNext),
+            findViewById(R.id.searchClose),
+        )
+
         val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
         val desc = intent.getStringExtra(EXTRA_DESC).orEmpty()
         val body = intent.getStringExtra(EXTRA_BODY).orEmpty()
         if (name.isNotEmpty()) {
             etName.setText(name)
             etName.isEnabled = false   // name = 目录名，编辑时不改
+            // 主标题「编辑 Skill」+ 副标题 skill 名：现在标题栏只留搜索/保存 2 个图标，
+            // 空间充足，两个都显示得下（名字用 subtitle 完整可见，不再被图标挤压）。
             title = "编辑 Skill"
+            supportActionBar?.subtitle = name
         } else {
             title = "新增 Skill"
+            supportActionBar?.subtitle = null
         }
         etDesc.setText(desc)
+        initialDesc = desc
+        initialBody = body
+        // 返回（标题栏返回箭头 + 系统返回键）统一走 confirmExit：有改动先提示保存
+        onBackPressedDispatcher.addCallback(this) { confirmExit() }
         // sora-editor 的 setText 在布局完成前调用偶发不渲染，post 到下一帧确保正文显示。
         // 注意：必须先 setText 再 applyTo 设语言——TextMate 语法加载是异步的，
         // 语言设置的太早会把已渲染的正文清掉（正文区全空）。
@@ -66,6 +95,9 @@ class SkillEditorActivity : AppCompatActivity() {
                 R.id.action_skill_save -> { saveAndFinish(); true }
                 R.id.action_skill_copy -> { copyToClipboard(); true }
                 R.id.action_skill_help -> { showHelp(); true }
+                R.id.action_skill_search -> { search.toggle(); true }
+                R.id.action_skill_undo -> { etBody.undo(); true }
+                R.id.action_skill_redo -> { etBody.redo(); true }
                 else -> false
             }
         }
@@ -100,7 +132,7 @@ class SkillEditorActivity : AppCompatActivity() {
     }
 
     override fun onSupportNavigateUp(): Boolean {
-        finish()
+        confirmExit()
         return true
     }
 
@@ -121,5 +153,25 @@ class SkillEditorActivity : AppCompatActivity() {
         intent.putExtra(EXTRA_BODY, body)
         setResult(RESULT_SAVED, intent)
         finish()
+    }
+
+    /** 内容是否有改动（description 或正文相对进入时的初始值）。名称编辑时禁用，不参与判断。 */
+    private fun isModified(): Boolean =
+        etDesc.text?.toString().orEmpty() != initialDesc ||
+            etBody.text.toString() != initialBody
+
+    /**
+     * 返回拦截：内容有改动时弹「已修改是否保存」对话框（保存 / 不保存 / 取消），
+     * 无改动直接退出。系统返回键走 onBackPressedDispatcher，标题栏返回箭头走 onSupportNavigateUp。
+     */
+    private fun confirmExit() {
+        if (!isModified()) { finish(); return }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("已修改")
+            .setMessage("内容已修改，是否保存？")
+            .setPositiveButton("保存") { _, _ -> saveAndFinish() }
+            .setNegativeButton("不保存") { _, _ -> finish() }
+            .setNeutralButton("取消", null)
+            .show()
     }
 }

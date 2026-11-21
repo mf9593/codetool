@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自动换行图标：三条横线 + 右下折返箭头 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="24dp"
+    android:height="24dp"
+    android:viewportWidth="24"
+    android:viewportHeight="24"
+    android:tint="?attr/colorControlNormal">
+    <path
+        android:fillColor="@android:color/white"
+        android:pathData="M4,6h16v2H4z M4,10h16v2H4z M4,14h10v2H4z M14,14h5a2.5,2.5 0 0 1 0,5h-3v2l-3.5,-2.5L16,18v-1h3a0.5,0.5 0 0 0 0,-1h-5z" />
+</vector>

@@ -153,16 +153,26 @@ object AiModelManager {
         var enabled: Boolean = true,
         var target: String = "mimo",
         var current: Boolean = false,
+        // 模型能力（从 /models API 返回的字段解析；0 / true 为兜底，表示"未知，按全支持处理"）
+        var contextLength: Int = 0,
+        var maxOutputLength: Int = 0,
+        var supportsToolCall: Boolean = true,
+        var supportsReasoning: Boolean = true,
+        var supportsImage: Boolean = true,
+        var supportsTemperature: Boolean = true,
     ) {
         fun toJson() = JSONObject()
             .put("name", name).put("provider", provider).put("modelId", modelId)
             .put("apiKey", apiKey).put("baseUrl", baseUrl)
             .put("apiType", apiType).put("enabled", enabled)
             .put("target", target).put("current", current)
+            .put("contextLength", contextLength).put("maxOutputLength", maxOutputLength)
+            .put("supportsToolCall", supportsToolCall).put("supportsReasoning", supportsReasoning)
+            .put("supportsImage", supportsImage).put("supportsTemperature", supportsTemperature)
 
         companion object {
             fun fromJson(o: JSONObject) = Model(
-                name = o.optString("name", ""),
+                name = fixLegacyFetchedModelName(o.optString("name", "")),
                 provider = o.optString("provider", ""),
                 modelId = o.optString("modelId", ""),
                 apiKey = o.optString("apiKey", ""),
@@ -171,7 +181,23 @@ object AiModelManager {
                 enabled = o.optBoolean("enabled", true),
                 target = o.optString("target", "mimo"),
                 current = o.optBoolean("current", false),
+                contextLength = o.optInt("contextLength", 0),
+                maxOutputLength = o.optInt("maxOutputLength", 0),
+                supportsToolCall = o.optBoolean("supportsToolCall", true),
+                supportsReasoning = o.optBoolean("supportsReasoning", true),
+                supportsImage = o.optBoolean("supportsImage", true),
+                supportsTemperature = o.optBoolean("supportsTemperature", true),
             )
+
+            /**
+             * 修复历史 bug 存下的坏模型名：此前 addModel 用字符串模板 "${provider}/$fm.id"，
+             * Kotlin 模板在 "." 处截断，实际存成 "provider/FetchedModel(id=xxx, ...).id"。
+             * 读时提取其中的模型 id，重建为 "provider/id"（仅此精确形态，不误伤正常名）。
+             */
+            private fun fixLegacyFetchedModelName(raw: String): String {
+                val m = Regex("""^(.+)/FetchedModel\(id=([^,]+),.*\)\.id$""").matchEntire(raw)
+                return m?.let { "${it.groupValues[1]}/${it.groupValues[2]}" } ?: raw
+            }
         }
     }
 
@@ -313,7 +339,9 @@ object AiModelManager {
         val m = found ?: return false
         if (!m.enabled) return false   // 停用的模型不能设为当前
         saveModels(ctx, list)
-        return if (target == "opencode") writeOpencode(ctx, m) else writeMimo(ctx, m)
+        // 写该 target 下所有启用模型（都能被 CLI 识别），m 作默认（recent[0]）
+        val enabled = list.filter { it.target == target && it.enabled }
+        return if (target == "opencode") writeOpencode(ctx, m, enabled) else writeMimo(ctx, m, enabled)
     }
 
     /** 从 CLI 现有原生配置导入为清单条目（首次/清单为空时用）。 */
@@ -364,21 +392,72 @@ object AiModelManager {
 
     // ---------------- 写入各 CLI 原生配置（含 Base URL） ----------------
 
-    /** 写 mimo：auth.json（provider->{type,key,baseURL}）+ model.json（recent[0]）+ mimocode.jsonc（provider baseURL）。 */
-    fun writeMimo(ctx: Context, m: Model): Boolean = runCatching {
+    /**
+     * 有效 provider：provider 字段为空时兜底推导，绝不让模型因 provider 空而被整条丢弃、
+     * 也避免被错分到一个没有 baseURL/key 的孤儿 provider 下。
+     * 推导顺序：provider → 同 baseUrl 的已声明 provider（同 API 地址=同服务商，最可靠）→
+     * name/modelId 的 '/' 前缀 → "custom"。
+     * 背景：自定义模型（如 sensenova-6.8-flash）常只填 name/baseUrl 没填 provider；它和
+     * sensenova-u1.5-lite 用同一 baseURL，应继承 sensenova 而非单开 custom（custom 没 key 连不上）。
+     * [all] 传入该 target 全部启用模型，用于 baseUrl 继承匹配。
+     */
+    private fun effProvider(m: Model, all: List<Model> = listOf(m)): String =
+        m.provider.ifEmpty {
+            all.firstOrNull {
+                it.provider.isNotEmpty() && it.baseUrl.isNotEmpty() && it.baseUrl == m.baseUrl
+            }?.provider
+                ?: m.name.substringBefore('/').takeIf { it.isNotEmpty() && m.name.contains('/') }
+                ?: m.modelId.substringBefore('/').takeIf { it.isNotEmpty() && m.modelId.contains('/') }
+                ?: "custom"
+        }
+
+    /** 按有效 provider 分组（provider 空时用 effProvider 兜底），保证每条启用模型都被声明。 */
+    private fun groupByProvider(enabled: List<Model>): Map<String, List<Model>> {
+        val out = LinkedHashMap<String, MutableList<Model>>()
+        for (m in enabled) {
+            val key = effProvider(m, enabled)
+            out.getOrPut(key) { mutableListOf() }.add(m)
+        }
+        return out
+    }
+
+    /** 格式化上下文长度为可读字符串（262144 → "262K"，1048576 → "1M"），0 返回空。 */
+    fun formatContextLength(tokens: Int): String = when {
+        tokens >= 1000000 -> "${tokens / 1000000}M"
+        tokens >= 1000 -> "${tokens / 1000}K"
+        tokens > 0 -> tokens.toString()
+        else -> ""
+    }
+
+    /**
+     * 写 mimo：auth.json（provider->{type,key,baseURL}）+ model.json（recent[0]=默认）+ mimocode.jsonc（声明全部启用模型）。
+     * current = 默认模型（recent[0]）；enabled = 该 target 下所有已启用模型，全部声明进
+     * provider.<id>.models.<modelId>，让 mimo 一次认得所有配置的模型（不止 current）。
+     * 这样「配好模型 + 同步」即可被识别，不必逐个「设为当前」。
+     * 注意：分组用 groupByProvider（provider 空时按 baseUrl 继承），保证每条启用模型都被声明。
+     */
+    fun writeMimo(ctx: Context, current: Model, enabled: List<Model> = listOf(current)): Boolean = runCatching {
+        val m = current
+        val mProv = effProvider(m, enabled)
         val auth = mimoAuth(ctx).apply { parentFile?.mkdirs() }
         val obj = if (auth.isFile) runCatching { JSONObject(auth.readText()) }.getOrDefault(JSONObject()) else JSONObject()
-        val entry = obj.optJSONObject(m.provider) ?: JSONObject()
-        entry.put("type", "api")
-        entry.put("key", m.apiKey)
-        if (m.baseUrl.isNotEmpty()) entry.put("baseURL", m.baseUrl)
-        obj.put(m.provider, entry)
+        // 所有启用模型的 provider 都写 key（同一 provider 取第一个非空 key）；分组用 groupByProvider 兜底
+        val byProvider = groupByProvider(enabled)
+        byProvider.forEach { (prov, models) ->
+            val key = models.firstOrNull { it.apiKey.isNotEmpty() }?.apiKey ?: models.first().apiKey
+            val entry = obj.optJSONObject(prov) ?: JSONObject()
+            entry.put("type", "api")
+            entry.put("key", key)
+            val bu = models.firstOrNull { it.baseUrl.isNotEmpty() }?.baseUrl.orEmpty()
+            if (bu.isNotEmpty()) entry.put("baseURL", bu)
+            obj.put(prov, entry)
+        }
         auth.writeText(jsonPretty(obj))
 
         val mf = mimoModel(ctx).apply { parentFile?.mkdirs() }
         val mo = if (mf.isFile) runCatching { JSONObject(mf.readText()) }.getOrDefault(JSONObject()) else JSONObject()
         val recent = JSONArray()
-        recent.put(JSONObject().put("providerID", m.provider).put("modelID", m.modelId))
+        recent.put(JSONObject().put("providerID", effProvider(m, enabled)).put("modelID", m.modelId))
         mo.put("recent", recent)
         mo.put("favorite", mo.optJSONArray("favorite") ?: JSONArray())
         mo.put("variant", mo.optJSONObject("variant") ?: JSONObject())
@@ -387,7 +466,9 @@ object AiModelManager {
         // 关键：mimo 列模型时按 provider.<id>.options.baseURL 取 API 地址（和 opencode
         // 的 opencode.json 同构）。只写 auth.json 的 baseURL 不够——实测 mimo 认得 provider
         // 却拿不到地址，模型列表为空。这里把 baseURL 也写进 mimocode.jsonc（JSONC 安全写）。
-        if (m.baseUrl.isNotEmpty() && m.provider.isNotEmpty()) {
+        // 并把所有启用模型都声明进 provider.<id>.models.<modelId>，让 mimo 绕过静态 registry
+        // 直接认这些模型（自定义模型如 sensenova-6.8-flash 不在 registry 也能显示）。
+        if (byProvider.isNotEmpty()) {
             val cfg = mimoConfig(ctx).apply { parentFile?.mkdirs() }
             val raw = if (cfg.isFile) runCatching { cfg.readText() }.getOrNull() else null
             val parsed = when {
@@ -397,25 +478,31 @@ object AiModelManager {
             if (parsed != null) {
                 val obj = parsed.obj
                 val providers = obj.optJSONObject("provider") ?: JSONObject().also { obj.put("provider", it) }
-                val p = providers.optJSONObject(m.provider) ?: JSONObject().also { providers.put(m.provider, it) }
-                val options = p.optJSONObject("options") ?: JSONObject().also { p.put("options", it) }
-                options.put("baseURL", m.baseUrl)
-                // 自定义模型声明：mimo 列模型读静态 registry，registry 没收录的自定义模型
-                // （如 sensenova-6.8-flash）不会显示。显式声明进 provider.<id>.models.<modelId>，
-                // 与 opencode.json 同构，让 mimo 绕过 registry 直接认这个模型。
-                val models = p.optJSONObject("models") ?: JSONObject()
-                val mo = JSONObject()
-                mo.put("id", m.modelId)
-                mo.put("name", m.name.substringAfter('/').ifEmpty { m.modelId })
-                mo.put("reasoning", true)
-                mo.put("tool_call", true)
-                mo.put("temperature", true)
-                mo.put("attachment", true)
-                mo.put("limit", JSONObject().put("context", 262144).put("output", 65536))
-                mo.put("cost", JSONObject().put("input", 0).put("output", 0).put("cache_read", 0))
-                models.put(m.modelId, mo)
-                p.put("models", models)
-                providers.put(m.provider, p)
+                byProvider.forEach { (prov, models) ->
+                    val p = providers.optJSONObject(prov) ?: JSONObject().also { providers.put(prov, it) }
+                    val options = p.optJSONObject("options") ?: JSONObject().also { p.put("options", it) }
+                    val bu = models.firstOrNull { it.baseUrl.isNotEmpty() }?.baseUrl.orEmpty()
+                    if (bu.isNotEmpty()) options.put("baseURL", bu)
+                    val modelsMap = p.optJSONObject("models") ?: JSONObject()
+                    models.forEach { mm ->
+                        val decl = JSONObject()
+                        decl.put("id", mm.modelId)
+                        decl.put("name", mm.name.substringAfter('/').ifEmpty { mm.modelId })
+                        decl.put("reasoning", mm.supportsReasoning)
+                        decl.put("tool_call", mm.supportsToolCall)
+                        decl.put("temperature", mm.supportsTemperature)
+                        decl.put("attachment", mm.supportsImage)
+                        decl.put("limit", JSONObject().put(
+                            "context", if (mm.contextLength > 0) mm.contextLength else 262144
+                        ).put(
+                            "output", if (mm.maxOutputLength > 0) mm.maxOutputLength else 65536
+                        ))
+                        decl.put("cost", JSONObject().put("input", 0).put("output", 0).put("cache_read", 0))
+                        modelsMap.put(mm.modelId, decl)
+                    }
+                    p.put("models", modelsMap)
+                    providers.put(prov, p)
+                }
                 obj.put("provider", providers)
                 cfg.writeText(jsonPretty(obj) + "\n")
             }
@@ -423,37 +510,52 @@ object AiModelManager {
         true
     }.getOrDefault(false)
 
-    /** 写 opencode.json：model + env.{PROVIDER}_API_KEY + provider.<id>.options.baseURL。 */
-    fun writeOpencode(ctx: Context, m: Model): Boolean = runCatching {
+    /**
+     * 写 opencode.json：model（=current 默认）+ env.{PROVIDER}_API_KEY + provider.<id>.options.baseURL，
+     * 并把所有启用模型声明进 provider.<id>.models.<modelId>（让 opencode 一次认得全部，不止 current）。
+     */
+    fun writeOpencode(ctx: Context, current: Model, enabled: List<Model> = listOf(current)): Boolean = runCatching {
+        val m = current
+        val mProv = effProvider(m, enabled)
         val file = opencodeCfg(ctx).apply { parentFile?.mkdirs() }
         val obj = if (file.isFile) runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject()) else JSONObject()
-        obj.put("model", if (m.provider.isNotEmpty()) "${m.provider}/${m.modelId}" else m.modelId)
-        if (m.apiKey.isNotEmpty()) {
-            val env = obj.optJSONObject("env") ?: JSONObject()
-            env.put("${m.provider.uppercase()}_API_KEY", m.apiKey)
-            obj.put("env", env)
+        obj.put("model", "${mProv}/${m.modelId}")
+        // 所有启用模型的 provider 都写 key（同一 provider 取第一个非空 key）；分组用 groupByProvider 兜底
+        val byProvider = groupByProvider(enabled)
+        val env = obj.optJSONObject("env") ?: JSONObject()
+        byProvider.forEach { (prov, models) ->
+            val key = models.firstOrNull { it.apiKey.isNotEmpty() }?.apiKey ?: models.first().apiKey
+            if (key.isNotEmpty()) env.put("${prov.uppercase()}_API_KEY", key)
         }
-        if (m.baseUrl.isNotEmpty() && m.provider.isNotEmpty()) {
+        if (m.apiKey.isNotEmpty()) env.put("${mProv.uppercase()}_API_KEY", m.apiKey)
+        obj.put("env", env)
+        if (byProvider.isNotEmpty()) {
             val providers = obj.optJSONObject("provider") ?: JSONObject()
-            val pObj = providers.optJSONObject(m.provider) ?: JSONObject()
-            val options = pObj.optJSONObject("options") ?: JSONObject()
-            options.put("baseURL", m.baseUrl)
-            pObj.put("options", options)
-            // 自定义模型声明：显式声明能力，opencode 直接认这个模型并进选择器，
-            // 不依赖其静态 models.json 注册表是否收录（解决「provider 有、注册表没有 → 不显示」）。
-            val models = pObj.optJSONObject("models") ?: JSONObject()
-            val mo = JSONObject()
-            mo.put("id", m.modelId)
-            mo.put("name", m.name.substringAfter('/').ifEmpty { m.modelId })
-            mo.put("reasoning", true)
-            mo.put("tool_call", true)
-            mo.put("temperature", true)
-            mo.put("attachment", true)
-            mo.put("limit", JSONObject().put("context", 262144).put("output", 65536))
-            mo.put("cost", JSONObject().put("input", 0).put("output", 0).put("cache_read", 0))
-            models.put(m.modelId, mo)
-            pObj.put("models", models)
-            providers.put(m.provider, pObj)
+            byProvider.forEach { (prov, models) ->
+                val pObj = providers.optJSONObject(prov) ?: JSONObject()
+                val options = pObj.optJSONObject("options") ?: JSONObject()
+                val bu = models.firstOrNull { it.baseUrl.isNotEmpty() }?.baseUrl.orEmpty()
+                if (bu.isNotEmpty()) options.put("baseURL", bu)
+                val modelsMap = pObj.optJSONObject("models") ?: JSONObject()
+                models.forEach { mm ->
+                    val decl = JSONObject()
+                    decl.put("id", mm.modelId)
+                    decl.put("name", mm.name.substringAfter('/').ifEmpty { mm.modelId })
+                    decl.put("reasoning", mm.supportsReasoning)
+                    decl.put("tool_call", mm.supportsToolCall)
+                    decl.put("temperature", mm.supportsTemperature)
+                    decl.put("attachment", mm.supportsImage)
+                    decl.put("limit", JSONObject().put(
+                        "context", if (mm.contextLength > 0) mm.contextLength else 262144
+                    ).put(
+                        "output", if (mm.maxOutputLength > 0) mm.maxOutputLength else 65536
+                    ))
+                    decl.put("cost", JSONObject().put("input", 0).put("output", 0).put("cache_read", 0))
+                    modelsMap.put(mm.modelId, decl)
+                }
+                pObj.put("models", modelsMap)
+                providers.put(prov, pObj)
+            }
             obj.put("provider", providers)
         }
         file.writeText(jsonPretty(obj))
@@ -484,7 +586,11 @@ object AiModelManager {
                 details.add("$target：自动选中 ${fallback.name}")
                 if (cur == null) continue
             }
-            val ok = if (target == "mimo") writeMimo(ctx, cur) else writeOpencode(ctx, cur)
+            val ok = if (target == "mimo") {
+                writeMimo(ctx, cur, listModels(ctx).filter { it.target == target && it.enabled })
+            } else {
+                writeOpencode(ctx, cur, listModels(ctx).filter { it.target == target && it.enabled })
+            }
             android.util.Log.w("AiSync", "syncAll target=$target ok=$ok authAfter=${mimoAuth(ctx).takeIf { it.isFile }?.readText()?.take(80)}")
             details.add("$target：${cur.name} ${if (ok) "✓" else "✗"}")
             if (ok) okCount++
@@ -634,11 +740,26 @@ object AiModelManager {
         true
     }.getOrDefault(false)
 
-    data class FetchResult(val models: List<String>, val error: String)
+    data class FetchedModel(
+        val id: String,
+        val contextLength: Int = 0,
+        val maxOutputLength: Int = 0,
+        val supportsToolCall: Boolean = true,
+        val supportsReasoning: Boolean = true,
+        val supportsImage: Boolean = true,
+        val supportsTemperature: Boolean = true,
+    )
+
+    data class FetchResult(val models: List<FetchedModel>, val error: String)
 
     /**
      * 拉取服务商支持的模型列表（Chatbox / Cherry Studio 同款流程）：
      * GET &lt;baseUrl&gt;/models，兼容 OpenAI 的 {"data":[{"id":...}]} 与直接数组 / 字符串数组。
+     * 同时解析能力字段（有则用，无则兜底）：
+     * - context_length / max_output_length → 上下文 / 输出长度
+     * - supported_features → 工具调用、推理
+     * - input_modalities → 图片理解
+     * - supported_sampling_parameters → temperature
      * 必须在 IO 线程调用。返回的 error 为空表示成功。
      */
     fun fetchModels(m: Model): FetchResult {
@@ -658,7 +779,7 @@ object AiModelManager {
             }
             return FetchResult(emptyList(), "HTTP ${r.code}：$why")
         }
-        val ids = runCatching {
+        val models = runCatching {
             val t = r.body.trim()
             val arr = if (t.startsWith("{")) {
                 JSONObject(t).optJSONArray("data") ?: JSONArray()
@@ -666,15 +787,59 @@ object AiModelManager {
             (0 until arr.length()).mapNotNull { i ->
                 val o = arr.optJSONObject(i)
                 when {
-                    o != null -> o.optString("id", "").ifEmpty { o.optString("name", "") }
-                    else -> arr.optString(i, "")
-                }.takeIf { it.isNotEmpty() }
+                    o != null -> parseFetchedModel(o)
+                    else -> {
+                        val id = arr.optString(i, "").takeIf { it.isNotEmpty() }
+                        if (id != null) FetchedModel(id) else null
+                    }
+                }
             }
         }.getOrDefault(emptyList())
-        if (ids.isEmpty()) return FetchResult(
+        if (models.isEmpty()) return FetchResult(
             emptyList(), "已连接 (HTTP ${r.code})，但响应里没解析出模型 ID（服务商格式可能不兼容）"
         )
-        return FetchResult(ids, "")
+        return FetchResult(models, "")
+    }
+
+    /** 从 /models 响应的单个模型对象解析 ID + 能力字段（无字段则用兜底默认值）。 */
+    private fun parseFetchedModel(o: JSONObject): FetchedModel? {
+        val id = o.optString("id", "").ifEmpty { o.optString("name", "") }.takeIf { it.isNotEmpty() }
+            ?: return null
+        var contextLength = o.optInt("context_length", 0)
+        var maxOutputLength = o.optInt("max_output_length", 0)
+        // supported_features 存在才覆盖默认值（无此字段的服务商保持 true 兜底）
+        val sf = o.optJSONArray("supported_features")
+        var toolCall = true
+        var reasoning = true
+        if (sf != null) {
+            toolCall = hasString(sf, "tools")
+            reasoning = hasString(sf, "reasoning")
+        }
+        // input_modalities 存在才判断图片理解
+        val im = o.optJSONArray("input_modalities")
+        var image = true
+        if (im != null) image = hasString(im, "image")
+        // supported_sampling_parameters 存在才判断 temperature
+        val sp = o.optJSONArray("supported_sampling_parameters")
+        var temperature = true
+        if (sp != null) temperature = hasString(sp, "temperature")
+        return FetchedModel(
+            id = id,
+            contextLength = contextLength,
+            maxOutputLength = maxOutputLength,
+            supportsToolCall = toolCall,
+            supportsReasoning = reasoning,
+            supportsImage = image,
+            supportsTemperature = temperature,
+        )
+    }
+
+    /** JSONArray 是否包含某字符串（大小写不敏感）。 */
+    private fun hasString(arr: JSONArray, s: String): Boolean {
+        for (i in 0 until arr.length()) {
+            if (arr.optString(i, "").equals(s, ignoreCase = true)) return true
+        }
+        return false
     }
 
     /**

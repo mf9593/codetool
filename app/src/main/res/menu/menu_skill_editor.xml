@@ -2,9 +2,27 @@
 <menu xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto">
     <item
+        android:id="@+id/action_skill_undo"
+        android:title="撤销"
+        android:icon="@drawable/ic_undo"
+        app:iconTint="?attr/colorOnSurface"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_skill_redo"
+        android:title="重做"
+        android:icon="@drawable/ic_redo"
+        app:iconTint="?attr/colorOnSurface"
+        app:showAsAction="never" />
+    <item
         android:id="@+id/action_skill_copy"
         android:title="复制"
         android:icon="@drawable/ic_copy"
+        app:iconTint="?attr/colorOnSurface"
+        app:showAsAction="never" />
+    <item
+        android:id="@+id/action_skill_search"
+        android:title="搜索"
+        android:icon="@drawable/ic_search"
         app:iconTint="?attr/colorOnSurface"
         app:showAsAction="always" />
     <item
@@ -12,7 +30,7 @@
         android:title="说明"
         android:icon="@drawable/ic_info"
         app:iconTint="?attr/colorOnSurface"
-        app:showAsAction="always" />
+        app:showAsAction="never" />
     <item
         android:id="@+id/action_skill_save"
         android:title="保存"

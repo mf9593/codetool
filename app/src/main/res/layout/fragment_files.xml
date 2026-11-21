@@ -39,6 +39,17 @@
             android:text="/storage/emulated/0/Download/codetool" />
 
         <ImageView
+            android:id="@+id/btnCopyPath"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="4dp"
+            android:src="@drawable/ic_copy"
+            android:contentDescription="复制路径"
+            android:padding="6dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
+        <ImageView
             android:id="@+id/btnNew"
             android:layout_width="40dp"
             android:layout_height="40dp"
@@ -101,6 +112,14 @@
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
                 android:text="应用数据"
+                android:checkable="true" />
+
+            <com.google.android.material.chip.Chip
+                android:id="@+id/btnInternalDataDir"
+                style="@style/Widget.CodeTool.FileChip"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:text="内部数据"
                 android:checkable="true" />
 
             <!-- 路径收藏 chips 由 FilesFragment.renderFavChips() 动态追加 -->

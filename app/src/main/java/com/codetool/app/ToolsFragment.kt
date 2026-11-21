@@ -37,6 +37,7 @@ class ToolsFragment : Fragment() {
                 3 -> "定时任务"
                 4 -> "Skill"
                 5 -> "MCP"
+                6 -> "Git"
                 else -> "备份"
             }
         }.attach()
@@ -49,7 +50,7 @@ class ToolsFragment : Fragment() {
     }
 
     private class InnerAdapter(fa: FragmentActivity) : FragmentStateAdapter(fa) {
-        override fun getItemCount() = 7
+        override fun getItemCount() = 8
         override fun createFragment(position: Int): Fragment = when (position) {
             0 -> ScriptsFragment()
             1 -> PackagesFragment()
@@ -57,6 +58,7 @@ class ToolsFragment : Fragment() {
             3 -> ScheduledTasksFragment()
             4 -> SkillsFragment()
             5 -> McpFragment()
+            6 -> GitFragment()
             else -> RootfsBackupFragment()
         }
     }

@@ -73,7 +73,7 @@ object DesktopApps {
             "  wget -L -O spark-store.deb 'https://gitee.com/spark-store-project/spark-store/releases/download/5.3.2/spark-store_5.3.2_arm64.deb'\n" +
             "  dpkg-deb -I spark-store.deb >/dev/null 2>&1 || { echo '[ERROR] deb 文件下载损坏或无效'; exit 1; }\n" +
             "  echo '[OK] deb 文件有效，开始安装'\n" +
-            "  apt-get update\n" +
+            "  apt-get update || true\n" +
             "  for i in 1 2 3 4 5 6 7 8 9 10; do\n" +
             "    if apt-get install -yf ./spark-store.deb; then echo '[OK] 安装成功'; break; fi\n" +
             "    echo '本次安装未成功（可能 apt 锁被占），2 秒后重试…'; sleep 2\n" +
@@ -119,7 +119,7 @@ object DesktopApps {
             id = "spark-store",
             name = "星火商店",
             cmd = "spark-store",
-            iconRes = R.drawable.ic_packages,
+            iconRes = R.drawable.ic_spark_store,
             args = "--ozone-platform=wayland --disable-gpu",
             install = SPARK_INSTALL,
         ),
@@ -127,7 +127,7 @@ object DesktopApps {
             id = "chrome",
             name = "Google",
             cmd = "google-chrome",
-            iconRes = R.drawable.ic_files,
+            iconRes = R.drawable.ic_browser_chrome,
             args = "--ozone-platform=wayland --disable-gpu --disable-gpu-compositing " +
                 "--enable-unsafe-swiftshader --no-sandbox --disable-dev-shm-usage",
             install = BROWSER_INSTALL,
@@ -136,7 +136,7 @@ object DesktopApps {
             id = "firefox",
             name = "Firefox",
             cmd = "firefox",
-            iconRes = R.drawable.ic_files,
+            iconRes = R.drawable.ic_browser_firefox,
             // Firefox 原生 Wayland（146 自动检测 WAYLAND_DISPLAY），无需 Chrome 那种 ozone 参数
             install = FIREFOX_INSTALL,
         ),
@@ -146,20 +146,36 @@ object DesktopApps {
             cmd = "pcmanfm",
             iconRes = R.drawable.ic_folder,
             install = "export DEBIAN_FRONTEND=noninteractive\n" +
-                "apt-get update && apt-get install -y pcmanfm\n" +
+                "apt-get update || echo '[WARN] 部分软件源拉取失败，继续尝试安装'\n" +
+                "apt-get install -y pcmanfm\n" +
                 "command -v pcmanfm >/dev/null 2>&1 && echo '[OK] pcmanfm 已可用' || echo '[ERROR] pcmanfm 未装上，看上方 apt 报错'",
         ),
         DesktopApp(
             id = "terminal",
             name = "终端",
-            cmd = "foot",
+            cmd = "qterminal",
             iconRes = R.drawable.ic_terminal,
-            // foot：原生 Wayland 终端，功能齐全（滚动回看/字体配色/复制粘贴/foot.ini 可配），
-            // 轻量无需 GPU（容器软件渲染也流畅），比 weston-terminal 强得多。
+            // 终端选型（实测本机 M511CD / Android 17 合成器）：
+            // - foot / weston-terminal / sakura（cairo+wl_shm）启动即 SIGSEGV（exit=139）；
+            // - alacritty / kitty（wgpu/GPU）能跑，但字形定位在 llvmpipe 下有可见的 i-缝（用户否决）；
+            // - terminology 需 dbus；pterm 要 X11 core 字体；xterm 需 Xwayland（native 禁用、无二进制）。
+            // - qterminal（Qt5/QTermWidget，EGL 渲染 + QPainter 字形排版）：实测启动正常、
+            //   **渲染无 i-缝、中文菜单**（qterminal-l10n），字体走 QPainter+FreeType，
+            //   与 wgpu 的 cell 定位完全不同路 → 最终选型。
+            // 依赖：qtwayland5 提供 wayland 平台插件；qttranslations5-l10n 中文化 Qt 基础字符串。
             // 桌面「终端」走容器内 GUI 程序，与 CodeTool 底部终端 tab 相互独立。
             install = "export DEBIAN_FRONTEND=noninteractive\n" +
-                "command -v foot >/dev/null 2>&1 || { apt-get update && apt-get install -y foot; }\n" +
-                "command -v foot >/dev/null 2>&1 && echo '[OK] foot 终端已可用' || echo '[ERROR] foot 未装上，看上方 apt 报错'",
+                "command -v qterminal >/dev/null 2>&1 || { apt-get update || echo '[WARN] 部分软件源拉取失败，继续尝试安装'; apt-get install -y --no-install-recommends qterminal qtwayland5 qterminal-l10n qttranslations5-l10n; }\n" +
+                // 等宽字体：qterminal 首启会把 qterminal.ini 重写成自己的默认，把 fontFamily
+                // 覆盖掉（实测无效）。标准解法（qterminal Wiki）：fontconfig 把通用 monospace
+                // 别名指向 DejaVu Sans Mono（已随 fonts-dejavu 安装），qterminal 默认请求
+                // 的正是通用 "Monospace"，解析到等宽字体 → 无变宽警告、对齐正常。
+                // 同时保留写 ini 作双保险。
+                "mkdir -p /etc/fonts/conf.d\n" +
+                "[ -f /etc/fonts/conf.d/60-dejavu-mono.conf ] || { printf '%s\\n' '<?xml version=\"1.0\"?>' '<!DOCTYPE fontconfig SYSTEM \"fonts.dtd\">' '<fontconfig>' ' <alias>' '  <family>monospace</family>' '  <prefer><family>DejaVu Sans Mono</family></prefer>' ' </alias>' '</fontconfig>' > /etc/fonts/conf.d/60-dejavu-mono.conf; }\n" +
+                "mkdir -p /root/.config/qterminal.org\n" +
+                "[ -f /root/.config/qterminal.org/qterminal.ini ] || printf '[General]\\nfontFamily=DejaVu Sans Mono\\nfontSize=14\\n' > /root/.config/qterminal.org/qterminal.ini\n" +
+                "command -v qterminal >/dev/null 2>&1 && echo '[OK] qterminal 终端已可用' || echo '[ERROR] qterminal 未装上，看上方 apt 报错'",
         ),
     )
 
@@ -460,6 +476,9 @@ object DesktopApps {
             "export LIBGL_ALWAYS_SOFTWARE=1\n" +
             "export GALLIUM_DRIVER=llvmpipe\n" +
             "export MESA_LOADER_DRIVER_OVERRIDE=llvmpipe\n" +
+            // Qt 应用（qterminal 等）明确走 wayland；否则 Qt 在无 DISPLAY 时才回退 wayland，
+            // 显式指定避免某些构建里 xcb 优先导致连不上合成器。
+            "export QT_QPA_PLATFORM=wayland\n" +
             // X11 应用支持：X11 GUI 需要 DISPLAY + session D-Bus。
             // 之前两个致命问题：① Xwayland 用 & 起，挂在 runScript 的 bash 下，脚本一结束
             // 整个进程树被回收连 Xwayland 一起杀 → X11 应用连 display 时已死

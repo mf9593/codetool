@@ -22,7 +22,7 @@ import java.util.Locale
 
 /**
  * 日志页：运行日志（codetool.log） + 崩溃日志（files/crash 下的时间戳文件）。
- * - 每 2 秒自动刷新（可在设置底部弹窗里关闭）；
+ * - 每 2 秒自动刷新（可在日志页标题栏「日志设置」底部弹窗里关闭）；
  * - 标题栏复制/清空按钮作用于当前标签页；
  * - 崩溃标签页按文件时间倒序合并显示。
  */
@@ -45,8 +45,11 @@ class TasksFragment : Fragment() {
     private var loading = false
     @Volatile
     private var autoRefresh = true
+    private var refreshIntervalMs = AppSettings.DEFAULT_LOG_REFRESH_INTERVAL
     /** 是否跟随最新日志（在底部时为 true；用户上滑阅读时为 false，不再自动拽到底）。 */
     private var followBottom = true
+    /** 自动滚动模式下用户点了悬浮按钮暂停跟随（阅读历史日志），点恢复继续贴底。 */
+    private var autoScrollPaused = false
     /** 正在程序化滚动（避免滚动监听把自己贴底误判成用户上滑）。 */
     private var followingScroll = false
     /** 当前标签页：0=运行日志 1=崩溃日志 */
@@ -72,10 +75,23 @@ class TasksFragment : Fragment() {
 
     private val refreshTask = object : Runnable {
         override fun run() {
-            loadLog()
-            if (autoRefresh) handler.postDelayed(this, 2000)
+            // 用户正展开某个筛选下拉时暂停本轮刷新：刷新会重建/更新日志 UI，会把下拉强制关掉。
+            if (!anyFilterPopupShowing()) loadLog()
+            if (autoRefresh) handler.postDelayed(this, refreshIntervalMs.toLong())
         }
     }
+
+    /** 任一筛选下拉（级别/标签/时间）的弹窗当前是否展开。 */
+    private fun anyFilterPopupShowing(): Boolean =
+        isPopupShowing(logLevelDropdown) || isPopupShowing(logTagDropdown) || isPopupShowing(logTimeDropdown)
+
+    /** MaterialAutoCompleteTextView 没有公开 isPopupShowing（@hide），反射读真实弹窗状态。 */
+    private fun isPopupShowing(v: com.google.android.material.textfield.MaterialAutoCompleteTextView): Boolean =
+        runCatching {
+            val m = android.widget.AutoCompleteTextView::class.java.getDeclaredMethod("isPopupShowing")
+            m.isAccessible = true
+            m.invoke(v) as Boolean
+        }.getOrDefault(false)
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -88,6 +104,7 @@ class TasksFragment : Fragment() {
         logTabs = v.findViewById(R.id.logTabs)
 
         autoRefresh = AppSettings.logAutoRefresh(requireContext())
+        refreshIntervalMs = AppSettings.logRefreshIntervalMs(requireContext())
 
         logSearchBar = v.findViewById(R.id.logSearchBar)
         logSearchInput = v.findViewById(R.id.logSearchInput)
@@ -147,16 +164,19 @@ class TasksFragment : Fragment() {
             }
         }
 
-        // 悬浮「回到底部 / 回到顶部」按钮
+        // 悬浮「回到顶部 / 回到底部」按钮；自动滚动模式下切到顶部会暂停跟随（读历史），
+        // 切回底部恢复跟随贴底。
         btnLogScroll = v.findViewById(R.id.btnLogScroll)
         btnLogScroll.setOnClickListener {
             if (followBottom) {
-                // 当前在底部 → 回到顶部
+                // 在底部 → 回到顶部（自动滚动模式下同时暂停跟随，避免又被拽回底部）
                 followBottom = false
+                if (autoRefresh) autoScrollPaused = true
                 scroll.smoothScrollTo(0, 0)
             } else {
-                // 当前在上方 → 回到底部并恢复跟随
+                // 在顶部 → 回到底部（自动滚动模式下恢复跟随贴底）
                 followBottom = true
+                if (autoRefresh) autoScrollPaused = false
                 scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
             }
             updateScrollFab()
@@ -221,7 +241,7 @@ class TasksFragment : Fragment() {
                 .setTitle("清空崩溃日志")
                 .setMessage("将删除所有崩溃日志文件，此操作不可恢复。确定继续？")
                 .setPositiveButton("清空") { _, _ ->
-                    crashDir(requireContext()).listFiles()?.forEach { it.delete() }
+                    com.codetool.app.util.CrashLogger.clear(requireContext())
                     loadLog()
                     Toast.makeText(requireContext(), "崩溃日志已清空", Toast.LENGTH_SHORT).show()
                 }
@@ -229,7 +249,7 @@ class TasksFragment : Fragment() {
                 .show()
         } else {
             try {
-                logFile(requireContext()).writeText("")
+                com.codetool.app.util.FileLog.clear(requireContext())
                 loadLog()
                 Toast.makeText(requireContext(), "日志已清空", Toast.LENGTH_SHORT).show()
             } catch (_: Exception) {
@@ -237,10 +257,24 @@ class TasksFragment : Fragment() {
         }
     }
 
-    /** 设置弹窗调用：动态开关自动刷新。 */
+    /** 设置弹窗调用：动态开关自动滚动（终端式跟随最新日志）。 */
     fun setAutoRefresh(enabled: Boolean) {
         autoRefresh = enabled
-        if (enabled) handler.post(refreshTask) else handler.removeCallbacks(refreshTask)
+        // 开关切换时清掉暂停态：开启即恢复跟随贴底
+        autoScrollPaused = false
+        if (enabled) {
+            handler.post(refreshTask)
+            scroll.post { scroll.fullScroll(View.FOCUS_DOWN) }
+        } else handler.removeCallbacks(refreshTask)
+        updateScrollFab()
+    }
+
+    /** 设置弹窗调用：改自动刷新间隔（毫秒，1~10 秒），保存并让下一轮生效。 */
+    fun setRefreshInterval(ms: Int) {
+        refreshIntervalMs = ms.coerceIn(
+            AppSettings.MIN_LOG_REFRESH_INTERVAL, AppSettings.MAX_LOG_REFRESH_INTERVAL
+        )
+        if (isAdded) AppSettings.setLogRefreshIntervalMs(requireContext(), refreshIntervalMs)
     }
 
     /** 标题栏放大镜：展开/收起关键词搜索栏。 */
@@ -267,7 +301,7 @@ class TasksFragment : Fragment() {
         return child.height > scroll.height + 8
     }
 
-    /** 按当前状态刷新悬浮按钮：在底部显示「↑ 回顶部」，否则显示「↓ 回底部」。 */
+    /** 按当前状态刷新悬浮按钮：始终是「↑ 回到顶部 / ↓ 回到底部」（自动滚动时兼暂停/恢复）。 */
     private fun updateScrollFab() {
         if (!isAdded || view == null) return
         btnLogScroll.setImageResource(
@@ -282,6 +316,8 @@ class TasksFragment : Fragment() {
      * 期间屏蔽滚动监听，避免把程序化滚动误判成用户上滑。
      */
     private fun scrollToBottomIfFollowing() {
+        // 自动滚动（终端式）：除非用户点了暂停，否则始终跟随到底（不因上滑停止）。
+        if (autoRefresh && !autoScrollPaused) followBottom = true
         if (!followBottom) {
             followingScroll = false
             updateScrollFab()
@@ -319,6 +355,8 @@ class TasksFragment : Fragment() {
             activity?.runOnUiThread {
                 loading = false
                 if (!isAdded || view == null) return@runOnUiThread
+                // 弹窗正展开：跳过本轮 UI 更新，避免关掉用户正在筛的下拉（数据下一轮再刷）。
+                if (anyFilterPopupShowing()) return@runOnUiThread
                 refreshTagDropdown(tags)
                 if (text.isBlank()) {
                     logText.text = ""
@@ -340,10 +378,13 @@ class TasksFragment : Fragment() {
                     }
                 } else {
                     emptyState.visibility = View.GONE
-                    // 跟随模式下，先屏蔽滚动监听：设置长文本会把 scrollY 重置为 0，
-                    // 不能让它被当成「用户上滑」而关闭跟随。
-                    if (followBottom) followingScroll = true
-                    logText.text = highlight(text)
+                    // 只有内容变化才重设文本：否则每 2 秒重设会把 scrollY 重置到第一行、
+                    // 页面闪一下。跟随模式下先屏蔽滚动监听，避免把重置误判成「用户上滑」。
+                    val newText = highlight(text)
+                    if (logText.text?.toString() != text) {
+                        if (followBottom) followingScroll = true
+                        logText.text = newText
+                    }
                     val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
                     val shown = text.count { it == '\n' } + 1
                     if (currentTab == 1) {
@@ -375,13 +416,24 @@ class TasksFragment : Fragment() {
         val options = listOf("全部") + tags
         if (options == tagOptions) return
         tagOptions = options
-        logTagDropdown.setAdapter(
-            android.widget.ArrayAdapter(
-                requireContext(),
-                android.R.layout.simple_list_item_1,
-                options
+        // 复用已有 adapter 原地更新数据（clear+addAll），而不是重建 setAdapter：
+        // setAdapter 会重建下拉弹窗，日志每 2 秒刷新时若用户正展开标签下拉会被强制关闭；
+        // 原地更新只重绘列表，已展开的下拉保持打开。
+        val current = logTagDropdown.adapter
+        if (current is android.widget.ArrayAdapter<*>) {
+            @Suppress("UNCHECKED_CAST")
+            val arr = current as android.widget.ArrayAdapter<Any?>
+            arr.clear()
+            arr.addAll(options)
+        } else {
+            logTagDropdown.setAdapter(
+                android.widget.ArrayAdapter(
+                    requireContext(),
+                    android.R.layout.simple_list_item_1,
+                    options
+                )
             )
-        )
+        }
         val idx = options.indexOf(tagFilter).let { if (it < 0) 0 else it }
         logTagDropdown.setText(options[idx], false)
         if (idx == 0) tagFilter = ""

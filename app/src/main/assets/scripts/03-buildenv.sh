@@ -222,6 +222,103 @@ FLUTTER_VER=""
 [ -n "$FLUTTER_HOME_DIR" ] && [ -f "$FLUTTER_HOME_DIR/version" ] && \
   FLUTTER_VER="$(head -1 "$FLUTTER_HOME_DIR/version" 2>/dev/null | tr -d ' \r\n')"
 
+# ---- NDK 主机架构修正（关键：arm64 容器绝不能落到 x86_64 host 工具，否则 Error 127）----
+# 背景：ndk-build 靠 HOST_OS/HOST_ARCH 算 host-tag，arm64 容器算出 linux-aarch64，
+# 去 NDK 的 toolchains/llvm/prebuilt/linux-aarch64/ 找 host 工具（clang 等）。
+# 但官方/社区 NDK 的 prebuilt 目录命名混乱：
+#   - 官方 x86_64 包：只有 prebuilt/linux-x86_64/（arm64 容器跑不动 → Error 127）
+#   - 社区 aarch64 包：prebuilt/linux-arm64/ + linux-x86_64→arm64 软链，但常缺 linux-aarch64
+#     → ndk-build 找不到 linux-aarch64 → 回落 linux-x86_64（可能指向 arm64，也可能真 x86_64）
+# 修法两层：
+#   fix_ndk_prebuilt_symlink：给每个 NDK 的 prebuilt 补 linux-aarch64 软链（指向 arm64），幂等。
+#   fix_ndk_host_arch：SDK 内 NDK 副本若是 x86_64-only（无任何 arm64 prebuilt），整目录替换为软链 → 预装 aarch64 NDK。
+fix_ndk_prebuilt_symlink() {
+  local ndk pre_dir
+  for ndk in "$TARGET"/ndk/*/ "$SDK_DIR"/ndk/*/; do
+    [ -d "$ndk/toolchains/llvm/prebuilt" ] || continue
+    pre_dir="$ndk/toolchains/llvm/prebuilt"
+    [ -e "${pre_dir%/}/linux-aarch64" ] && continue   # 已有（软链或目录）→ 跳过
+    if [ -d "${pre_dir%/}/linux-arm64" ]; then
+      ln -s linux-arm64 "${pre_dir%/}/linux-aarch64" && \
+        echo "[NDK-HOST] $(basename "$ndk") prebuilt 补软链 linux-aarch64 → linux-arm64"
+    elif [ -d "${pre_dir%/}/linux-x86_64" ] && [ -L "${pre_dir%/}/linux-x86_64" ]; then
+      # x86_64 是软链（社区包指向 arm64）→ 让 aarch64 也指同一目标
+      ln -s linux-arm64 "${pre_dir%/}/linux-aarch64" && \
+        echo "[NDK-HOST] $(basename "$ndk") prebuilt 补软链 linux-aarch64 → linux-arm64"
+    fi
+    # 真 x86_64 目录（非软链）这里不处理，交给 fix_ndk_host_arch 整目录替换
+  done
+}
+
+fix_ndk_host_arch() {
+  local sdk_ndk pre
+  [ -d "$SDK_DIR/ndk" ] || return 0
+  for sdk_ndk in "$SDK_DIR"/ndk/*/; do
+    [ -d "$sdk_ndk" ] || continue
+    # 已是软链 → 上次已修，跳过
+    [ -L "${sdk_ndk%/}" ] && continue
+    # 若该副本已有可用的 arm64 prebuilt（真目录 linux-arm64 或任意 arm64 软链）→ 软链修正即可，不替换
+    if [ -d "$sdk_ndk/toolchains/llvm/prebuilt/linux-arm64" ] || \
+       [ -L "$sdk_ndk/toolchains/llvm/prebuilt/linux-aarch64" ]; then
+      continue
+    fi
+    # 找预装的 aarch64 NDK（按 NDK 版本号匹配，取第一个匹配的）
+    local rel
+    rel="$(grep -E '^Pkg\.Revision' "$sdk_ndk/source.properties" 2>/dev/null | cut -d= -f2 | tr -d ' ')"
+    pre=""
+    for cand in "$TARGET"/ndk/*/; do
+      [ -d "$cand" ] || continue
+      [ -d "$cand/toolchains/llvm/prebuilt/linux-arm64" ] || \
+        [ -d "$cand/toolchains/llvm/prebuilt/linux-aarch64" ] || continue   # 只要 arm64 host 的
+      if [ -n "$rel" ]; then
+        [ "$(grep -E '^Pkg\.Revision' "$cand/source.properties" 2>/dev/null | cut -d= -f2 | tr -d ' ')" = "$rel" ] && { pre="${cand%/}"; break; }
+      fi
+    done
+    [ -z "$pre" ] && pre="$(find "$TARGET/ndk" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | while read -r d; do [ -d "$d/toolchains/llvm/prebuilt/linux-arm64" ] && echo "$d" && break; done)"
+    [ -z "$pre" ] && continue   # 没有可用的 aarch64 NDK，放弃
+    echo "[NDK-HOST] SDK 内 NDK 副本 $(basename "$sdk_ndk") 非 arm64 host → 替换为软链 → $pre"
+    rm -rf "${sdk_ndk%/}"
+    ln -s "$pre" "${sdk_ndk%/}" && echo "[NDK-HOST] 已软链 $(basename "${sdk_ndk%/}") → $pre"
+  done
+}
+fix_ndk_prebuilt_symlink
+fix_ndk_host_arch
+
+# ---- ndk-build 前置系统依赖：make（第六坑：最小 rootfs 常没预装 make）----
+# 背景：terminal-emulator 的 libtermux.so 走 ndk-build（Android.mk），ndk-build 本体就是
+# 一堆 make 脚本，靠系统 make 驱动。最小 Ubuntu rootfs 往往没预装 make → ndk-build 直接
+#   make: *** setup-app.mk:105: clean-installed-binaries] Error 127   （127=command not found）
+# gcc/clang 不用装（NDK 自带 clang），但 make 必须有。复用 ensure_cmd（幂等：有就跳过）。
+echo "==== 检查 ndk-build 前置系统依赖 ===="
+ensure_cmd make make || echo "[警告] make 未就绪，ndk-build（libtermux.so）会失败"
+
+# ---- 第八坑：NDK 自带 prebuilt make 在本容器无法执行 recipe（表象也是 Error 127）----
+# 背景：ndk-build 默认**优先**用 NDK 自带的 prebuilt make
+#   （$ANDROID_NDK_ROOT/prebuilt/<host-tag>/bin/make，静态链接 musl 二进制），系统 make
+#   存在也被忽略。本容器里这个 prebuilt make fork 出的子进程执行**任何** recipe 都静默
+#   失败：退出码 127、连 shell 都起不来、无任何报错输出（dry-run `-n` 打印的命令全正常、
+#   手动跑 clang 也正常、`ndk-build --version` 也正常，极具迷惑性）。系统 make（动态
+#   glibc）跑同一个 makefile 完全正常，可作判别。
+# 修法：ndk-build 原生支持 GNUMAKE 环境变量覆盖 make，把它指到系统 make 绕开坏的
+#   prebuilt make。系统 make 不存在时不写（正常机器上 prebuilt make 是好的，可回落）。
+GNUMAKE_BIN="$(command -v make 2>/dev/null)"
+[ -n "$GNUMAKE_BIN" ] && echo "[GNUMAKE] 将强制 ndk-build 使用系统 make: $GNUMAKE_BIN（绕开 NDK 自带 prebuilt make）"
+
+# ---- 第七坑：容器 rootfs 缺 /tmp → ndk-build Error 127（表象是 127，真因是输出目录建不了）----
+# 背景：ndk-build 默认把编译产物写 /tmp/<...>（NDK_OUT 默认落 /tmp）。最小 Ubuntu rootfs
+#   可能没有 /tmp 目录 → mkdir -p /tmp/... 因父目录不存在而失败 → clang 写 .o 报
+#   "No such file or directory" → make 包装成 build-binary.mk:418 Error 127。
+#   手动 clang 直编能成功（NDK_OUT 指向已存在的 jniLibs），极具迷惑性——dry-run 也看不出
+#   （-n 只打印不执行，mkdir 那步不会真跑）。
+# 修法：确保 /tmp 存在且可写（幂等）。这是容器环境问题，不是构建源码问题，归本脚本管。
+if [ ! -d /tmp ]; then
+  mkdir -p /tmp 2>/dev/null && chmod 1777 /tmp 2>/dev/null
+  echo "[TMP] 已创建缺失的 /tmp（ndk-build 输出目录依赖它）"
+fi
+if [ ! -w /tmp ]; then
+  echo "[警告] /tmp 不可写，ndk-build 编译产物可能写不进去（可设 NDK_OUT 到可写目录绕过）"
+fi
+
 # ---- 写环境（profile.d + bashrc，幂等；目录为空说明解压失败，不写变量）----
 ENVFILE=/etc/profile.d/codetool-buildenv.sh
 {
@@ -230,6 +327,17 @@ ENVFILE=/etc/profile.d/codetool-buildenv.sh
     echo "export JAVA_HOME=\"$JAVA_HOME_DIR\"" && echo "export PATH=\"\$JAVA_HOME/bin:\$PATH\""
   [ -n "$NDK_DIR" ] && nonempty "$NDK_DIR" && \
     echo "export ANDROID_NDK_HOME=\"$NDK_DIR\"" && echo "export ANDROID_NDK_ROOT=\"$NDK_DIR\""
+  # 关键：容器是 aarch64，ndk-build 靠 uname -s 探测 HOST_OS，但 Gradle 子进程 PATH
+  # 可能不含 /usr/bin → uname 返回空 → 报「Unable to determine HOST_OS from uname -s:」。
+  # 显式 export HOST_OS/HOST_ARCH/HOST_TAG，ndk-build 跳过 uname 探测、且 host 工具解析到
+  # prebuilt/linux-aarch64（arm64 容器绝不能落到 linux-x86_64，否则 Error 127——x86_64 clang 跑不动）。
+  # 三个都要 export：缺 HOST_ARCH 时 ndk-build 内部重算 host-tag 可能回落 x86_64（实测踩过）。
+  echo "export HOST_OS=linux"
+  echo "export HOST_ARCH=aarch64"
+  echo "export HOST_TAG=linux-aarch64"
+  # 第八坑：NDK 自带 prebuilt make（静态 musl）在本容器执行 recipe 静默失败（Error 127），
+  # ndk-build 却默认优先用它。GNUMAKE 指到系统 make 绕开（见脚本上方第八坑注释）。
+  [ -n "$GNUMAKE_BIN" ] && echo "export GNUMAKE=\"$GNUMAKE_BIN\""
   nonempty "$SDK_DIR" && {
     echo "export ANDROID_HOME=\"$SDK_DIR\""
     echo "export ANDROID_SDK_ROOT=\"$SDK_DIR\""
@@ -245,6 +353,31 @@ grep -q codetool-buildenv ~/.bashrc 2>/dev/null || \
   echo '[ -f /etc/profile.d/codetool-buildenv.sh ] && . /etc/profile.d/codetool-buildenv.sh' >> ~/.bashrc
 . "$ENVFILE" 2>/dev/null
 
+# ---- AAPT2 override（第七坑：AGP 自带的 aapt2 是 x86_64，arm64 容器跑不动）----
+# 背景：AGP 默认不用 build-tools 里的 aapt2，而是自己从 Google Maven 下载一份 bundle 的
+# aapt2（aapt2-<ver>-linux），而 Google 只发布 x86_64 → arm64 容器里 daemon 起不来，报
+#   AAPT2 aapt2-8.7.2-...-linux Daemon #N: Daemon startup failed
+# 修法：设 android.aapt2FromMavenOverride 指向 build-tools 里的 arm64 aapt2，强制 AGP 用它。
+# 写进用户级 ~/.gradle/gradle.properties（配一次永久生效，重下 gradle/清缓存都不用重配；
+# 只有重置整个 rootfs 才会丢，而那时会重跑本脚本重新写）。幂等：已配置就更新路径。
+AAPT2_BIN=""
+[ -n "$SDK_DIR" ] && [ -n "$BT_VER" ] && [ -f "$SDK_DIR/build-tools/$BT_VER/aapt2" ] && \
+  AAPT2_BIN="$SDK_DIR/build-tools/$BT_VER/aapt2"
+if [ -n "$AAPT2_BIN" ]; then
+  GP_DIR="$HOME/.gradle"
+  GP="$GP_DIR/gradle.properties"
+  mkdir -p "$GP_DIR"
+  if [ -f "$GP" ] && grep -q '^android.aapt2FromMavenOverride=' "$GP"; then
+    sed -i "s|^android.aapt2FromMavenOverride=.*|android.aapt2FromMavenOverride=$AAPT2_BIN|" "$GP"
+    echo "[AAPT2] 已更新 android.aapt2FromMavenOverride → $AAPT2_BIN"
+  else
+    echo "android.aapt2FromMavenOverride=$AAPT2_BIN" >> "$GP"
+    echo "[AAPT2] 已写入 android.aapt2FromMavenOverride → $AAPT2_BIN"
+  fi
+else
+  echo "[AAPT2] 警告：未找到 build-tools 的 aapt2，AGP 会用自带的 x86_64 版（arm64 会失败）"
+fi
+
 echo "==== 环境配置完成 ===="
 [ "$SKIPPED" -gt 0 ] && echo "本次跳过 $SKIPPED 个已安装组件（FORCE=1 可强制重装）"
 echo "JAVA_HOME     = ${JAVA_HOME_DIR:-未找到}${JAVA_VER:+（$JAVA_VER）}"
@@ -254,5 +387,5 @@ echo "BUILD-TOOLS   = ${BT_VER:-未找到}"
 echo "CMAKE_HOME    = ${CMAKE_HOME_DIR:-未找到}${CMAKE_VER:+（$CMAKE_VER）}"
 echo "FLUTTER_HOME  = ${FLUTTER_HOME_DIR:-未找到}${FLUTTER_VER:+（$FLUTTER_VER）}"
 echo "--- 生效变量 ---"
-env | grep -E 'JAVA_HOME|ANDROID|NDK|CMAKE_HOME|FLUTTER_HOME' || true
+env | grep -E 'JAVA_HOME|ANDROID|NDK|CMAKE_HOME|FLUTTER_HOME|GNUMAKE' || true
 command -v aapt2 >/dev/null 2>&1 && echo "aapt2: $(command -v aapt2) ($(file -b "$(command -v aapt2)" 2>/dev/null | cut -d, -f1))"

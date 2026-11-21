@@ -5,12 +5,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.os.Build
 import com.codetool.app.util.CrashLogger
+import com.codetool.app.gui.BrowserBridgeService
 
 class CodeToolApp : Application() {
     companion object {
         const val CHANNEL_TERMINAL = "terminal_session"
         const val CHANNEL_ROOTFS = "rootfs_ops"
         const val CHANNEL_KEEPALIVE = "keepalive_ops"
+        const val CHANNEL_GUI = "gui_background"
     }
 
     override fun onCreate() {
@@ -23,6 +25,8 @@ class CodeToolApp : Application() {
         // Shizuku 桥常驻：监听容器请求，让 AI 模型以 shell 身份调试 App（不依赖 GUI）
         // 只建目录 + 起 FileObserver，很轻；bind user-service 推迟到首个请求才做。
         com.codetool.app.shizuku.ShizukuBridge.start(this)
+        // 浏览器桥前台服务常驻：让模型/CLI 调浏览器不依赖 GUI 合成器（无头 Chrome 后台跑）。
+        BrowserBridgeService.start(this)
     }
 
     private fun createChannels() {
@@ -49,6 +53,16 @@ class CodeToolApp : Application() {
                     NotificationManager.IMPORTANCE_LOW
                 ).apply {
                     description = "长时间任务运行期间保活，防止锁屏被冻结中断"
+                    setShowBadge(false)
+                }
+            )
+            nm.createNotificationChannel(
+                NotificationChannel(
+                    CHANNEL_GUI,
+                    "GUI 后台运行",
+                    NotificationManager.IMPORTANCE_LOW
+                ).apply {
+                    description = "GUI 合成器最小化后的返回入口"
                     setShowBadge(false)
                 }
             )

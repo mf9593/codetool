@@ -11,9 +11,12 @@ object AppSettings {
     private const val PREFS = "codetool_settings"
     private const val KEY_FONT_SIZE = "font_size"
     private const val KEY_LOG_AUTO_REFRESH = "log_auto_refresh"
+    private const val KEY_LOG_REFRESH_INTERVAL = "log_refresh_interval_ms"
+    private const val KEY_FILE_SHOW_HIDDEN = "file_show_hidden"
     private const val KEY_BATTERY_PROMPTED = "battery_prompted"
     private const val KEY_ONBOARDING_DONE = "onboarding_done"
     private const val KEY_MOUNT_MODE = "mount_mode"
+    private const val KEY_APT_MIRROR = "apt_mirror"
 
     /** 默认终端字号（dp）。Termux 默认 14，这里调大。 */
     const val DEFAULT_FONT_SIZE = 30
@@ -22,6 +25,15 @@ object AppSettings {
 
     /** 默认日志页自动刷新：开启。 */
     const val DEFAULT_LOG_AUTO_REFRESH = true
+
+    /** 默认日志刷新间隔：2 秒。 */
+    const val DEFAULT_LOG_REFRESH_INTERVAL = 2000
+    /** 可选刷新间隔范围：1 秒 ~ 10 秒。 */
+    const val MIN_LOG_REFRESH_INTERVAL = 1000
+    const val MAX_LOG_REFRESH_INTERVAL = 10000
+
+    /** 默认 APT 源镜像 id：清华（国内网络下官方源易被 DNS/CDN 污染导致 apt 挂死）。 */
+    const val DEFAULT_APT_MIRROR = "tuna"
 
     fun fontSize(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -41,6 +53,27 @@ object AppSettings {
     fun setLogAutoRefresh(context: Context, enabled: Boolean) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putBoolean(KEY_LOG_AUTO_REFRESH, enabled).apply()
+    }
+
+    /** 日志页自动刷新间隔（毫秒），1~10 秒。 */
+    fun logRefreshIntervalMs(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_LOG_REFRESH_INTERVAL, DEFAULT_LOG_REFRESH_INTERVAL)
+            .coerceIn(MIN_LOG_REFRESH_INTERVAL, MAX_LOG_REFRESH_INTERVAL)
+
+    fun setLogRefreshIntervalMs(context: Context, ms: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_LOG_REFRESH_INTERVAL, ms.coerceIn(MIN_LOG_REFRESH_INTERVAL, MAX_LOG_REFRESH_INTERVAL)).apply()
+    }
+
+    /** 文件管理是否显示隐藏文件（以 . 开头）。默认不显示。 */
+    fun fileShowHidden(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_FILE_SHOW_HIDDEN, false)
+
+    fun setFileShowHidden(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_FILE_SHOW_HIDDEN, enabled).apply()
     }
 
     /** 是否已提示过电池优化引导（只提示一次，避免每次启动都跳设置）。 */
@@ -131,4 +164,15 @@ object AppSettings {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_MOUNT_MODE, mode).apply()
     }
+
+    /** 容器 APT 源镜像 id（默认清华，见 [DEFAULT_APT_MIRROR]）。 */
+    fun aptMirror(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_APT_MIRROR, DEFAULT_APT_MIRROR) ?: DEFAULT_APT_MIRROR
+
+    fun setAptMirror(context: Context, id: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_APT_MIRROR, id).apply()
+    }
+
 }

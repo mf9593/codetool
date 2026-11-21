@@ -11,16 +11,19 @@ import java.io.File
  * - 首次启动第三引导页（EnviSetupActivity）：安装环境后 MCP 才能跑；
  * - 包管理「一键修复环境」：环境坏了点一下自愈。
  *
- * 背景（真实踩坑）：内置 MCP server `codetool-browser` 靠容器内
- * `/usr/local/bin/codetool-mcp`（shebang `#!/usr/bin/env python3`）启动，
+ * 背景（真实踩坑）：内置 MCP server 靠容器内 `/usr/local/bin/codetool-mcp`
+ * 与 `/usr/local/bin/codetool-android-mcp`（shebang `#!/usr/bin/env python3`）启动，
  * 但 rootfs 基础镜像**没装 python3**（/usr/bin/python3 不存在）→ MCP 起不来、
- * browser_* / shizuku_* 工具全不可见。所以安装环境 = 在容器内
+ * browser_* / android_* / shizuku_* 工具全不可见。所以安装环境 = 在容器内
  * `apt-get install python3`（tawcroot 模拟 root，可写系统目录）+ 确保桥脚本注入。
  */
 object AiEnvHelper {
 
     private const val TAG = "AiEnvHelper"
-    private const val MCP_SCRIPT = "/usr/local/bin/codetool-mcp"
+    private val MCP_SCRIPTS = listOf(
+        "/usr/local/bin/codetool-mcp",
+        "/usr/local/bin/codetool-android-mcp",
+    )
 
     /**
      * shell 片段：CLI（mimo / opencode）安装完成后检测 python3，缺则提示去环境修复。
@@ -29,7 +32,7 @@ object AiEnvHelper {
      */
     const val PY3_CHECK_SCRIPT =
         "command -v python3 >/dev/null 2>&1 || " +
-            "echo '[提示] 容器缺 python3：内置 MCP（浏览器调试）暂不可用，请到 工具 → 包管理 点「一键修复 AI 环境」安装'"
+            "echo '[提示] 容器缺 python3：内置 MCP（浏览器 / Android 自动化）暂不可用，请到 工具 → 包管理 点「一键修复 AI 环境」安装'"
 
     data class Status(
         val rootfsReady: Boolean,
@@ -55,9 +58,11 @@ object AiEnvHelper {
         val rt = rootfs(ctx)
         val ready = rootfsReady(ctx)
         val python = ready && File(rt!!, "usr/bin/python3").exists()
-        val mcp = ready && File(rt, MCP_SCRIPT.removePrefix("/")).exists()
-        val configured = runCatching { McpManager.listServers(ctx).any { it.name == McpManager.BUILTIN_NAME } }
-            .getOrDefault(false)
+        val mcp = ready && MCP_SCRIPTS.all { File(rt, it.removePrefix("/")).exists() }
+        val configured = runCatching {
+            val names = McpManager.listServers(ctx).map { it.name }.toSet()
+            McpManager.BUILTINS.all { it.name in names }
+        }.getOrDefault(false)
         return Status(
             rootfsReady = ready,
             python3Installed = python,
@@ -111,15 +116,20 @@ object AiEnvHelper {
             onLog("已补写 DNS 配置（rootfs 缺 resolv.conf）")
         }
 
+        // 1.7 应用配置的 apt 源（默认清华；官方源在国内易被 DNS 污染导致 apt 挂死）。
+        //    在 apt 前写 sources.list，确保安装用配置的镜像。
+        AptMirror.apply(ctx, rt)
+        onLog("apt 源：${AptMirror.label(AptMirror.currentId(ctx))}")
+
         // 2. apt 装 python3（幂等：已存在则跳过）。
         //    注意：tawcroot 不做 PATH 查找，guest 可执行文件必须传绝对路径（/bin/sh），
         //    传 "sh" 会 ENOENT（errno=-2）——踩过的坑。
         if (!File(rt, "usr/bin/python3").exists()) {
             onLog("容器缺 python3，正在安装（apt-get update + install，约 1-2 分钟）…")
-            val okUpdate = runInContainer(ctx, rt, "/bin/sh", "-c",
+            val okUpdate = runInContainer(ctx, rt, onLog, "/bin/sh", "-c",
                 "apt-get update -qq >/dev/null 2>&1 || true")
             if (!okUpdate.first) onLog("apt update 警告：${okUpdate.second.take(120)}")
-            val okInstall = runInContainer(ctx, rt, "/bin/sh", "-c",
+            val okInstall = runInContainer(ctx, rt, onLog, "/bin/sh", "-c",
                 "DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends python3")
             if (!okInstall.first) {
                 onLog("python3 安装失败：${okInstall.second.take(300)}")
@@ -148,19 +158,40 @@ object AiEnvHelper {
     }
 
     /**
-     * 在容器内跑一条命令，返回 (exitOk, 输出)。
+     * 在容器内跑一条命令，返回 (exitOk, 输出)。输出**逐行流式**推给 [onLine]，
+     * 让安装卡片实时显示 apt 等命令的真实终端内容（之前只回传状态文案，
+     * 用户看不到输出）。
      * cmd[0] 必须是容器内**绝对路径**（如 /bin/sh、/usr/bin/apt-get）：
      * tawcroot 不做 PATH 查找，短名会 ENOENT。
      */
-    private fun runInContainer(ctx: Context, rootfs: File, vararg cmd: String): Pair<Boolean, String> {
+    private fun runInContainer(
+        ctx: Context,
+        rootfs: File,
+        onLine: (String) -> Unit,
+        vararg cmd: String
+    ): Pair<Boolean, String> {
         val rt = TawcrootRuntime.get(ctx)
         return try {
             val proc = rt.exec(rootfs, *cmd)
-            val out = proc.inputStream.bufferedReader().readText()
+            val out = StringBuilder()
+            // 逐行读（exec 已 redirectErrorStream(true)，stdout+stderr 合并）：
+            // apt 下载进度用 \r 重写不换行，按 \r 分段；纯进度行（如 "22% [..]"）跳过。
+            proc.inputStream.bufferedReader().forEachLine { raw ->
+                raw.split('\r').forEach { seg ->
+                    val s = seg.trim()
+                    if (s.isNotBlank() && !s.matches(PROGRESS_LINE)) {
+                        out.appendLine(s)
+                        onLine(s)
+                    }
+                }
+            }
             val ok = proc.waitFor() == 0
-            ok to out.trim()
+            ok to out.toString().trim()
         } catch (t: Throwable) {
             false to (t.message ?: "exec 异常")
         }
     }
+
+    /** apt 下载/安装进度行（如 "22% [1 python3 22.4 kB/22.4 kB 100%]"），日志里过滤掉。 */
+    private val PROGRESS_LINE = Regex("^\\d+%.*")
 }

@@ -92,7 +92,7 @@ object ScriptManager {
         "02-hello.sh", "03-date.sh", "04-git-status.sh", "05-greet.sh", "06-mimocode.sh"
     )
 
-    /** 写入内置示例脚本（只保留两个：一个不带参数、一个带参数输入框）。返回写入的文件数。 */
+    /** 写入内置示例脚本（系统信息 / 带参示例 / opencode / mimocode）。返回写入的文件数。 */
     fun createExamples(ctx: Context? = null): Int {
         val dir = scriptDir
         if (!dir.exists() && !dir.mkdirs()) {
@@ -125,11 +125,21 @@ object ScriptManager {
             val f = File(dir, "02-greet.sh")
             val content =
                 "#!/bin/sh\n" +
-                    "#codetool: 示例（带参数）\n" +
-                    "#codetool-desc: 带一个参数输入框的示例（名字）\n" +
-                    "#codetool-param: 内容（如 我的）\n" +
-                    "echo \"你好，\${1:-世界}！\"\n" +
-                    "echo \"今天是 \$(date '+%Y-%m-%d %H:%M:%S')，APP内置的示例\"\n"
+                    "#codetool: 进入指定目录（带参数）\n" +
+                    "#codetool-desc: 输入一个路径，自动 cd 到该目录并显示当前路径\n" +
+                    "#codetool-param: 目录路径（如 /sdcard/Download 或 .）\n" +
+                    "\n" +
+                    "target=\"\${1:-.}\"\n" +
+                    "\n" +
+                    "if [ ! -d \"\$target\" ]; then\n" +
+                    "  echo \"错误：路径不存在或不是目录：\$target\"\n" +
+                    "  exit 1\n" +
+                    "fi\n" +
+                    "\n" +
+                    "cd \"\$target\" || { echo \"无法进入目录：\$target\"; exit 1; }\n" +
+                    "\n" +
+                    "echo \"已切换到目录：\$PWD\"\n" +
+                    "echo \"当前时间：\$(date '+%Y-%m-%d %H:%M:%S')\"\n"
             if (writeExample(f, content)) count++
         }
         // 示例 3：启动 opencode（带参数输入框）
@@ -158,6 +168,43 @@ object ScriptManager {
                     "  exec opencode \$ARGS\n" +
                     "else\n" +
                     "  exec opencode\n" +
+                    "fi\n"
+            if (writeExample(f, content)) count++
+        }
+        // 示例 4：启动 mimocode（带参数输入框）
+        run {
+            val f = File(dir, "05-mimocode.sh")
+            val content =
+                "#!/bin/sh\n" +
+                    "#codetool: 启动 mimocode\n" +
+                    "#codetool-desc: 启动 MiMo Code CLI，可指定工作目录与附加参数（如模型、提示词）\n" +
+                    "#codetool-param: 工作目录（可留空，默认主目录）\n" +
+                    "#codetool-param: mimo 附加参数（可留空，原样传给 mimo）\n" +
+                    "DIR=\"\${1:-}\"\n" +
+                    "ARGS=\"\${2:-}\"\n" +
+                    "\n" +
+                    "# mimo 默认装在 /root/.mimocode/bin，不一定在 PATH 里\n" +
+                    "MIMO=\"\"\n" +
+                    "if command -v mimo >/dev/null 2>&1; then\n" +
+                    "  MIMO=mimo\n" +
+                    "elif [ -x /root/.mimocode/bin/mimo ]; then\n" +
+                    "  MIMO=/root/.mimocode/bin/mimo\n" +
+                    "fi\n" +
+                    "\n" +
+                    "if [ -z \"\$MIMO\" ]; then\n" +
+                    "  echo \"未找到 mimo，请先在「工具 → 包管理」安装 MiMo Code，或运行：\"\n" +
+                    "  echo \"  curl -fsSL https://mimo.xiaomi.com/install | bash\"\n" +
+                    "  exit 1\n" +
+                    "fi\n" +
+                    "\n" +
+                    "if [ -n \"\$DIR\" ]; then\n" +
+                    "  cd \"\$DIR\" 2>/dev/null || { echo \"目录不存在: \$DIR\"; exit 1; }\n" +
+                    "fi\n" +
+                    "\n" +
+                    "if [ -n \"\$ARGS\" ]; then\n" +
+                    "  exec \"\$MIMO\" \$ARGS\n" +
+                    "else\n" +
+                    "  exec \"\$MIMO\"\n" +
                     "fi\n"
             if (writeExample(f, content)) count++
         }

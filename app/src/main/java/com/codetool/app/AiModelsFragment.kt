@@ -10,7 +10,6 @@ import android.widget.ArrayAdapter
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.Toast
-import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
@@ -19,6 +18,7 @@ import com.codetool.app.ai.ModelScheduleManager
 import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.MaterialAutoCompleteTextView
 import com.google.android.material.textfield.TextInputEditText
 import com.google.android.material.textview.MaterialTextView
@@ -161,6 +161,8 @@ class AiModelsFragment : Fragment() {
             val modelId = row.findViewById<MaterialTextView>(R.id.modelId)
             val baseUrl = row.findViewById<MaterialTextView>(R.id.modelBaseUrl)
             val key = row.findViewById<MaterialTextView>(R.id.modelKey)
+            val contextLen = row.findViewById<MaterialTextView>(R.id.modelContext)
+            val caps = row.findViewById<MaterialTextView>(R.id.modelCaps)
             val btnCurrent = row.findViewById<MaterialButton>(R.id.btnModelCurrent)
             val btnEdit = row.findViewById<MaterialButton>(R.id.btnModelEdit)
             val btnDelete = row.findViewById<MaterialButton>(R.id.btnModelDelete)
@@ -208,6 +210,8 @@ class AiModelsFragment : Fragment() {
             modelId.text = m.modelId
             baseUrl.text = m.baseUrl.ifEmpty { "未设置" }
             key.text = if (m.apiKey.isEmpty()) "未设置" else "••••" + m.apiKey.takeLast(4)
+            contextLen.text = if (m.contextLength > 0) AiModelManager.formatContextLength(m.contextLength) else "未知"
+            caps.text = buildCapabilityText(m)
 
             btnCurrent.isEnabled = m.enabled
             btnCurrent.setOnClickListener {
@@ -221,9 +225,13 @@ class AiModelsFragment : Fragment() {
             }
             btnEdit.setOnClickListener { showEditDialog(m) }
             btnDelete.setOnClickListener {
+                val bakNote = if (m.target == "mimo")
+                    "（清理前备份 mimocode.jsonc、auth.json 为 .codetool.bak）"
+                else
+                    "（清理前备份 opencode.json 为 .codetool.bak）"
                 MaterialAlertDialogBuilder(ctx)
                     .setTitle("删除模型")
-                    .setMessage("删除「${m.name}」？若这是「${m.provider}」在此目标下最后一个模型，会一并清理 CLI 配置里的 ${m.provider} 段（清前备份 .codetool.bak）。")
+                    .setMessage("删除「${m.name}」？若这是「${m.provider}」在此目标下最后一个模型，会一并清理 CLI 配置里的 ${m.provider} 段$bakNote。")
                     .setPositiveButton("删除") { _, _ ->
                         AiModelManager.removeModel(ctx, m.name, m.target)
                         refresh()
@@ -246,9 +254,11 @@ class AiModelsFragment : Fragment() {
         val etKey = v.findViewById<TextInputEditText>(R.id.etAiKey)
         val targetBtn = v.findViewById<MaterialButton>(R.id.btnAiTarget)
         val spAiApiType = v.findViewById<Spinner>(R.id.spAiApiType)
-        val swAiEnabled = v.findViewById<SwitchCompat>(R.id.swAiEnabled)
+        val swAiEnabled = v.findViewById<MaterialSwitch>(R.id.swAiEnabled)
         val testBtn = v.findViewById<MaterialButton>(R.id.btnAiTest)
         val testResult = v.findViewById<MaterialTextView>(R.id.tvAiTestResult)
+        val btnFetchCaps = v.findViewById<MaterialButton>(R.id.btnAiFetchCaps)
+        val tvCapsResult = v.findViewById<MaterialTextView>(R.id.tvAiCapsResult)
 
         // 编辑历史模型时，若其 provider 已不在列表（旧数据 / 自定义项被删），
         // 临时补一项，保证「添加后还能编辑修改」不会把 provider 悄悄改掉。
@@ -317,6 +327,12 @@ class AiModelsFragment : Fragment() {
             enabled = swAiEnabled.isChecked,
             target = target,
             current = existing?.current ?: false,
+            contextLength = existing?.contextLength ?: 0,
+            maxOutputLength = existing?.maxOutputLength ?: 0,
+            supportsToolCall = existing?.supportsToolCall ?: true,
+            supportsReasoning = existing?.supportsReasoning ?: true,
+            supportsImage = existing?.supportsImage ?: true,
+            supportsTemperature = existing?.supportsTemperature ?: true,
         )
 
         var lastPos = providers.indexOfFirst { it.id == existing?.provider.orEmpty() }.coerceAtLeast(0)
@@ -384,6 +400,48 @@ class AiModelsFragment : Fragment() {
             }
         }
 
+        btnFetchCaps.setOnClickListener {
+            val m = readForm()
+            if (m.baseUrl.isBlank() || m.apiKey.isBlank()) {
+                tvCapsResult.text = "✗ 请先填写 API 地址与 Key"
+                return@setOnClickListener
+            }
+            if (existing == null) {
+                tvCapsResult.text = "✗ 新模型请先保存，或用「从服务商获取模型列表」添加（含能力信息）"
+                return@setOnClickListener
+            }
+            tvCapsResult.text = "获取中…（连接超时 8s）"
+            btnFetchCaps.isEnabled = false
+            viewLifecycleOwner.lifecycleScope.launch {
+                val res = withContext(Dispatchers.IO) { AiModelManager.fetchModels(m) }
+                if (!isAdded) return@launch
+                btnFetchCaps.isEnabled = true
+                if (res.models.isEmpty()) {
+                    tvCapsResult.text = "✗ ${res.error}"
+                    return@launch
+                }
+                val matched = res.models.firstOrNull { it.id == m.modelId }
+                if (matched == null) {
+                    tvCapsResult.text = "✓ 连接成功，但列表中未找到模型 ${m.modelId}"
+                    return@launch
+                }
+                AiModelManager.upsertModel(ctx, m.copy(
+                    contextLength = matched.contextLength,
+                    maxOutputLength = matched.maxOutputLength,
+                    supportsToolCall = matched.supportsToolCall,
+                    supportsReasoning = matched.supportsReasoning,
+                    supportsImage = matched.supportsImage,
+                    supportsTemperature = matched.supportsTemperature,
+                ))
+                val ctxLen = AiModelManager.formatContextLength(matched.contextLength)
+                tvCapsResult.text = "✓ 已更新能力：上下文 ${if (ctxLen.isEmpty()) "未知" else ctxLen} · " +
+                    "工具${if (matched.supportsToolCall) "✓" else "✗"} · " +
+                    "推理${if (matched.supportsReasoning) "✓" else "✗"} · " +
+                    "图片${if (matched.supportsImage) "✓" else "✗"}"
+                refresh()
+            }
+        }
+
         MaterialAlertDialogBuilder(ctx)
             .setTitle(if (existing == null) "新增模型" else "编辑模型")
             .setView(v)
@@ -422,7 +480,14 @@ class AiModelsFragment : Fragment() {
                     val (okCount, details) = withContext(Dispatchers.IO) {
                         AiModelManager.syncAll(ctx, syncTargets)
                     }
-                    toast("已同步 $okCount 个目标：${details.joinToString("，")}")
+                    // 配置已写入全局文件，但运行中的 CLI 进程启动时读一次即缓存、不会重读——
+                    // 只有重启终端会话才生效。检测到 CLI 在跑时提示重启（与定时切换口径一致），
+                    // 否则用户会误以为"同步后只在本终端生效"。
+                    val clis = ModelScheduleManager.runningClis()
+                    val tip = if (clis.isNotEmpty()) {
+                        "；检测到 ${clis.joinToString("、")} 仍在运行，请重启终端后生效"
+                    } else ""
+                    toast("已同步 $okCount 个目标：${details.joinToString("，")}$tip")
                     if (isAdded) refresh()
                 }
             }
@@ -455,7 +520,7 @@ class AiModelsFragment : Fragment() {
         var currentProvider: AiModelManager.Provider? = null
         var lastPos = 0
         var target = "mimo"
-        var fetched: List<String> = emptyList()
+        var fetched: List<AiModelManager.FetchedModel> = emptyList()
 
         fun applyProvider(p: AiModelManager.Provider) {
             currentProvider = p
@@ -498,11 +563,24 @@ class AiModelsFragment : Fragment() {
             target = target,
         )
 
-        fun addModel(modelId: String) {
+        fun addModel(fm: AiModelManager.FetchedModel): Boolean {
             val base = baseModel()
+            val fullName = "${base.provider}/${fm.id}"
+            val existing = AiModelManager.listModels(ctx).firstOrNull {
+                it.name == fullName && it.target == base.target
+            }
             AiModelManager.upsertModel(ctx, base.copy(
-                name = "${base.provider}/$modelId", modelId = modelId, enabled = true,
+                name = fullName, modelId = fm.id,
+                enabled = existing?.enabled ?: true,
+                current = existing?.current ?: false,
+                contextLength = fm.contextLength,
+                maxOutputLength = fm.maxOutputLength,
+                supportsToolCall = fm.supportsToolCall,
+                supportsReasoning = fm.supportsReasoning,
+                supportsImage = fm.supportsImage,
+                supportsTemperature = fm.supportsTemperature,
             ))
+            return existing != null
         }
 
         btnGo.setOnClickListener {
@@ -520,10 +598,12 @@ class AiModelsFragment : Fragment() {
                     return@launch
                 }
                 fetched = res.models
-                tvStatus.text = "✓ 共 ${res.models.size} 个模型，点击添加（或点「全部添加」）"
-                res.models.forEach { modelId ->
+                val withCaps = res.models.count { it.contextLength > 0 }
+                val capNote = if (withCaps > 0) "（$withCaps 个含能力信息）" else ""
+                tvStatus.text = "✓ 共 ${res.models.size} 个模型$capNote，点击添加（或点「全部添加」）"
+                res.models.forEach { fm ->
                     listContainer.addView(MaterialButton(ctx).apply {
-                        text = modelId
+                        text = fm.id
                         isAllCaps = false
                         setSingleLine(true)
                         maxLines = 1
@@ -533,8 +613,8 @@ class AiModelsFragment : Fragment() {
                             LinearLayout.LayoutParams.WRAP_CONTENT
                         ).apply { topMargin = dp(4) }
                         setOnClickListener {
-                            addModel(modelId)
-                            toast("已添加：$modelId")
+                            val wasUpdate = addModel(fm)
+                            toast(if (wasUpdate) "已更新：${fm.id}" else "已添加：${fm.id}")
                             refresh()
                         }
                     })
@@ -544,8 +624,10 @@ class AiModelsFragment : Fragment() {
         }
 
         btnAddAll.setOnClickListener {
-            fetched.forEach { addModel(it) }
-            toast("已添加 ${fetched.size} 个模型")
+            var added = 0
+            var updated = 0
+            fetched.forEach { if (addModel(it)) updated++ else added++ }
+            toast("已添加 $added 个，更新 $updated 个")
             refresh()
         }
 
@@ -587,5 +669,13 @@ class AiModelsFragment : Fragment() {
                 onAdded(p)
             }
             .setNegativeButton("取消", null).show()
+    }
+
+    /** 拼接模型能力摘要：工具 / 推理 / 图片逐项展示，无能力信息时提示兜底。上下文长度单独一行展示。 */
+    private fun buildCapabilityText(m: AiModelManager.Model): String {
+        if (m.contextLength <= 0) return "未知（同步默认全支持）"
+        return "工具${if (m.supportsToolCall) "✓" else "✗"} · " +
+            "推理${if (m.supportsReasoning) "✓" else "✗"} · " +
+            "图片${if (m.supportsImage) "✓" else "✗"}"
     }
 }

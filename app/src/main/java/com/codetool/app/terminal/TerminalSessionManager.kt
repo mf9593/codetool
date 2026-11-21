@@ -183,6 +183,9 @@ class TerminalSessionManager(private val context: Context) {
         view.post {
             applyThemeColors(session)
             view.visibility = View.VISIBLE
+            // ★ 恢复可见后强制重绘一次：INVISIBLE 窗口期内若有输出到达（首页跳转、
+            //   脚本命令先于 attach 写入会话），此刻一次性画出来，避免终端显示空白。
+            view.onScreenUpdated()
         }
     }
 

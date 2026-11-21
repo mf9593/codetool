@@ -11,8 +11,10 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.InputMethodManager
+import android.widget.HorizontalScrollView
 import android.widget.ImageView
 import android.widget.LinearLayout
+import androidx.core.widget.NestedScrollView
 import android.widget.TextView
 import android.widget.Toast
 import androidx.core.content.ContextCompat
@@ -22,6 +24,7 @@ import androidx.viewpager2.widget.ViewPager2
 import com.codetool.app.terminal.TerminalSessionManager
 import com.codetool.app.util.AppSettings
 import com.codetool.app.util.FileLog
+import com.google.android.material.bottomsheet.BottomSheetBehavior
 import com.google.android.material.bottomsheet.BottomSheetDialog
 import com.google.android.material.card.MaterialCardView
 import com.google.android.material.chip.Chip
@@ -302,6 +305,16 @@ class TerminalFragment : Fragment() {
             val rowBg = android.util.TypedValue().also {
                 context.theme.resolveAttribute(android.R.attr.selectableItemBackground, it, true)
             }
+            // 列表放进 NestedScrollView（参与嵌套滚动）：终端标签多时会超出屏幕，裸
+            // LinearLayout 不滚动、屏幕外的标签点不到。用 NestedScrollView 而非普通
+            // ScrollView 是关键——它能和 BottomSheet 协同嵌套滚动：列表没到顶时下滑滚
+            // 列表，到顶后继续下拉就把 sheet 收起/关闭（普通 ScrollView 不派发嵌套滚动、
+            // sheet 拿不到列表状态，只能靠禁拖拽避开冲突，但那样就无法下滑关闭弹窗了）。
+            val scroll = NestedScrollView(context).apply {
+                isFillViewport = true
+                setPadding(dp(8), 0, dp(8), 0)
+            }
+            val listBox = LinearLayout(context).apply { orientation = LinearLayout.VERTICAL }
             tabs.forEach { (index, tab) ->
                 val row = LinearLayout(context).apply {
                     orientation = LinearLayout.HORIZONTAL
@@ -339,15 +352,23 @@ class TerminalFragment : Fragment() {
                     sheet.dismiss()
                     runScript(context, file, name, *args)
                 }
-                box.addView(row)
+                listBox.addView(row)
             }
+            scroll.addView(listBox)
+            box.addView(scroll)
             sheet.setContentView(box)
+            // 内层已用 NestedScrollView（参与嵌套滚动）：列表未到顶时下滑滚列表，
+            // 到顶后继续下拉由 BottomSheet 接管收起/关闭。因此这里保留 sheet 默认可拖拽，
+            // 不再 isDraggable=false（那会让弹窗无法下滑关闭）。
+            // 只设直接全展开，跳过半折叠态带来的二次拖拽。
+            sheet.behavior.state = BottomSheetBehavior.STATE_EXPANDED
             sheet.show()
         }
     }
 
     private var terminalContainer: ViewGroup? = null
     private var tabBar: LinearLayout? = null
+    private var tabScroll: HorizontalScrollView? = null
     private var addingTab = false
     /** 首帧遮罩是否已揭开（只在第一次 attach 时盖一次）。 */
     private var maskRevealed = false
@@ -361,6 +382,7 @@ class TerminalFragment : Fragment() {
         val v = inflater.inflate(R.layout.fragment_terminal, container, false)
         terminalContainer = v.findViewById(R.id.terminalContainer)
         tabBar = v.findViewById(R.id.tabBar)
+        tabScroll = v.findViewById(R.id.tabScroll)
         v.findViewById<View>(R.id.newTabBtn).setOnClickListener { addTab(switchTo = true) }
         v.findViewById<View>(R.id.retryBtn).setOnClickListener {
             hideError()
@@ -562,6 +584,49 @@ class TerminalFragment : Fragment() {
             }
             bar.addView(chip)
         }
+        // 标签多时 HorizontalScrollView 装不下，激活标签若落在可视区外会看不到。
+        // 只在激活 Chip 真在屏外时才滚到它——已可见就绝不滚，避免每次打开/切换终端都跳一下。
+        scrollTabBarToActive()
+    }
+
+    /** 把标签栏横向滚动到当前激活 Chip（post 到下一帧，等 Chip 完成布局再量位置）。 */
+    private fun scrollTabBarToActive() {
+        val scroll = tabScroll ?: return
+        val bar = tabBar ?: return
+        scroll.post {
+            val idx = TerminalTabs.active
+            if (idx !in TerminalTabs.tabs.indices) return@post
+            val chip = bar.getChildAt(idx) ?: return@post
+            // 可视区判断：激活 Chip 完全落在当前可视范围内就跳过滚动。
+            // 否则每次打开/切换终端都会无条件滚一下，标签少时（本不需滚）也跳、切换也跳。
+            val visibleLeft = scroll.scrollX
+            val visibleRight = scroll.scrollX + scroll.width
+            val fullyVisible = chip.left >= visibleLeft && chip.right <= visibleRight
+            if (fullyVisible) return@post
+            // 滚到让激活 Chip 偏左居中：目标 x = 左边缘 - 约 1/4 视宽留白
+            val target = (chip.left - scroll.width / 4).coerceAtLeast(0)
+            smoothScrollTabBarTo(target)
+        }
+    }
+
+    /**
+     * 标签栏平滑滚动到指定 x。HorizontalScrollView 自带 smoothScrollTo 时长极短、无缓动，
+     * 视觉上像"瞬间跳过去"（卡顿感）。这里用 ValueAnimator + 减速插值做可控缓动，
+     * 滚动更顺滑；同时复用同一 animator，连续触发时先取消旧的、从当前位置续滚，避免叠加抖动。
+     */
+    private var tabBarScrollAnim: android.animation.ValueAnimator? = null
+    private fun smoothScrollTabBarTo(targetX: Int) {
+        val scroll = tabScroll ?: return
+        tabBarScrollAnim?.cancel()
+        val from = scroll.scrollX
+        if (from == targetX) return
+        val anim = android.animation.ValueAnimator.ofInt(from, targetX).apply {
+            duration = 260
+            interpolator = android.view.animation.DecelerateInterpolator()
+            addUpdateListener { scroll.scrollTo(it.animatedValue as Int, 0) }
+        }
+        tabBarScrollAnim = anim
+        anim.start()
     }
 
     /** 关闭标签前的确认提示。 */

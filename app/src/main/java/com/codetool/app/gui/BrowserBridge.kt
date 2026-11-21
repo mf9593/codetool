@@ -42,6 +42,11 @@ object BrowserBridge {
     fun start(ctx: Context, onRequest: (JSONObject, (Boolean, String) -> Unit) -> Unit) {
         stop()
         val (req, res) = dirs(ctx)
+        // dirs() 已 mkdirs；这里落盘确认目录真实存在（排查「服务在跑但桥目录没建」）
+        com.codetool.app.util.FileLog.i(
+            ctx, "BrowserBridge",
+            "start: req=${req.absolutePath} exists=${req.isDirectory} res=${res.isDirectory}"
+        )
         handler = onRequest
         // 清掉上次残留的过期响应，避免新请求误读
         res.listFiles()?.forEach {

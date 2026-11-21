@@ -71,6 +71,31 @@
             android:textSize="12sp"
             android:textColor="?attr/colorOnSurfaceVariant" />
 
+        <!-- 说明：内置服务由 app 提供简介，自定义服务显示通用说明 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:orientation="horizontal">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:layout_width="72dp"
+                android:layout_height="wrap_content"
+                android:text="说明"
+                android:textSize="12sp"
+                android:textColor="?attr/colorOnSurfaceVariant" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/mcpDesc"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:maxLines="2"
+                android:ellipsize="end"
+                android:textSize="13sp"
+                android:textColor="?attr/colorOnSurface" />
+        </LinearLayout>
+
         <View
             android:layout_width="match_parent"
             android:layout_height="1dp"
@@ -138,7 +163,6 @@
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="4dp"
                 android:orientation="horizontal">
 
                 <com.google.android.material.textview.MaterialTextView
@@ -176,29 +200,44 @@
                 android:textSize="13sp"
                 android:textColor="?attr/colorOnSurface" />
 
-            <androidx.appcompat.widget.SwitchCompat
+            <com.google.android.material.materialswitch.MaterialSwitch
                 android:id="@+id/mcpEnabled"
                 android:layout_width="wrap_content"
-                android:layout_height="wrap_content" />
+                android:layout_height="wrap_content"
+                android:minHeight="48dp" />
         </LinearLayout>
 
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMcpEdit"
+        <!-- 操作按钮：编辑 + 删除同一行两个按钮（12dp 间距，删除描边区分） -->
+        <LinearLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:layout_marginTop="12dp"
-            android:minHeight="40dp"
-            android:text="编辑" />
+            android:orientation="horizontal">
 
-        <!-- 破坏性操作独立一行：描边 + 8dp 上间距 -->
-        <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnMcpDelete"
-            style="?attr/materialButtonOutlinedStyle"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="8dp"
-            android:minHeight="40dp"
-            android:text="删除" />
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMcpEdit"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:minHeight="40dp"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:textSize="12sp"
+                android:text="编辑" />
+
+            <com.google.android.material.button.MaterialButton
+                android:id="@+id/btnMcpDelete"
+                style="?attr/materialButtonOutlinedStyle"
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:layout_marginStart="12dp"
+                android:minHeight="40dp"
+                android:maxLines="1"
+                android:singleLine="true"
+                android:textSize="12sp"
+                android:text="删除" />
+        </LinearLayout>
 
     </LinearLayout>
 </com.google.android.material.card.MaterialCardView>

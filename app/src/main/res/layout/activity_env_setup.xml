@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!-- 首次启动第三引导页：AI 环境检查/安装。
-     rootfs 基础镜像未预装 python3 → 内置 MCP（codetool-browser）起不来。
+     rootfs 基础镜像未预装 python3 → 内置 MCP（codetool-browser / codetool-android）起不来。
      本页一键安装环境（apt 装 python3 + 注入 MCP 桥），装好才能用 AI/CLI。 -->
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
@@ -19,6 +19,7 @@
         app:titleTextColor="?attr/colorOnSurface" />
 
     <ScrollView
+        android:id="@+id/envScroll"
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1"
@@ -35,7 +36,7 @@
             <com.google.android.material.textview.MaterialTextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="首次使用请到「工具 → 包管理」单独安装 CLI（安装 MiMo Code / 安装 opencode），安装脚本会自动补齐缺失的下载依赖（curl / npm 等）。\n\n内置 MCP（浏览器调试）需要容器里有 python3，下方检测若显示缺失，装完 CLI 后回包管理点「一键修复 AI 环境」即可。"
+                android:text="首次使用请到「工具 → 包管理」单独安装 CLI（安装 MiMo Code / 安装 opencode），安装脚本会自动补齐缺失的下载依赖（curl / npm 等）。\n\n内置 MCP（浏览器 / Android 自动化）需要容器里有 python3，下方检测若显示缺失，装完 CLI 后回包管理点「一键修复 AI 环境」即可。"
                 android:textAppearance="?attr/textAppearanceBodyMedium"
                 android:textColor="?attr/colorOnSurface"
                 android:lineSpacingMultiplier="1.35" />
@@ -106,14 +107,25 @@
                         android:indeterminate="true"
                         android:visibility="gone" />
 
-                    <com.google.android.material.textview.MaterialTextView
-                        android:id="@+id/envLogText"
+                    <!-- 日志区：固定高度 + 内部滚动，卡片高度受限，日志长时在卡片内滑动查看。
+                         （外页 envScroll 仍保留，页面整体可滚；拖日志区时内部滚，别处滚页面。） -->
+                    <ScrollView
+                        android:id="@+id/envLogScroll"
                         android:layout_width="match_parent"
-                        android:layout_height="wrap_content"
+                        android:layout_height="220dp"
                         android:layout_marginTop="@dimen/spacing_sm"
-                        android:fontFamily="monospace"
-                        android:textSize="12sp"
-                        android:textColor="?attr/colorOnSurfaceVariant" />
+                        android:background="?attr/colorSurfaceVariant"
+                        android:scrollbars="vertical">
+
+                        <com.google.android.material.textview.MaterialTextView
+                            android:id="@+id/envLogText"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:fontFamily="monospace"
+                            android:padding="8dp"
+                            android:textSize="12sp"
+                            android:textColor="?attr/colorOnSurfaceVariant" />
+                    </ScrollView>
                 </LinearLayout>
             </com.google.android.material.card.MaterialCardView>
 

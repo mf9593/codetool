@@ -130,14 +130,15 @@
             android:minHeight="48dp"
             android:spinnerMode="dropdown" />
 
-        <androidx.appcompat.widget.SwitchCompat
+        <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/swAiEnabled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:layout_marginTop="12dp"
+            android:minHeight="56dp"
+            android:layout_marginTop="8dp"
             android:checked="true"
-            android:text="启用此模型（关闭后不可设为当前）" />
+            android:text="启用此模型（关闭后不可设为当前）"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
 
         <com.google.android.material.button.MaterialButton
             android:id="@+id/btnAiTarget"
@@ -161,6 +162,24 @@
             android:layout_marginTop="8dp"
             android:fontFamily="monospace"
             android:text="填好服务商 / API 地址 / Key 后点「测试连接」验证"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnAiFetchCaps"
+            style="?attr/materialButtonOutlinedStyle"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:text="获取能力信息" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tvAiCapsResult"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:fontFamily="monospace"
+            android:text="点「获取能力信息」从 API 拉取模型能力（上下文/工具/推理/图片），覆盖已有能力数据"
             android:textAppearance="?attr/textAppearanceBodySmall"
             android:textColor="?attr/colorOnSurfaceVariant" />
 

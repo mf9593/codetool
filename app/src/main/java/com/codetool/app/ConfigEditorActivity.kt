@@ -11,9 +11,12 @@ import android.widget.Spinner
 import android.widget.Toast
 import org.json.JSONTokener
 import androidx.appcompat.app.AppCompatActivity
+import androidx.activity.addCallback
 import androidx.lifecycle.lifecycleScope
 import com.codetool.app.ai.AiModelManager
+import com.codetool.app.util.EditorSearchController
 import com.google.android.material.appbar.MaterialToolbar
+import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textview.MaterialTextView
 import io.github.rosemoe.sora.widget.CodeEditor
 import kotlinx.coroutines.Dispatchers
@@ -34,6 +37,9 @@ class ConfigEditorActivity : AppCompatActivity() {
     private var selected = 0
     private var loadedText = ""   // 当前已加载原文，用于判断是否有改动
 
+    /** 内联搜索（点标题栏搜索按钮展开，输入即搜编辑内容）。 */
+    private lateinit var search: EditorSearchController
+
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(com.codetool.app.theme.ThemeManager.resolveStyle(this))
         super.onCreate(savedInstanceState)
@@ -43,9 +49,23 @@ class ConfigEditorActivity : AppCompatActivity() {
         setSupportActionBar(toolbar)
         supportActionBar?.setDisplayHomeAsUpEnabled(true)
 
+        // 返回（标题栏返回箭头 + 系统返回键）统一走 confirmExit：有改动先提示保存
+        onBackPressedDispatcher.addCallback(this) { confirmExit() }
+
         spFile = findViewById(R.id.spConfigFile)
         etContent = findViewById(R.id.etConfigContent)
         hint = findViewById(R.id.configHint)
+
+        // 内联搜索：点标题栏搜索按钮展开搜索条，输入即搜编辑内容（sora EditorSearcher 高亮）
+        search = EditorSearchController(
+            etContent,
+            findViewById(R.id.searchBar),
+            findViewById(R.id.searchInput),
+            findViewById(R.id.searchCount),
+            findViewById(R.id.searchPrev),
+            findViewById(R.id.searchNext),
+            findViewById(R.id.searchClose),
+        )
 
         configs = AiModelManager.listEditableConfigs()
         val labels = configs.map { it.label }
@@ -71,6 +91,9 @@ class ConfigEditorActivity : AppCompatActivity() {
                 R.id.action_config_copy -> { copyToClipboard(etContent.text.toString()); true }
                 R.id.action_config_help -> { showHelp(); true }
                 R.id.action_config_format -> { formatCurrent(); true }
+                R.id.action_config_search -> { search.toggle(); true }
+                R.id.action_config_undo -> { etContent.undo(); true }
+                R.id.action_config_redo -> { etContent.redo(); true }
                 else -> false
             }
         }
@@ -208,6 +231,7 @@ class ConfigEditorActivity : AppCompatActivity() {
     private fun loadFile(idx: Int) {
         val cfg = configs.getOrNull(idx) ?: return
         hint.text = fileHint(cfg.rel)
+        supportActionBar?.subtitle = cfg.rel   // 副标题：显示正在编辑的配置文件相对路径
         lifecycleScope.launch {
             val content = withContext(Dispatchers.IO) {
                 AiModelManager.readConfigFile(this@ConfigEditorActivity, cfg.rel)
@@ -287,7 +311,25 @@ class ConfigEditorActivity : AppCompatActivity() {
     }
 
     override fun onOptionsItemSelected(item: MenuItem): Boolean {
-        if (item.itemId == android.R.id.home) { finish(); return true }
+        if (item.itemId == android.R.id.home) { confirmExit(); return true }
         return super.onOptionsItemSelected(item)
+    }
+
+    /** 内容是否有改动（相对当前已加载原文）。 */
+    private fun isModified(): Boolean = etContent.text.toString() != loadedText
+
+    /**
+     * 返回拦截：内容有改动时弹「已修改是否保存」对话框（保存 / 不保存 / 取消），
+     * 无改动直接退出。标题栏返回箭头与系统返回键都走这里。
+     */
+    private fun confirmExit() {
+        if (!isModified()) { finish(); return }
+        MaterialAlertDialogBuilder(this)
+            .setTitle("已修改")
+            .setMessage("内容已修改，是否保存？")
+            .setPositiveButton("保存") { _, _ -> saveCurrent() }
+            .setNegativeButton("不保存") { _, _ -> finish() }
+            .setNeutralButton("取消", null)
+            .show()
     }
 }

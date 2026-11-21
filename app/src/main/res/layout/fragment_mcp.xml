@@ -152,6 +152,7 @@
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="12dp"
+                    android:minHeight="56dp"
                     android:text="一键修复环境"
                     android:visibility="gone"
                     app:icon="@drawable/ic_refresh"
@@ -170,6 +171,7 @@
                 android:layout_width="0dp"
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
+                android:minHeight="56dp"
                 android:text="新增服务" />
 
             <com.google.android.material.button.MaterialButton
@@ -179,6 +181,7 @@
                 android:layout_height="wrap_content"
                 android:layout_weight="1"
                 android:layout_marginStart="12dp"
+                android:minHeight="56dp"
                 android:text="恢复内置" />
         </LinearLayout>
 

@@ -9,6 +9,7 @@ import android.view.View
 import android.view.ViewGroup
 import android.widget.Toast
 import androidx.fragment.app.Fragment
+import com.codetool.app.ai.AptMirror
 import com.codetool.app.gui.TawcCompositorActivity
 import com.google.android.material.button.MaterialButton
 
@@ -47,8 +48,10 @@ class PackagesFragment : Fragment() {
                     "export DEBIAN_FRONTEND=noninteractive\n" +
                     "apt-get update\n" +
                     "echo '=== 安装常用依赖（浏览器/脚本/NDK·JDK 解压都依赖）==='\n" +
-                    "if apt-get install -y ca-certificates wget curl gnupg git unzip xz-utils bzip2; then\n" +
-                    "  echo '[OK] 常用组件安装成功：wget / curl / gpg / unzip / xz 已可用'\n" +
+                    "if apt-get install -y ca-certificates wget curl gnupg git unzip xz-utils bzip2 \\\n" +
+                    "  iputils-ping iproute2 bind9-dnsutils file nano less \\\n" +
+                    "  procps psmisc zip htop tree openssh-client; then\n" +
+                    "  echo '[OK] 常用组件安装成功：wget / curl / gpg / unzip / xz / ping / ip / dig / nano / ssh 已可用'\n" +
                     "else\n" +
                     "  echo '[ERROR] 常用组件安装失败（看上方报错，常见原因：apt 锁被占 / 网络问题）'\n" +
                     "fi\n" +
@@ -199,11 +202,12 @@ class PackagesFragment : Fragment() {
             // 以前靠用户先手动点「更新依赖」，容易漏；缺 xz 时 `tar -xJf` 会直接失败。
             "echo '=== 确保前置工具（wget / gnupg / xz-utils / ca-certificates）==='\n" +
             "if dpkg -s wget >/dev/null 2>&1 && dpkg -s gnupg >/dev/null 2>&1 && dpkg -s xz-utils >/dev/null 2>&1; then echo '[OK] wget / gnupg / xz 已就绪'; else apt-get update && apt-get install -y wget gnupg xz-utils ca-certificates || echo '[WARN] 前置工具安装失败，继续尝试（可能已部分安装）'; fi\n"
-        // Firefox 走 tarball 直装，不需要 snapd 清理，但同样需要 wget（下载）+ xz-utils（解压）+ ca-certificates（https）。
+        // Firefox 走 Mozilla 官方 apt 源（arm64，自动最新版），不依赖硬编码 tarball 链接；
+        // 需要 wget（密钥下载）+ ca-certificates（https）+ gnupg（key dearmor）+ xz-utils。
         val firefoxPrereq = aptWaitLock +
             "export DEBIAN_FRONTEND=noninteractive\n" +
-            "echo '=== 确保下载/解压工具（wget / xz-utils / ca-certificates）==='\n" +
-            "if dpkg -s wget >/dev/null 2>&1 && dpkg -s xz-utils >/dev/null 2>&1; then echo '[OK] wget / xz 已就绪'; else apt-get update && apt-get install -y wget xz-utils ca-certificates || echo '[WARN] 前置工具安装失败，继续尝试'; fi\n"
+            "echo '=== 确保前置工具（wget / xz-utils / ca-certificates / gnupg）==='\n" +
+            "if dpkg -s wget >/dev/null 2>&1 && dpkg -s xz-utils >/dev/null 2>&1 && dpkg -s gnupg >/dev/null 2>&1; then echo '[OK] wget / xz / gnupg 已就绪'; else apt-get update && apt-get install -y wget xz-utils ca-certificates gnupg || echo '[WARN] 前置工具安装失败，继续尝试'; fi\n"
         v.findViewById<MaterialButton>(R.id.btnChromeInstall).setOnClickListener {
             runInTerminal(
                 "安装 Chrome",
@@ -227,29 +231,28 @@ class PackagesFragment : Fragment() {
         v.findViewById<MaterialButton>(R.id.btnFirefoxInstall).setOnClickListener {
             runInTerminal(
                 "安装 Firefox",
-                // Firefox 走 tarball 直装，不需要 snapd 清理；但仍需 wget/xz-utils/ca-certificates，
-                // 由 firefoxPrereq 自愈（缺 xz 时 tar -xJf 会失败）。
+                // Firefox 走 Mozilla 官方 apt 源（arm64 自动最新版），不再用硬编码 tarball 链接。
                 firefoxPrereq +
-                    "echo '=== 安装 Mozilla Firefox (arm64 官方版，tarball 直装绕开 snapd) ==='\n" +
+                    "echo '=== 安装 Mozilla Firefox（官方 apt 源，arm64 自动最新版）==='\n" +
                     "( set -e\n" +
-                    "  command -v wget >/dev/null 2>&1 || { echo '[ERROR] 缺 wget：请先在包管理点「更新依赖 · 装常用组件」'; exit 1; }\n" +
-                    "  command -v xz >/dev/null 2>&1 || { echo '[ERROR] 缺 xz（xz-utils），无法解压 .tar.xz'; exit 1; }\n" +
-                    "  rm -rf /opt/firefox\n" +
-                    "  cd /opt\n" +
-                    "  echo '--- 下载 Mozilla Firefox 官方 tarball（arm64）---'\n" +
-                    "  wget -q --show-progress -O firefox.tar.xz 'https://ftp.mozilla.org/pub/firefox/releases/146.0/linux-aarch64/en-US/firefox-146.0.tar.xz'\n" +
-                    "  tar -xJf firefox.tar.xz -C /opt\n" +
-                    "  rm -f firefox.tar.xz\n" +
-                    "  ln -sf /opt/firefox/firefox /usr/local/bin/firefox\n" +
-                    "  [ -x /opt/firefox/firefox ] || { echo '[ERROR] firefox 解压后二进制不存在（下载损坏？）'; exit 1; }\n" +
+                    "  command -v gpg >/dev/null 2>&1 || { echo '[ERROR] 缺 gpg：请先在包管理点「更新依赖 · 装常用组件」'; exit 1; }\n" +
+                    "  mkdir -p /usr/share/keyrings\n" +
+                    // 注意：dearmor 产物必须用 .gpg 扩展名。容器 apt 校验走 apt-key（已废弃），
+                    // apt-key 对 .asc 命名的二进制 keyring 读不出 key → NO_PUBKEY 卡死整个 apt。
+                    // 实测 .gpg 才通过（ubuntu-archive-keyring.gpg 同理）。故不用 Mozilla 官方文档的 .asc 命名。
+                    "  wget -qO- https://packages.mozilla.org/apt/repo-signing-key.gpg | gpg --batch --yes --dearmor -o /usr/share/keyrings/packages.mozilla.org.gpg\n" +
+                    "  [ -s /usr/share/keyrings/packages.mozilla.org.gpg ] || { echo '[ERROR] Mozilla 签名密钥下载失败（网络问题）'; exit 1; }\n" +
+                    "  rm -f /usr/share/keyrings/packages.mozilla.org.asc\n" +
+                    "  echo 'deb [signed-by=/usr/share/keyrings/packages.mozilla.org.gpg] https://packages.mozilla.org/apt mozilla main' > /etc/apt/sources.list.d/mozilla.list\n" +
+                    "  apt-get update || echo '[WARN] 部分软件源拉取失败，继续尝试安装'\n" +
+                    "  apt-get install -y firefox\n" +
                     ") || echo '[ERROR] Firefox 安装中断，看上方报错'\n" +
                     "echo ''\n" +
                     "echo '=== 安装结果（真实自检）==='\n" +
-                    "command -v firefox >/dev/null 2>&1 && echo \"[OK] Firefox 已可用：$(firefox --version 2>/dev/null)\" || echo '[WARN] Firefox 未装上（不影响内置浏览器，Chrome 优先）'\n" +
+                    "command -v firefox >/dev/null 2>&1 && echo \"[OK] Firefox 已可用：$(firefox --version 2>/dev/null)\" || echo '[ERROR] Firefox 未装上，请检查上方 apt 报错'\n" +
                     "echo '装好后：终端点「显示」打开 GUI；工具 → MCP 页可查看浏览器状态'"
             )
         }
-        refreshBrowserStatus()
         // 一键修复 AI 环境：rootfs 缺 python3 / MCP 桥损坏导致 MCP 起不来时自愈
         v.findViewById<com.google.android.material.button.MaterialButton>(R.id.btnEnvFix)
             .setOnClickListener {
@@ -263,26 +266,93 @@ class PackagesFragment : Fragment() {
 
     override fun onResume() {
         super.onResume()
-        refreshBrowserStatus()
+        refreshInstallStatus()
     }
 
-    /** 浏览器/星火/ADB 都是「不预装、包管理一键装」：按钮各自实时反映 rootfs 里是否已装。 */
-    private fun refreshBrowserStatus() {
+    /** 浏览器/星火/ADB/MiMo/opencode/APM 都是「不预装、包管理一键装」：按钮实时反映 rootfs 里的安装状态。 */
+    private fun refreshInstallStatus() {
         val ctx = requireContext()
         val chrome = view?.findViewById<MaterialButton>(R.id.btnChromeInstall) ?: return
         val firefox = view?.findViewById<MaterialButton>(R.id.btnFirefoxInstall)
         val spark = view?.findViewById<MaterialButton>(R.id.btnSpark)
         val adb = view?.findViewById<MaterialButton>(R.id.btnAdbInstall)
+        val mimoBtn = view?.findViewById<MaterialButton>(R.id.btnMimo)
+        val ocBtn = view?.findViewById<MaterialButton>(R.id.btnOpencode)
+        val apmBtn = view?.findViewById<MaterialButton>(R.id.btnApmInstall)
         val da = com.codetool.app.gui.DesktopApps
-        chrome.text = if (da.browserInstalled(ctx)) "Chrome 已安装 · 点此重装"
-                      else "安装 Chrome（Google 官方版）"
-        firefox?.text = if (da.firefoxInstalled(ctx)) "Firefox 已安装 · 点此重装"
-                        else "安装 Firefox（Mozilla 官方版）"
-        spark?.text = if (da.sparkStoreInstalled(ctx)) "启动星火商店"
-                      else "安装星火商店"
-        adb?.text = if (da.resolveBinary(ctx, "adb") != null) "ADB 已安装 · 点此重装"
-                    else "安装 ADB（Android 调试桥）"
+
+        chrome.text = if (da.browserInstalled(ctx))
+            installedText("Chrome", dpkgVersion(ctx, "google-chrome-stable"))
+        else "安装 Chrome（Google 官方版）"
+        firefox?.text = if (da.firefoxInstalled(ctx))
+            installedText("Firefox", firefoxVersion(ctx))
+        else "安装 Firefox（Mozilla 官方版）"
+        spark?.text = if (da.sparkStoreInstalled(ctx))
+            installedText("星火商店", dpkgVersion(ctx, "spark-store"), "启动")
+        else "安装星火商店"
+        adb?.text = if (da.resolveBinary(ctx, "adb") != null)
+            installedText("ADB", dpkgVersion(ctx, "adb"))
+        else "安装 ADB（Android 调试桥）"
+
+        // MiMo / opencode：版本读缓存文件（probeVersions 写入），不在这里起进程
+        val ai = com.codetool.app.ai.AiModelManager
+        val mimo = ai.mimoStatus(ctx)
+        val oc = ai.opencodeStatus(ctx)
+        mimoBtn?.text = if (mimo.installed) installedText("MiMo Code", mimo.version)
+                        else "安装 MiMo Code"
+        ocBtn?.text = if (oc.installed) installedText("opencode", oc.version)
+                      else "安装 opencode（AI 编程助手）"
+
+        // APM 由 apt 安装，版本从容器 dpkg 数据库读（纯文件，不启动进程）
+        apmBtn?.text = if (da.resolveBinary(ctx, "apm") != null)
+            installedText("APM", dpkgVersion(ctx, "apm", "amber-pm"))
+        else "安装 APM（应用包管理器）"
     }
+
+    /** 已安装按钮文案：有版本就带上，拿不到版本时明确写「版本未知」。 */
+    private fun installedText(name: String, version: String, action: String = "重装"): String =
+        "$name 已安装" + (if (version.isBlank()) "（版本未知）" else " $version") + " · 点此$action"
+
+    /**
+     * 从容器 dpkg 数据库读包版本（纯文件流式读取，不启动容器进程）。
+     * dpkg/status 每个包一个空行分隔的块，块内是 `Package:` / `Version:` 等字段。
+     */
+    private fun dpkgVersion(ctx: android.content.Context, vararg pkgs: String): String = runCatching {
+        val f = java.io.File(
+            com.codetool.app.runtime.RootfsManager.get(ctx.applicationContext).containerRoot,
+            "var/lib/dpkg/status")
+        if (!f.exists()) return@runCatching ""
+        var pkg = ""
+        var version = ""
+        var found = ""
+        f.bufferedReader().useLines { lines ->
+            for (line in lines) {
+                when {
+                    line.startsWith("Package: ") -> pkg = line.removePrefix("Package: ").trim()
+                    line.startsWith("Version: ") && version.isEmpty() ->
+                        version = line.removePrefix("Version: ").trim()
+                    line.isBlank() -> {
+                        if (pkg in pkgs && version.isNotEmpty()) {
+                            found = version
+                            break
+                        }
+                        pkg = ""
+                        version = ""
+                    }
+                }
+            }
+        }
+        found
+    }.getOrDefault("")
+
+    /** Firefox 是 tar 包安装，不在 dpkg 数据库里；版本从 application.ini 读。 */
+    private fun firefoxVersion(ctx: android.content.Context): String = runCatching {
+        val f = java.io.File(
+            com.codetool.app.runtime.RootfsManager.get(ctx.applicationContext).containerRoot,
+            "opt/firefox/application.ini")
+        if (!f.exists()) return@runCatching ""
+        Regex("""(?m)^Version=(.+)$""").find(f.readText())?.groupValues?.get(1)?.trim().orEmpty()
+    }.getOrDefault("")
 
     /** 把命令发到当前终端标签，并切到终端页显示执行过程。 */
     /**
@@ -291,6 +361,10 @@ class PackagesFragment : Fragment() {
      * 统一走 runInlineScript：写入临时文件 → 复制进容器 → `sh 路径`，只显示输出。
      */
     private fun runInTerminal(name: String, command: String) {
-        TerminalFragment.runInlineScript(requireContext(), name, command)
+        // 先按终端设置里配置的 apt 源（默认清华）写容器 sources.list：让本页所有 apt 操作
+        // （Firefox / Chrome 前置、更新依赖、常用组件等）都用配置源，避开官方源在国内的坏 IP。
+        AptMirror.apply(requireContext())
+        val src = "echo '[源] 容器 apt 源：${AptMirror.label(AptMirror.currentId(requireContext()))}'\n"
+        TerminalFragment.runInlineScript(requireContext(), name, src + command)
     }
 }

@@ -1,7 +1,14 @@
 package com.codetool.app.gui
 
+import android.Manifest
 import android.app.Activity
+import android.app.PendingIntent
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.content.res.ColorStateList
 import android.graphics.Color
+import android.graphics.PixelFormat
+import android.graphics.drawable.GradientDrawable
 import android.os.Build
 import android.os.Bundle
 import android.system.Os
@@ -17,17 +24,22 @@ import android.view.ViewGroup
 import android.view.WindowManager
 import android.widget.FrameLayout
 import android.widget.HorizontalScrollView
+import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ScrollView
 import android.widget.TextView
+import androidx.core.app.NotificationCompat
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import androidx.core.view.ViewCompat
+import com.codetool.app.CodeToolApp
 import com.codetool.app.R
 import com.codetool.app.util.FileLog
 import me.phie.tawc.compositor.NativeBridge
 import java.io.File
+import com.codetool.app.theme.ThemeManager
 import kotlin.math.roundToInt
 
 /**
@@ -48,6 +60,12 @@ open class TawcCompositorActivity : Activity() {
     companion object {
         private const val TAG = "TawcCompositor"
         private const val OUTPUT_SCALE = 2.0f
+
+        /**
+         * IME 动画（约 300ms）+ 系统在动画末尾强拉导航栏的重置窗口：
+         * 在这些时间点补杀导航栏，确保键盘弹出期间最终态是隐藏。
+         */
+        private val NAV_HIDE_RETRY_DELAYS = longArrayOf(120, 260, 450, 700, 1000)
 
         /** 兼容旧窗口宿主 intent 的 extra（新模型不再使用）。 */
         const val EXTRA_WINDOW_ID = "window_id"
@@ -70,6 +88,9 @@ open class TawcCompositorActivity : Activity() {
             MotionEvent.BUTTON_PRIMARY or MotionEvent.BUTTON_SECONDARY or
                 MotionEvent.BUTTON_TERTIARY or MotionEvent.BUTTON_BACK or
                 MotionEvent.BUTTON_FORWARD
+
+        /** GUI 最小化到后台时，通知栏返回入口的 id。 */
+        private const val NOTIF_BACKGROUND = 2101
 
         @Volatile
         var instance: TawcCompositorActivity? = null
@@ -133,6 +154,19 @@ open class TawcCompositorActivity : Activity() {
     private var insetTop = 0
     private var insetRight = 0
     private var insetBottom = 0
+    /** IME 当前是否可见（insets 监听里更新，供延迟补杀导航栏时判断）。 */
+    private var imeCurrentlyVisible = false
+
+    /** 强制隐藏导航栏（关对比度强制 + 深色外观 + hide）。 */
+    private fun forceHideNavBar() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            window.isNavigationBarContrastEnforced = false
+        }
+        WindowInsetsControllerCompat(window, root).apply {
+            isAppearanceLightNavigationBars = true
+            hide(WindowInsetsCompat.Type.navigationBars())
+        }
+    }
     /** 正在安装中的应用 id → 取消轮询用。 */
     private val installing = HashSet<String>()
 
@@ -238,27 +272,27 @@ open class TawcCompositorActivity : Activity() {
         com.codetool.app.theme.ThemeManager.applyTo(this)
         super.onCreate(savedInstanceState)
         WindowCompat.setDecorFitsSystemWindows(window, false)
+        // FLAG_LAYOUT_NO_LIMITS：窗口铺满到屏幕物理边缘（含系统栏/刘海区域），
+        // 键盘弹出时系统强加的导航胶囊只是浮在内容上层，绝不挤压/推动页面。
+        // 配合透明导航栏（applyFullscreenState 里设）实现「小白条重叠在画面上」。
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        // 软键盘弹出时把窗口内容整体上推，避免遮住容器窗口下半部分。
-        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_RESIZE)
+        window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS)
+        // FLAG_LAYOUT_IN_SCREEN：窗口固定铺满全屏坐标系，IME 弹出时系统不再把
+        // 窗口缩小到「键盘上方的可见区」（部分 ROM 会无视 ADJUST_NOTHING 强缩窗口，
+        // 表现为键盘一出页面被挤压）。配合 NO_LIMITS 让键盘完全悬浮覆盖。
+        window.addFlags(WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN)
+        // 软键盘悬浮覆盖（ADJUST_NOTHING）：不缩放窗口。之前用 ADJUST_RESIZE + root 内边距
+        // 让出键盘高度，SurfaceView 跟着 resize → native 侧重建缓冲区，切换瞬间闪花屏。
+        // 桌面 OS 的标准做法就是键盘盖住桌面下半部分，表面尺寸恒定、零重建。
+        window.setSoftInputMode(WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING)
         NativeBridge.appContext = applicationContext
         instance = this
 
-        // 容器内 → app 的浏览器桥：模型/脚本在终端执行
-        // `codetool-browser open <url>`，请求经共享目录到这里，由合成器拉起内置 Chrome 渲染。
-        BrowserBridge.start(this) { req, respond ->
-            when (req.optString("action")) {
-                "open" -> {
-                    val url = req.optString("url", "about:blank")
-                    if (launchChromeWithUrl(url)) {
-                        respond(true, "已在内置浏览器打开：$url（CDP http://127.0.0.1:9222）")
-                    } else {
-                        respond(false, "浏览器未安装：请在 app 的「工具 → 包管理」点「安装浏览器（Chrome / Firefox）」，装好后重新打开 GUI 显示")
-                    }
-                }
-                else -> respond(false, "未知操作：${req.optString("action")}")
-            }
-        }
+        // 容器内 → app 的浏览器桥：改由前台服务 [BrowserBridgeService] 常驻承载，
+        // 模型/CLI 调浏览器不再依赖本合成器 GUI（无头 Chrome 后台跑）。
+        // 这里只确保服务在跑（App 启动已拉起，这里是兜底：进程被回收后重进能复活）。
+        // 不再在本 Activity 起 BrowserBridge，避免抢走服务的 handler 让无头模式失效。
+        BrowserBridgeService.start(this)
 
         root = FrameLayout(this).apply { setBackgroundColor(Color.BLACK) }
         buildUi()
@@ -438,6 +472,24 @@ open class TawcCompositorActivity : Activity() {
             LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT
         ))
 
+        // 最小化到后台：回到终端，GUI 合成器继续保持运行；从后台通知或终端页「显示」返回。
+        val minimizeRow = TextView(this).apply {
+            text = "最小化到后台"
+            textSize = 12f
+            gravity = Gravity.CENTER
+            setTextColor(cPrimary)
+            background = GradientDrawable().apply {
+                cornerRadius = dp(8).toFloat()
+                setColor(cSurfaceContainer)
+                setStroke(dp(1), cOutlineVariant)
+            }
+            contentDescription = "最小化 GUI 到后台，回到终端"
+            setOnClickListener { minimizeToBackground() }
+        }
+        rail.addView(minimizeRow, LinearLayout.LayoutParams(
+            LinearLayout.LayoutParams.MATCH_PARENT, dp(36)
+        ).apply { topMargin = dp(4); bottomMargin = dp(4) })
+
         // 侧栏底部：一排四个按钮（软键盘 / 快捷键条 / 全屏 / 关闭）
         val actionsRow = LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
@@ -455,7 +507,11 @@ open class TawcCompositorActivity : Activity() {
         fullscreenBtn = railIconButton(R.drawable.ic_fullscreen, cOnSurfaceVariant) {
             setFullscreen(railMode != RailMode.HIDDEN)
         }
-        val closeBtn = railIconButton(R.drawable.ic_close, cOnSurfaceVariant) { finish() }
+        // 关闭 = 最小化到后台（默认行为）：回到 App 首页，合成器不销毁、继续后台跑任务。
+        // 之前是 finish()（合成器独立任务，会退出到桌面），已按用户要求改成最小化。
+        val closeBtn = railIconButton(R.drawable.ic_close, cOnSurfaceVariant) {
+            minimizeToBackground()
+        }
         actionsRow.addView(softKeyboardBtn, LinearLayout.LayoutParams(0, dp(40), 1f))
         actionsRow.addView(keyboardBtn, LinearLayout.LayoutParams(0, dp(40), 1f))
         actionsRow.addView(fullscreenBtn, LinearLayout.LayoutParams(0, dp(40), 1f))
@@ -579,37 +635,34 @@ open class TawcCompositorActivity : Activity() {
                 WindowInsetsCompat.Type.systemBars() or WindowInsetsCompat.Type.displayCutout()
             )
             val imeVisible = insets.isVisible(WindowInsetsCompat.Type.ime())
-            val ime = insets.getInsets(WindowInsetsCompat.Type.ime()).bottom
+            imeCurrentlyVisible = imeVisible
             insetTop = bars.top
             insetRight = bars.right
-            insetBottom = maxOf(bars.bottom, ime)
-            // 本页是桌面式的沉浸界面：左右/顶部不留系统边距（刘海区直接铺满），
-            // 只让出底部导航栏/输入法，避免出现「额头黑边」。
+            // 底部内边距恒 0：导航栏是悬浮透明的（FLAG_LAYOUT_NO_LIMITS + 透明底），
+            // 内容铺满到它下面即可。若按 bars.bottom/ime 垫边距，键盘弹出/收起时
+            // 系统强显的导航栏（60px）会反复使 SurfaceView 缩放 → 隐藏键盘瞬间
+            // 闪花屏、弹出时挤压布局。恒 0 = 表面零缩放 = 零闪烁零挤压。
+            insetBottom = 0
             if (root.paddingBottom != insetBottom) {
                 root.setPadding(0, 0, 0, insetBottom)
             }
             // IME 弹出时系统会强制显示导航栏，并可能重置成浅色白底（键盘下方小白条）。
             // 每次 insets 变化都：关对比度强制 + 强制深色外观 + 重新隐藏导航栏。
             // Android 15+ 忽略 navigationBarColor，只有「隐藏 navigationBars」才真正
-            // 去掉那条系统白条；延迟再补一次覆盖 IME 动画末尾的系统重置。
+            // 去掉那条系统白条；动画窗口内多刀补杀覆盖系统在 IME 动画末尾的重置。
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 window.isNavigationBarContrastEnforced = false
             }
             if (imeVisible) {
-                val ctrl = WindowInsetsControllerCompat(window, root)
-                ctrl.isAppearanceLightNavigationBars = false
-                ctrl.hide(WindowInsetsCompat.Type.navigationBars())
-                root.post {
-                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-                        window.isNavigationBarContrastEnforced = false
-                    }
-                    WindowInsetsControllerCompat(window, root).apply {
-                        isAppearanceLightNavigationBars = false
-                        hide(WindowInsetsCompat.Type.navigationBars())
-                    }
+                FileLog.i(this, TAG, "ime visible: schedule nav-bar hide")
+                forceHideNavBar()
+                // IME 动画（约 300ms）期间系统会反复强拉导航栏，只在动画首帧补一次
+                // 盖不住末尾的重置；在动画窗口内多补几刀，确保最终态是隐藏。
+                NAV_HIDE_RETRY_DELAYS.forEach { d ->
+                    root.postDelayed({ if (imeCurrentlyVisible) forceHideNavBar() }, d)
                 }
             } else {
-                WindowInsetsControllerCompat(window, root).isAppearanceLightNavigationBars = false
+                WindowInsetsControllerCompat(window, root).isAppearanceLightNavigationBars = true
             }
             val flp = floatBtn.layoutParams as FrameLayout.LayoutParams
             flp.rightMargin = bars.right + dp(12)
@@ -1258,16 +1311,20 @@ open class TawcCompositorActivity : Activity() {
         showDesktop(false)
         // 单引号包裹 + 转义内部单引号，避免 URL 里的 shell 元字符造成注入
         val quoted = "'" + url.replace("'", "'\\''") + "'"
-        // --no-first-run 关键：Chrome 首次运行会弹「服务条款」向导并阻塞 CDP 初始化，
-        // 实测 9222 因此没起来；跳过首启向导后 DevTools 正常监听。
-        val cdpArgs = "--no-first-run --no-default-browser-check " +
-            "--remote-debugging-port=9222 --remote-allow-origins='*' " +
-            "--user-data-dir=/root/.config/codetool-chrome"
-        val cmd = DesktopApps.ENV_PREFIX + DesktopApps.launchLine(app) + " " + cdpArgs + " " + quoted
+        // 关键：**不带 --user-data-dir**。带上会试图另起独立实例（xkbcommon 崩溃）；
+        // 不带则命中默认 profile /root/.config/google-chrome 的单例锁（SingletonLock），
+        // wrapper 把 URL 转发给已运行的可见实例、自己退出 → 可见窗口新开一个前台标签页。
+        // 前台可见实例不开 CDP（eval/截图走后台无头实例），所以这里也不加 --remote-debugging-port，
+        // 避免和无头实例抢 9222。ENV_PREFIX 已导出 WAYLAND_DISPLAY，Chrome args 已含
+        // --no-sandbox --ozone-platform=wayland（root 必须 --no-sandbox）。
+        val cmd = DesktopApps.ENV_PREFIX + DesktopApps.launchLine(app) + " " + quoted
         DesktopApps.runScript(this, "GuiLaunch", cmd)
-        FileLog.i(this, TAG, "browser open: $url")
+        FileLog.i(this, TAG, "browser open (gui window): $url")
         return true
     }
+
+    /** 供 [BrowserBridgeService] 转发「带窗口」模式（用户要看画面时）。 */
+    fun openUrlInGuiBrowser(url: String): Boolean = launchChromeWithUrl(url)
 
     /** 显示/隐藏内置桌面。显示时窗口仍在后台渲染，不打断应用。 */
     private fun showDesktop(show: Boolean) {
@@ -1425,17 +1482,17 @@ open class TawcCompositorActivity : Activity() {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
             window.isNavigationBarContrastEnforced = false
         }
-        // 导航栏强制深色外观：合成器是始终黑底的沉浸界面，Android 15+ 已忽略
-        // navigationBarColor，浅色主题下若设成 lightBars=true，系统会给导航栏加
-        // 白色 scrim，IME 弹出时底部就出现小白条。强制 false（深色）让底栏随
-        // 键盘深色沉浸，无白条。状态栏本就隐藏，保留主题相关即可。
+        // 导航栏胶囊外观：合成器底部始终黑色，IME 弹出时系统强制显示手势导航条
+        // （应用层 hide() 被忽略，已实测确认），因此把胶囊设成「浅色模式」= 深色胶囊，
+        // 融入黑底不可见。旧代码设 false（深色模式=白色胶囊），键盘弹出时正好是那条
+        // 小白条。isAppearanceLightStatusBars 仍随主题（状态栏隐藏，仅影响边缘光晕）。
         val mode = com.codetool.app.theme.ThemeManager.currentMode(this)
         val dark = mode == com.codetool.app.theme.ThemeManager.Mode.DARK ||
             (mode == com.codetool.app.theme.ThemeManager.Mode.SYSTEM &&
                 com.codetool.app.theme.ThemeManager.isSystemDark(this))
         WindowInsetsControllerCompat(window, window.decorView).apply {
             isAppearanceLightStatusBars = !dark
-            isAppearanceLightNavigationBars = false
+            isAppearanceLightNavigationBars = true
         }
         // 全屏铺到刘海区；停靠时也铺满（顶部本来就不留边）
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
@@ -1540,6 +1597,11 @@ open class TawcCompositorActivity : Activity() {
                 this, TAG,
                 "showKeyboard host=$activityId focus=${sv.isFocused} hasWindow=${sv.hasWindowFocus()}"
             )
+            // 键盘即将弹出：不等 insets 监听，直接按动画窗口预埋导航栏补杀
+            // （insets 派发在部分 ROM 上滞后/不触发，双保险）。
+            NAV_HIDE_RETRY_DELAYS.forEach { d ->
+                root.postDelayed({ if (imeCurrentlyVisible) forceHideNavBar() }, d)
+            }
         }
     }
 
@@ -2477,19 +2539,83 @@ open class TawcCompositorActivity : Activity() {
         showCursorAtCenter()
     }
 
+    override fun onResume() {
+        super.onResume()
+        // 从通知 / 最近任务回到页面时，收起后台入口。
+        cancelBackgroundNotification()
+    }
+
     override fun onBackPressed() {
         if (shortcutVisible) {
             toggleShortcutBar()
             return
         }
-        // 返回键先关当前标签（关掉对应 Linux 窗口），没有标签时退出桌面。
+        // 返回键先关当前标签（关掉对应 Linux 窗口），没有标签时最小化到后台
+        // （回 App 首页，合成器不销毁继续跑），不再是 finish() 退出到桌面。
         val host = selectedId
         if (host != null) {
             onWindowFinished(host)
             return
         }
-        finish()
+        minimizeToBackground()
     }
+
+    // ------------------------------------------------------------------
+    // 后台最小化 + 返回入口
+    // ------------------------------------------------------------------
+
+    /**
+     * 最小化到后台，回到终端；合成器和 BrowserBridge 不销毁，MCP 仍可继续操作浏览器。
+     *
+     * 不再使用浮在其他应用上方的悬浮球（需要「显示在其他应用上层」权限，且用户
+     * 反馈只想在 App 内使用）：返回入口统一为
+     * ① 后台运行通知（点一下回到 GUI）；② 终端页「显示」菜单；③ 最近任务。
+     * 后台存活靠终端前台服务 + WakeLock + nativeSetCompositorHold(true)，
+     * 与是否显示悬浮球无关 —— 所以去掉悬浮球不影响锁屏后台运行。
+     */
+    private fun minimizeToBackground() {
+        showBackgroundNotification()
+        toast("GUI 已最小化，后台继续运行；可从通知或终端页「显示」返回")
+        moveTaskToBack(true)
+    }
+
+    private fun showBackgroundNotification() {
+        if (!canPostNotifications()) {
+            toast("GUI 已在后台运行；未开启通知权限，可从最近任务返回")
+            return
+        }
+        val pi = PendingIntent.getActivity(
+            this,
+            NOTIF_BACKGROUND,
+            Intent(this, TawcCompositorActivity::class.java).apply {
+                addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_REORDER_TO_FRONT or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP
+                )
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val n = NotificationCompat.Builder(this, CodeToolApp.CHANNEL_GUI)
+            .setSmallIcon(R.drawable.ic_monitor)
+            .setContentTitle("GUI 合成器在后台运行")
+            .setContentText("点此回到桌面；MCP 浏览器仍可继续工作")
+            .setPriority(NotificationCompat.PRIORITY_LOW)
+            .setAutoCancel(true)
+            .setContentIntent(pi)
+            .build()
+        runCatching { NotificationManagerCompat.from(this).notify(NOTIF_BACKGROUND, n) }
+            .onFailure { toast("通知发送失败：${it.message}") }
+    }
+
+    private fun cancelBackgroundNotification() {
+        runCatching { NotificationManagerCompat.from(this).cancel(NOTIF_BACKGROUND) }
+    }
+
+    private fun canPostNotifications(): Boolean =
+        Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU ||
+            checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) ==
+            PackageManager.PERMISSION_GRANTED
 
     // ------------------------------------------------------------------
     // 合成器生命周期
@@ -2555,7 +2681,9 @@ open class TawcCompositorActivity : Activity() {
     }
 
     override fun onDestroy() {
-        BrowserBridge.stop()
+        cancelBackgroundNotification()
+        // 不再 BrowserBridge.stop()：桥由前台服务 BrowserBridgeService 全权拥有，
+        // 合成器 GUI 销毁不影响浏览器后台可用（这正是本次解耦的目的）。
         detachCursorWindow()
         detachStatusWindow()
         if (DesktopApps.outputObserver != null) DesktopApps.outputObserver = null

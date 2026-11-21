@@ -36,6 +36,8 @@ object CrashLogger {
         if (initialized) return
         initialized = true
         context = app.applicationContext
+        // 升级后把已有崩溃日志补到容器共享目录，模型能看到历史崩溃
+        runCatching { File(app.filesDir, "crash").listFiles()?.forEach { mirrorCrash(app, it) } }
         defaultHandler = Thread.getDefaultUncaughtExceptionHandler()
         Thread.setDefaultUncaughtExceptionHandler { thread, throwable ->
             try {
@@ -92,11 +94,26 @@ object CrashLogger {
                 }
             })
             lastCrashFile = file
+            mirrorCrash(ctx, file)
             return file
         } catch (e: Exception) {
             Log.e(TAG, "write crash failed", e)
             return null
         }
+    }
+
+    /** 镜像到容器共享目录：/usr/share/tawc/logs/crash/（容器内模型可直接读）。 */
+    private fun mirrorCrash(ctx: Context, file: File) {
+        runCatching {
+            val dir = File(ctx.dataDir, "share/logs/crash").apply { mkdirs() }
+            file.copyTo(File(dir, file.name), overwrite = true)
+        }
+    }
+
+    /** 清空崩溃日志（日志页「清空」用）：私有目录 + 共享镜像一起清。 */
+    fun clear(ctx: Context) {
+        runCatching { File(ctx.filesDir, "crash").listFiles()?.forEach { it.delete() } }
+        runCatching { File(ctx.dataDir, "share/logs/crash").listFiles()?.forEach { it.delete() } }
     }
 
     /** 最近一次崩溃的文本内容（供 UI 读取）。

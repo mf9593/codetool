@@ -89,12 +89,14 @@
         <activity
             android:name=".ConfigEditorActivity"
             android:exported="false"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
         <!-- Skill 编辑器（全屏页：大空间编辑 Markdown 正文，比弹窗好编辑） -->
         <activity
             android:name=".SkillEditorActivity"
             android:exported="false"
+            android:windowSoftInputMode="adjustResize"
             android:configChanges="orientation|screenSize|keyboardHidden|screenLayout|density|uiMode" />
 
         <!-- 解除子进程限制（全屏引导页：检测 phantom process 状态 + 解除方式引导） -->
@@ -151,6 +153,13 @@
              防止锁屏中断留下坏归档/半恢复的 rootfs -->
         <service
             android:name=".runtime.RootfsBackupService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
+        <!-- 浏览器桥前台服务：常驻承载容器内→app 的浏览器桥，让模型/CLI 调浏览器
+             不依赖 GUI 合成器（无头 Chrome 后台跑 + CDP 9222）。App 启动即拉起。 -->
+        <service
+            android:name=".gui.BrowserBridgeService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 

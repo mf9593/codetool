@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 编辑器底部搜索条背景：纯平通栏、无圆角、无阴影。
+     填充跟随主题 colorSurface（浅色模式浅色、深色模式深色，绝不纯黑）。
+     只靠布局内顶部 1dp 细分隔线与上方编辑区分隔——读作页面工具栏，不是悬浮卡片。 -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="rectangle">
+    <solid android:color="?attr/colorSurface" />
+    <!-- 无 corners：四角直角，通栏贴底不与屏幕边冲突 -->
+</shape>

@@ -1,59 +1,78 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Skill 编辑器（全屏页）：大空间编辑 Markdown 正文，比弹窗好编辑。 -->
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- Skill 编辑器（全屏页）：大空间编辑 Markdown 正文，比弹窗好编辑。
+     根容器 FrameLayout：编辑区（竖 LinearLayout）撑满全屏，搜索条 layout_gravity="bottom"
+     悬浮在底部（盖在编辑器上方），显示时不挤占编辑区空间。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
     android:background="?android:attr/colorBackground">
 
-    <com.google.android.material.appbar.MaterialToolbar
-        android:id="@+id/skillToolbar"
+    <!-- 编辑区：toolbar + 名称/description 输入 + 编辑器，撑满全屏 -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="?attr/actionBarSize"
-        android:background="?attr/colorSurface"
-        app:title="编辑 Skill"
-        app:titleTextColor="?attr/colorOnSurface"
-        app:menu="@menu/menu_skill_editor" />
+        android:layout_height="match_parent"
+        android:orientation="vertical">
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="4dp"
-        android:hint="名称（小写字母/数字/连字符，= 目录名）">
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etSkillName"
+        <com.google.android.material.appbar.MaterialToolbar
+            android:id="@+id/skillToolbar"
+            android:layout_width="match_parent"
+            android:layout_height="?attr/actionBarSize"
+            android:background="?attr/colorSurface"
+            app:title="编辑 Skill"
+            app:titleTextAppearance="@style/TextAppearance.Material3.TitleMedium"
+            app:titleTextColor="?attr/colorOnSurface"
+            app:menu="@menu/menu_skill_editor" />
+
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:gravity="center_vertical"
-            android:inputType="text" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="4dp"
+            android:hint="名称（小写字母/数字/连字符，= 目录名）">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etSkillName"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:gravity="center_vertical"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-    <com.google.android.material.textfield.TextInputLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:paddingStart="16dp"
-        android:paddingEnd="16dp"
-        android:paddingTop="4dp"
-        android:hint="description（1-1024 字，写清楚何时该用）">
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/etSkillDesc"
+        <com.google.android.material.textfield.TextInputLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:gravity="center_vertical"
-            android:inputType="text" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:paddingStart="16dp"
+            android:paddingEnd="16dp"
+            android:paddingTop="4dp"
+            android:hint="description（1-1024 字，写清楚何时该用）">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etSkillDesc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:gravity="center_vertical"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-    <!-- sora-editor 代码编辑器：与配置/脚本编辑器同一库，Markdown 正文行号+高亮，大文件流畅。 -->
-    <io.github.rosemoe.sora.widget.CodeEditor
-        android:id="@+id/etSkillBody"
+        <!-- sora-editor 代码编辑器：与配置/脚本编辑器同一库，Markdown 正文行号+高亮，大文件流畅。
+             撑满剩余空间（搜索条悬浮其上不占位）。 -->
+        <io.github.rosemoe.sora.widget.CodeEditor
+            android:id="@+id/etSkillBody"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="8dp"
+            android:background="?android:attr/colorBackground" />
+    </LinearLayout>
+
+    <!-- 内联搜索条：底部悬浮（layout_gravity=bottom），默认 gone，点标题栏搜索按钮显示。
+         盖在编辑器上方、不挤占编辑区空间；内部自带关闭按钮（收在边框内）。
+         include 不能加 android:id（会覆盖根节点 searchBar id → findViewById null 崩溃）。 -->
+    <include
+        layout="@layout/view_editor_search"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp"
-        android:background="?android:attr/colorBackground" />
-</LinearLayout>
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom" />
+</FrameLayout>

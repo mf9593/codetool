@@ -3,6 +3,7 @@
 build/
 .kotlin/
 local.properties
+local.properties.bak
 captures/
 
 # IDE

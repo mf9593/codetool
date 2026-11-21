@@ -51,6 +51,21 @@
             android:spinnerMode="dropdown" />
 
         <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/tilMcpDesc"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="说明（可选，列表里展示的简介）">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etMcpDesc"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:gravity="center_vertical"
+                android:inputType="text" />
+        </com.google.android.material.textfield.TextInputLayout>
+
+        <com.google.android.material.textfield.TextInputLayout
             android:id="@+id/tilMcpCommand"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -81,14 +96,15 @@
                 android:inputType="textUri" />
         </com.google.android.material.textfield.TextInputLayout>
 
-        <androidx.appcompat.widget.SwitchCompat
+        <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/swMcpEnabled"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:layout_marginTop="12dp"
+            android:minHeight="56dp"
+            android:layout_marginTop="8dp"
             android:checked="true"
-            android:text="启用（写入 enabled）" />
+            android:text="启用（写入 enabled）"
+            android:textAppearance="?attr/textAppearanceBodyMedium" />
 
     </LinearLayout>
 </ScrollView>

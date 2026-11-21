@@ -1,57 +1,176 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<!-- 脚本编辑器（全屏页）。根容器 FrameLayout：编辑区（竖 LinearLayout）撑满全屏，
+     搜索条 layout_gravity="bottom" 悬浮在底部（盖在编辑器上方），显示时不挤占编辑区空间。 -->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:fitsSystemWindows="false"
     android:background="?android:attr/colorBackground">
 
-    <!-- 标题栏：AppBarLayout fitsSystemWindows 自动消费状态栏 inset，
-         背景延伸到状态栏，toolbar 高度不被压缩 -->
-    <com.google.android.material.appbar.AppBarLayout
+    <!-- 编辑区：标题栏 + 操作行 + 新建名输入 + 编辑器，撑满全屏 -->
+    <LinearLayout
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:background="?attr/colorSurface"
-        android:fitsSystemWindows="true"
-        app:elevation="0dp">
+        android:layout_height="match_parent"
+        android:orientation="vertical"
+        android:fitsSystemWindows="false">
 
-        <com.google.android.material.appbar.MaterialToolbar
-            android:id="@+id/editToolbar"
+        <!-- 标题栏：AppBarLayout fitsSystemWindows 自动消费状态栏 inset，
+             背景延伸到状态栏，toolbar 高度不被压缩 -->
+        <com.google.android.material.appbar.AppBarLayout
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:background="?attr/colorSurface"
-            app:navigationIcon="@drawable/ic_up"
-            app:title="编辑脚本"
-            app:titleTextColor="?attr/colorOnSurface" />
-    </com.google.android.material.appbar.AppBarLayout>
+            android:fitsSystemWindows="true"
+            app:elevation="0dp">
 
-    <!-- 新建模式：脚本名输入（编辑模式隐藏） -->
-    <com.google.android.material.textfield.TextInputLayout
-        android:id="@+id/nameLayout"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginHorizontal="16dp"
-        android:layout_marginTop="12dp"
-        android:hint="脚本文件名（如 my-script.sh）"
-        android:visibility="gone"
-        app:boxStrokeColor="?attr/colorPrimary">
-        <com.google.android.material.textfield.TextInputEditText
-            android:id="@+id/nameInput"
+            <com.google.android.material.appbar.MaterialToolbar
+                android:id="@+id/editToolbar"
+                android:layout_width="match_parent"
+                android:layout_height="?attr/actionBarSize"
+                android:background="?attr/colorSurface"
+                app:navigationIcon="@drawable/ic_up"
+                app:title="编辑脚本"
+                app:titleTextAppearance="@style/TextAppearance.Material3.TitleMedium"
+                app:titleTextColor="?attr/colorOnSurface" />
+
+            <!-- 操作行：纯图标按钮（无文字），主操作「保存」靠右；紧凑高度不挤压编辑区。
+                 三个按钮同高、间距 ≥12dp（左侧次操作、右侧主操作）。
+                 marginTop 负值把按钮行往标题拉近，减小标题与按钮的间距。 -->
+            <LinearLayout
+                android:id="@+id/editActions"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="center_vertical"
+                android:layout_marginTop="-8dp"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingBottom="0dp">
+
+                <!-- 撤销/重做：sora CodeEditor 原生 undo()/redo()，放操作行最左 -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEditUndo"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:contentDescription="撤销"
+                    app:icon="@drawable/ic_undo"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="18dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEditRedo"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:contentDescription="重做"
+                    app:icon="@drawable/ic_redo"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="18dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEditCopyAll"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:contentDescription="复制全部"
+                    app:icon="@drawable/ic_copy"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="18dp" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEditWrap"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:checkable="true"
+                    android:contentDescription="自动换行"
+                    app:icon="@drawable/ic_wrap"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="18dp" />
+
+                <!-- 搜索：点开底部悬浮搜索条（非弹窗），输入即搜编辑内容 -->
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEditSearch"
+                    style="?attr/materialButtonOutlinedStyle"
+                    android:layout_width="40dp"
+                    android:layout_height="40dp"
+                    android:layout_marginEnd="8dp"
+                    android:gravity="center"
+                    android:contentDescription="搜索"
+                    app:icon="@drawable/ic_search"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="18dp" />
+
+                <Space
+                    android:layout_width="0dp"
+                    android:layout_height="0dp"
+                    android:layout_weight="1" />
+
+                <com.google.android.material.button.MaterialButton
+                    android:id="@+id/btnEditSave"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:minHeight="32dp"
+                    android:minWidth="32dp"
+                    android:contentDescription="保存"
+                    app:icon="@drawable/ic_check"
+                    app:iconGravity="textStart"
+                    app:iconPadding="0dp"
+                    app:iconSize="18dp" />
+            </LinearLayout>
+        </com.google.android.material.appbar.AppBarLayout>
+
+        <!-- 新建模式：脚本名输入（编辑模式隐藏） -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:id="@+id/nameLayout"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:fontFamily="monospace"
-            android:inputType="textNoSuggestions" />
-    </com.google.android.material.textfield.TextInputLayout>
+            android:layout_marginHorizontal="16dp"
+            android:layout_marginTop="12dp"
+            android:hint="脚本文件名（如 my-script.sh）"
+            android:visibility="gone"
+            app:boxStrokeColor="?attr/colorPrimary">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/nameInput"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="monospace"
+                android:inputType="textNoSuggestions" />
+        </com.google.android.material.textfield.TextInputLayout>
 
-    <!-- sora-editor 代码编辑器：内置行号、语法高亮、大文件流畅。
-         行号跟随、滚动同步由库负责，不再手搓 LineNumberEditText。 -->
-    <io.github.rosemoe.sora.widget.CodeEditor
-        android:id="@+id/scriptEditor"
+        <!-- sora-editor 代码编辑器：内置行号、语法高亮、大文件流畅。
+             行号跟随、滚动同步由库负责，不再手搓 LineNumberEditText。撑满剩余空间
+             （搜索条悬浮其上、不占位）。 -->
+        <io.github.rosemoe.sora.widget.CodeEditor
+            android:id="@+id/scriptEditor"
+            android:layout_width="match_parent"
+            android:layout_height="0dp"
+            android:layout_weight="1"
+            android:layout_marginTop="8dp"
+            android:background="?android:attr/colorBackground" />
+    </LinearLayout>
+
+    <!-- 内联搜索条：底部悬浮（layout_gravity=bottom），默认 gone，点操作行搜索按钮显示。
+         盖在编辑器上方、不挤占编辑区空间；内部自带关闭按钮（收在边框内）。
+         注意：include 不能加 android:id，否则会覆盖 view_editor_search 根节点的 searchBar id，
+         导致 findViewById(R.id.searchBar) 返回 null 崩溃（子 view 的 id 不受影响，仍能找到）。 -->
+    <include
+        layout="@layout/view_editor_search"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1"
-        android:layout_marginTop="8dp"
-        android:background="?android:attr/colorBackground" />
-
-</LinearLayout>
+        android:layout_height="wrap_content"
+        android:layout_gravity="bottom" />
+</FrameLayout>

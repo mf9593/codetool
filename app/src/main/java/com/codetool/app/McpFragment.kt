@@ -10,7 +10,6 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.Spinner
 import android.widget.Toast
-import androidx.appcompat.widget.SwitchCompat
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.codetool.app.ai.McpManager
@@ -18,6 +17,7 @@ import com.google.android.material.button.MaterialButton
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import com.google.android.material.textfield.TextInputEditText
+import com.google.android.material.materialswitch.MaterialSwitch
 import com.google.android.material.textfield.TextInputLayout
 import com.google.android.material.textview.MaterialTextView
 
@@ -105,9 +105,9 @@ class McpFragment : Fragment() {
         val tv = view?.findViewById<MaterialTextView>(R.id.mcpBrowserStatus) ?: return
         val installed = com.codetool.app.gui.DesktopApps.browserInstalled(requireContext())
         tv.text = if (installed) {
-            "内置浏览器：已安装（Chrome）— MCP 的 browser_open / browser_eval 可直接调用"
+            "内置浏览器：已安装（Chrome）— 打开 GUI 合成器后 browser_open / browser_eval 可用"
         } else {
-            "内置浏览器：未安装 — browser_open 会失败。请先到「工具 → 包管理」点「安装浏览器（Chrome / Firefox）」"
+            "内置浏览器：未安装 — browser_open 会失败。请先到「工具 → 包管理」点「安装 Chrome」（Firefox 不支持 browser_* MCP）"
         }
         tv.setTextColor(
             com.google.android.material.color.MaterialColors.getColor(
@@ -129,7 +129,7 @@ class McpFragment : Fragment() {
         list.removeAllViews()
         if (items.isEmpty()) {
             list.addView(MaterialTextView(ctx).apply {
-                text = "暂无 MCP 服务。\n点「恢复内置」注册内置浏览器服务，或「新增服务」。"
+                text = "暂无 MCP 服务。\n点「恢复内置」注册内置服务（浏览器 / Android 自动化），或「新增服务」。"
                 textSize = 13f
                 gravity = android.view.Gravity.CENTER
                 setPadding(dp(16), dp(32), dp(16), dp(32))
@@ -145,12 +145,13 @@ class McpFragment : Fragment() {
             val badgeType = row.findViewById<MaterialTextView>(R.id.mcpBadgeType)
             val badgeState = row.findViewById<MaterialTextView>(R.id.mcpBadgeState)
             val meta = row.findViewById<MaterialTextView>(R.id.mcpMeta)
+            val desc = row.findViewById<MaterialTextView>(R.id.mcpDesc)
             val sources = row.findViewById<MaterialTextView>(R.id.mcpSources)
             val commandRow = row.findViewById<View>(R.id.mcpCommandRow)
             val urlRow = row.findViewById<View>(R.id.mcpUrlRow)
             val command = row.findViewById<MaterialTextView>(R.id.mcpCommand)
             val url = row.findViewById<MaterialTextView>(R.id.mcpUrl)
-            val sw = row.findViewById<SwitchCompat>(R.id.mcpEnabled)
+            val sw = row.findViewById<MaterialSwitch>(R.id.mcpEnabled)
 
             name.text = s.name
             applyBadge(ctx, badgeType, if (s.builtin) "内置" else null, active = true)
@@ -159,6 +160,10 @@ class McpFragment : Fragment() {
                 s.isRemote -> "远程服务 · HTTP / SSE"
                 s.command.firstOrNull()?.contains("python") == true -> "本地进程 · stdio · Python"
                 else -> "本地进程 · stdio"
+            }
+            desc.text = s.description.ifBlank {
+                if (s.isRemote) "自定义远程 MCP 服务（HTTP / SSE），由外部服务提供工具。"
+                else "自定义本地 MCP 服务（stdio），由命令行进程提供工具。"
             }
             sources.text = s.sources.joinToString(" · ").ifEmpty { "未识别" }
 
@@ -216,17 +221,19 @@ class McpFragment : Fragment() {
         val v = layoutInflater.inflate(R.layout.dialog_mcp, null)
         val etName = v.findViewById<TextInputEditText>(R.id.etMcpName)
         val spType = v.findViewById<Spinner>(R.id.spMcpType)
+        val etDesc = v.findViewById<TextInputEditText>(R.id.etMcpDesc)
         val tilCommand = v.findViewById<TextInputLayout>(R.id.tilMcpCommand)
         val etCommand = v.findViewById<TextInputEditText>(R.id.etMcpCommand)
         val tilUrl = v.findViewById<TextInputLayout>(R.id.tilMcpUrl)
         val etUrl = v.findViewById<TextInputEditText>(R.id.etMcpUrl)
-        val swEnabled = v.findViewById<SwitchCompat>(R.id.swMcpEnabled)
+        val swEnabled = v.findViewById<MaterialSwitch>(R.id.swMcpEnabled)
 
         existing?.let {
             etName.setText(it.name)
             etName.isEnabled = false
             etCommand.setText(it.command.joinToString(" "))
             etUrl.setText(it.url)
+            etDesc.setText(it.description)
             spType.setSelection(if (it.isRemote) 1 else 0)
             swEnabled.isChecked = it.enabled
         }
@@ -252,6 +259,7 @@ class McpFragment : Fragment() {
                     command = etCommand.text?.toString()?.trim().orEmpty()
                         .split(Regex("\\s+")).filter { it.isNotEmpty() },
                     url = etUrl.text?.toString()?.trim().orEmpty(),
+                    description = etDesc.text?.toString()?.trim().orEmpty(),
                     enabled = swEnabled.isChecked,
                     builtin = existing?.builtin ?: false,
                 )

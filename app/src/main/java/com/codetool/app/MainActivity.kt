@@ -31,6 +31,7 @@ import com.codetool.app.theme.ThemeManager
 import com.codetool.app.util.AppSettings
 import com.google.android.material.bottomnavigation.BottomNavigationView
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.codetool.app.ai.AptMirror
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.tabs.TabLayoutMediator
 
@@ -59,6 +60,10 @@ class MainActivity : AppCompatActivity() {
     private val MENU_CLEAR = 700
     private val MENU_SEARCH = 650
     private val MENU_ABOUT = 750
+    private val MENU_FILE_SETTINGS = 800
+    private val MENU_LOG_SETTINGS = 810
+    /** 合成器运行中（顶栏图标，仅运行时显示，点击回合成器）。 */
+    private val MENU_COMPOSITOR_RUNNING = 820
 
     /** 首次启动用户协议页的请求码。 */
     private val REQUEST_AGREEMENT = 900
@@ -67,6 +72,12 @@ class MainActivity : AppCompatActivity() {
 
     /** 当前页位置（用于键盘切换按钮的显隐）。 */
     private var currentPage = 0
+
+    companion object {
+        /** 上次所在首页 tab 页码（内存变量，进程存活期间有效）。
+         *  返回桌面通知栏还在=进程没死=恢复到该页；完全退出/杀进程=归零=回首页。 */
+        private var lastPage = 0
+    }
 
     /** 模型定时切换：前台边界自检 + 防误触重启提示弹窗。 */
     private val scheduleHandler = android.os.Handler(android.os.Looper.getMainLooper())
@@ -140,6 +151,9 @@ class MainActivity : AppCompatActivity() {
                 currentPage = position
                 bottomNav.menu.getItem(position).isChecked = true
                 supportActionBar?.title = titles[position]
+                // 记录当前页到内存变量：仅进程存活期间有效
+                // （返回桌面通知栏还在=进程没死=恢复；完全退出/杀进程=变量归零=回首页）
+                lastPage = position
                 // 键盘切换按钮仅终端页显示
                 invalidateOptionsMenu()
                 // 首页等非终端页收起输入法：offscreenPageLimit=全部会预创建 TerminalFragment，
@@ -149,8 +163,10 @@ class MainActivity : AppCompatActivity() {
         })
 
         if (savedInstanceState == null) {
-            viewPager.currentItem = 0
-            supportActionBar?.title = titles[0]
+            // 冷启动：恢复到上次所在页面（仅进程存活期间有效，完全退出后 lastPage 归零回首页）
+            val last = lastPage.coerceIn(0, fragments.size - 1)
+            viewPager.currentItem = last
+            supportActionBar?.title = titles[last]
         }
 
         // 首次启动强制用户协议：未同意当前版本 → 进全屏协议页（勾选 + 下一步）。
@@ -237,6 +253,17 @@ class MainActivity : AppCompatActivity() {
             showModelRestartPrompt(it)
         }
         scheduleNextModelTick()
+        // 合成器运行中悬浮按钮：回到首页时刷新（最小化后仍运行 → 显示；销毁 → 隐藏）。
+        updateCompositorFab()
+    }
+
+    /**
+     * 首页「合成器运行中」顶栏图标：合成器实例存活（前台或后台最小化未销毁）即显示，
+     * 点击回合成器。instance 在 onCreate 赋值、onDestroy 置空，可靠反映运行态。
+     * 刷新菜单以更新该图标的可见性。
+     */
+    private fun updateCompositorFab() {
+        invalidateOptionsMenu()
     }
 
     override fun onPause() {
@@ -377,6 +404,19 @@ class MainActivity : AppCompatActivity() {
         disp.icon?.mutate()?.setTint(iconColor)
         disp.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         disp.isVisible = (currentPage == 1)
+        // 合成器运行中：顶栏图标（仅首页且合成器运行时显示，点击回合成器）
+        val compRun = menu.add(0, MENU_COMPOSITOR_RUNNING, 4, "合成器运行中")
+        compRun.setIcon(R.drawable.ic_monitor)
+        compRun.icon?.mutate()?.setTint(iconColor)
+        compRun.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        compRun.isVisible =
+            currentPage == 0 && com.codetool.app.gui.TawcCompositorActivity.instance != null
+        // 文件页：文件管理设置（显示隐藏文件开关）——仅文件页显示
+        val fileCfg = menu.add(0, MENU_FILE_SETTINGS, 1, "文件设置")
+        fileCfg.setIcon(R.drawable.ic_settings)
+        fileCfg.icon?.mutate()?.setTint(iconColor)
+        fileCfg.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        fileCfg.isVisible = currentPage == 3
         // 日志页：复制 / 清空移到标题栏（仅日志页可见）
         val search = menu.add(0, MENU_SEARCH, 3, "搜索")
         search.setIcon(R.drawable.ic_search)
@@ -393,6 +433,12 @@ class MainActivity : AppCompatActivity() {
         clear.icon?.mutate()?.setTint(iconColor)
         clear.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         clear.isVisible = currentPage == 4
+        // 日志页：日志设置（自动刷新开关）——从终端设置里挪过来
+        val logCfg = menu.add(0, MENU_LOG_SETTINGS, 2, "日志设置")
+        logCfg.setIcon(R.drawable.ic_settings)
+        logCfg.icon?.mutate()?.setTint(iconColor)
+        logCfg.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        logCfg.isVisible = currentPage == 4
         return true
     }
 
@@ -421,11 +467,16 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         if (item.itemId == MENU_SETTINGS) {
-            showFontSizeDialog()
+            showTerminalSettingsSheet()
             return true
         }
         if (item.itemId == MENU_KEYBOARD) {
             TerminalFragment.instance?.toggleShortcutRow()
+            return true
+        }
+        if (item.itemId == MENU_COMPOSITOR_RUNNING) {
+            // 顶栏「合成器运行中」：点击回合成器（singleTask 会把后台实例带回前台）。
+            startActivity(Intent(this, com.codetool.app.gui.TawcCompositorActivity::class.java))
             return true
         }
         if (item.itemId == MENU_DISPLAY) {
@@ -433,7 +484,125 @@ class MainActivity : AppCompatActivity() {
             startActivity(Intent(this, com.codetool.app.gui.TawcCompositorActivity::class.java))
             return true
         }
+        if (item.itemId == MENU_FILE_SETTINGS) {
+            showFileSettingsSheet()
+            return true
+        }
+        if (item.itemId == MENU_LOG_SETTINGS) {
+            showLogSettingsSheet()
+            return true
+        }
         return super.onOptionsItemSelected(item)
+    }
+
+    /** 底部弹窗统一标题。 */
+    private fun sheetTitle(container: android.widget.LinearLayout, text: String) {
+        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        container.addView(android.widget.TextView(this).apply {
+            this.text = text
+            textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, dp(14))
+        })
+    }
+
+    /** 底部弹窗里的小字说明（颜色跟随主题）。 */
+    private fun sheetHint(container: android.widget.LinearLayout, text: String) {
+        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        container.addView(android.widget.TextView(this).apply {
+            this.text = text
+            textSize = 12f
+            setTextColor(MaterialColors.getColor(container,
+                com.google.android.material.R.attr.colorOnSurfaceVariant))
+            setPadding(0, dp(2), 0, 0)
+        })
+    }
+
+    /** 底部弹窗里的「左侧标题 + 右侧开关」行，改动即时回调。 */
+    private fun addSwitchRow(
+        container: android.widget.LinearLayout,
+        label: String,
+        checked: Boolean,
+        onChange: (Boolean) -> Unit,
+    ) {
+        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        val row = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+        }
+        row.addView(android.widget.TextView(this).apply {
+            text = label
+            textSize = 15f
+            setPadding(0, dp(6), 0, dp(6))
+        }, android.widget.LinearLayout.LayoutParams(
+            0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        val sw = com.google.android.material.materialswitch.MaterialSwitch(this).apply {
+            isChecked = checked
+        }
+        sw.setOnCheckedChangeListener { _, value -> onChange(value) }
+        row.addView(sw)
+        container.addView(row)
+    }
+
+    /** 底部弹窗里的「刷新间隔」：Material 滑动条（1~10 秒），改动即存并通知日志页。 */
+    private fun addRefreshIntervalRow(container: android.widget.LinearLayout) {
+        val current = AppSettings.logRefreshIntervalMs(this)
+        val v = layoutInflater.inflate(R.layout.widget_log_refresh_slider, container, false)
+        val value = v.findViewById<android.widget.TextView>(R.id.tvLogRefreshValue)
+        val slider = v.findViewById<com.google.android.material.slider.Slider>(R.id.slLogRefresh)
+        slider.value = (current / 1000).toFloat()
+        value.text = "${current / 1000} 秒"
+        slider.addOnChangeListener { _, newValue, _ ->
+            val sec = newValue.toInt()
+            val ms = sec * 1000
+            value.text = "$sec 秒"
+            AppSettings.setLogRefreshIntervalMs(this@MainActivity, ms)
+            supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()
+                ?.setRefreshInterval(ms)
+        }
+        container.addView(v)
+    }
+
+    /** 文件页「文件设置」底部弹窗：显示隐藏文件开关（改动即时生效，状态持久化）。 */
+    private fun showFileSettingsSheet() {
+        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        val files = supportFragmentManager.fragments
+            .filterIsInstance<FilesFragment>().firstOrNull()
+        val sheet = BottomSheetDialog(this)
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(28), dp(16), dp(28), dp(32))
+        }
+        sheetTitle(container, "文件设置")
+        addSwitchRow(container, "显示隐藏文件",
+            files?.isShowHidden() ?: AppSettings.fileShowHidden(this)
+        ) { enabled ->
+            AppSettings.setFileShowHidden(this, enabled)
+            files?.setShowHidden(enabled)
+        }
+        sheetHint(container, "以 . 开头的文件（如 .bashrc、.config、.local）默认不显示")
+        sheet.setContentView(container)
+        sheet.show()
+    }
+
+    /** 日志页「日志设置」底部弹窗：自动滚动开关（终端式，跟随最新日志）。 */
+    private fun showLogSettingsSheet() {
+        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        val sheet = BottomSheetDialog(this)
+        val container = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(28), dp(16), dp(28), dp(32))
+        }
+        sheetTitle(container, "日志设置")
+        addSwitchRow(container, "自动滚动", AppSettings.logAutoRefresh(this)) { enabled ->
+            AppSettings.setLogAutoRefresh(this, enabled)
+            supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()
+                ?.setAutoRefresh(enabled)
+        }
+        addRefreshIntervalRow(container)
+        sheetHint(container, "开启自动滚动后按选定的间隔（1~10 秒）自动刷新并滚动到最新日志（终端式）")
+        sheet.setContentView(container)
+        sheet.show()
     }
 
     /** 主题选择底部弹窗：模式（浅色/深色/跟随系统按钮切换）+ 8 色网格 + 随机。 */
@@ -819,14 +988,15 @@ class MainActivity : AppCompatActivity() {
         }
     }
 
-    /** 设置底部弹窗：终端字体大小 + 日志自动刷新开关。 */
-    private fun showFontSizeDialog() {
+    /** 终端设置底部弹窗：字体大小 + 容器挂载目录（日志设置已挪到日志页）。 */
+    private fun showTerminalSettingsSheet() {
         val dialog = BottomSheetDialog(this)
         val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
         val container = android.widget.LinearLayout(this).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding(dp(28), dp(16), dp(28), dp(32))
         }
+        sheetTitle(container, "终端设置")
         val valueText = android.widget.TextView(this).apply {
             text = "${AppSettings.fontSize(this@MainActivity)}dp"
             textSize = 28f
@@ -861,35 +1031,6 @@ class MainActivity : AppCompatActivity() {
             AppSettings.setFontSize(this, size)
             TerminalFragment.instance?.updateFontSize(size)
         }
-
-        // ---- 日志自动刷新开关 ----
-        container.addView(android.widget.TextView(this).apply {
-            text = "日志页"
-            textSize = 16f
-            setPadding(0, dp(12), 0, dp(4))
-        })
-        val switchRow = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(0, 0, 0, dp(4))
-        }
-        val switchLabel = android.widget.TextView(this).apply {
-            text = "日志自动刷新"
-            textSize = 15f
-            setPadding(0, dp(6), 0, dp(6))
-        }
-        switchRow.addView(switchLabel, android.widget.LinearLayout.LayoutParams(0,
-            android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
-        val autoRefreshSwitch = com.google.android.material.materialswitch.MaterialSwitch(this).apply {
-            isChecked = AppSettings.logAutoRefresh(this@MainActivity)
-        }
-        autoRefreshSwitch.setOnCheckedChangeListener { _, isChecked ->
-            AppSettings.setLogAutoRefresh(this, isChecked)
-            supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()
-                ?.setAutoRefresh(isChecked)
-        }
-        switchRow.addView(autoRefreshSwitch)
-        container.addView(switchRow)
 
         // ---- 容器挂载目录 ----
         container.addView(android.widget.TextView(this).apply {
@@ -930,6 +1071,47 @@ class MainActivity : AppCompatActivity() {
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
         container.addView(mountSpinner)
+
+        // ---- APT 换源（容器下载源镜像，默认清华） ----
+        container.addView(android.widget.TextView(this).apply {
+            text = "APT 换源"
+            textSize = 16f
+            setPadding(0, dp(16), 0, dp(4))
+        })
+        container.addView(android.widget.TextView(this).apply {
+            text = "容器 apt 镜像下载源（默认清华）"
+            textSize = 12f
+            setTextColor(getColor(android.R.color.darker_gray))
+            setPadding(0, 0, 0, dp(6))
+        })
+        val currentMirror = AptMirror.currentId(this)
+        val mirrorSpinner = android.widget.Spinner(this).apply {
+            val adapter = android.widget.ArrayAdapter(
+                this@MainActivity,
+                android.R.layout.simple_spinner_item,
+                AptMirror.ALL.map { it.label }
+            )
+            adapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+            this.adapter = adapter
+            setSelection(AptMirror.ALL.indexOfFirst { it.id == currentMirror }.coerceAtLeast(0))
+        }
+        mirrorSpinner.onItemSelectedListener = object : android.widget.AdapterView.OnItemSelectedListener {
+            override fun onItemSelected(parent: android.widget.AdapterView<*>?, view: android.view.View?,
+                                        position: Int, id: Long) {
+                val mirror = AptMirror.ALL.getOrNull(position) ?: return
+                if (mirror.id == currentMirror) return   // 未变不重复写
+                AppSettings.setAptMirror(this@MainActivity, mirror.id)
+                val ok = AptMirror.apply(this@MainActivity)
+                android.widget.Toast.makeText(
+                    this@MainActivity,
+                    if (ok) "已切换到 ${mirror.label}（下次 apt 生效）"
+                    else "已记录选择 ${mirror.label}，容器未就绪",
+                    android.widget.Toast.LENGTH_SHORT
+                ).show()
+            }
+            override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
+        }
+        container.addView(mirrorSpinner)
 
         dialog.setContentView(container)
         dialog.show()
