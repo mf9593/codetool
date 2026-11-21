@@ -203,6 +203,33 @@
                         android:textColor="?attr/colorOnSurfaceVariant" />
                 </LinearLayout>
 
+                <!-- 平台切换：分平台独立密钥，生成/导入/复制作用于所选平台 -->
+                <com.google.android.material.button.MaterialButtonToggleGroup
+                    android:id="@+id/gitSshPlatformToggle"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="12dp"
+                    app:singleSelection="true"
+                    app:selectionRequired="true">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gitSshPlatformGithub"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="GitHub" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/gitSshPlatformGitee"
+                        style="?attr/materialButtonOutlinedStyle"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:text="Gitee" />
+                </com.google.android.material.button.MaterialButtonToggleGroup>
+
                 <com.google.android.material.textview.MaterialTextView
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
@@ -235,22 +262,37 @@
 
                     <!-- 规范：水平按钮之间 ≥12dp -->
                     <com.google.android.material.button.MaterialButton
-                        android:id="@+id/btnCopySsh"
+                        android:id="@+id/btnImportSsh"
                         style="@style/Widget.Material3.Button.OutlinedButton"
                         android:layout_width="0dp"
                         android:layout_height="wrap_content"
                         android:layout_marginStart="12dp"
                         android:layout_weight="1"
-                        android:text="复制公钥" />
+                        android:text="手动导入" />
                 </LinearLayout>
 
-                <com.google.android.material.button.MaterialButton
-                    android:id="@+id/btnTestSsh"
-                    style="@style/Widget.Material3.Button.OutlinedButton"
+                <LinearLayout
                     android:layout_width="match_parent"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="8dp"
-                    android:text="测试 SSH 连接（GitHub / Gitee）" />
+                    android:orientation="horizontal">
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnCopySsh"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:text="复制公钥" />
+
+                    <com.google.android.material.button.MaterialButton
+                        android:id="@+id/btnTestSsh"
+                        style="@style/Widget.Material3.Button.OutlinedButton"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="12dp"
+                        android:layout_weight="1"
+                        android:text="测试 SSH" />
+                </LinearLayout>
 
                 <com.google.android.material.textview.MaterialTextView
                     android:id="@+id/gitSshResult"

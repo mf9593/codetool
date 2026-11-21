@@ -62,6 +62,7 @@ class MainActivity : AppCompatActivity() {
     private val MENU_ABOUT = 750
     private val MENU_FILE_SETTINGS = 800
     private val MENU_LOG_SETTINGS = 810
+    private val MENU_LOG_FILTER = 815
     /** 合成器运行中（顶栏图标，仅运行时显示，点击回合成器）。 */
     private val MENU_COMPOSITOR_RUNNING = 820
 
@@ -439,6 +440,12 @@ class MainActivity : AppCompatActivity() {
         logCfg.icon?.mutate()?.setTint(iconColor)
         logCfg.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         logCfg.isVisible = currentPage == 4
+        // 日志页：筛选（时间/级别/标签）——底部弹窗
+        val logFilter = menu.add(0, MENU_LOG_FILTER, 6, "筛选")
+        logFilter.setIcon(R.drawable.ic_filter)
+        logFilter.icon?.mutate()?.setTint(iconColor)
+        logFilter.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        logFilter.isVisible = currentPage == 4
         return true
     }
 
@@ -490,6 +497,11 @@ class MainActivity : AppCompatActivity() {
         }
         if (item.itemId == MENU_LOG_SETTINGS) {
             showLogSettingsSheet()
+            return true
+        }
+        if (item.itemId == MENU_LOG_FILTER) {
+            supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()
+                ?.showFilterSheet()
             return true
         }
         return super.onOptionsItemSelected(item)
@@ -659,7 +671,7 @@ class MainActivity : AppCompatActivity() {
             setPadding(0, dp(10), 0, dp(4))
         })
 
-        // ---- 8 色网格（每行 4 个）----
+        // ---- 12 色网格（每行 4 个）：青/琥珀/翠绿/湖蓝/紫罗兰/玫红/橙/蓝灰/青柠/洋红/正红/靛蓝 ----
         val colors = ThemeManager.Color.entries
         for (start in 0 until colors.size step 4) {
             val row = android.widget.LinearLayout(this).apply {
@@ -735,8 +747,8 @@ class MainActivity : AppCompatActivity() {
             this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF44474A.toInt())
         val surfaceContainer = MaterialColors.getColor(
             this, com.google.android.material.R.attr.colorSurfaceContainer, 0xFFE8E8E8.toInt())
-        val surfaceCard = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorSurfaceContainerHigh, surfaceContainer)
+        // 卡片背景用 colorSurfaceContainer（颜色变体都有定义、跟主题走）；别用 colorSurfaceContainerHigh。
+        val surfaceCard = surfaceContainer
         val bg = MaterialColors.getColor(
             this, android.R.attr.colorBackground, 0xFFFAFAFA.toInt())
         val accent = MaterialColors.getColor(

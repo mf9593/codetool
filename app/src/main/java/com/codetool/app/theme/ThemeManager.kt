@@ -64,7 +64,19 @@ object ThemeManager {
             R.color.light_orange_primary, R.color.orange_primary),
         SLATE("slate", "蓝灰",
             R.style.Theme_CodeTool_Light_Slate, R.style.Theme_CodeTool_Dark_Slate,
-            R.color.light_slate_primary, R.color.slate_primary)
+            R.color.light_slate_primary, R.color.slate_primary),
+        LIME("lime", "青柠",
+            R.style.Theme_CodeTool_Light_Lime, R.style.Theme_CodeTool_Dark_Lime,
+            R.color.light_lime_primary, R.color.lime_primary),
+        MAGENTA("magenta", "洋红",
+            R.style.Theme_CodeTool_Light_Magenta, R.style.Theme_CodeTool_Dark_Magenta,
+            R.color.light_magenta_primary, R.color.magenta_primary),
+        RED("red", "正红",
+            R.style.Theme_CodeTool_Light_Red, R.style.Theme_CodeTool_Dark_Red,
+            R.color.light_red_primary, R.color.red_primary),
+        INDIGO("indigo", "靛蓝",
+            R.style.Theme_CodeTool_Light_Indigo, R.style.Theme_CodeTool_Dark_Indigo,
+            R.color.light_indigo_primary, R.color.indigo_primary)
     }
 
     private fun prefs(ctx: Context) = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -83,6 +95,10 @@ object ThemeManager {
         "rose" -> Color.ROSE
         "orange" -> Color.ORANGE
         "slate" -> Color.SLATE
+        "lime" -> Color.LIME
+        "magenta" -> Color.MAGENTA
+        "red" -> Color.RED
+        "indigo" -> Color.INDIGO
         else -> Color.CYAN
     }
 

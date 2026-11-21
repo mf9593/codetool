@@ -77,8 +77,10 @@ class AboutActivity : Activity() {
             this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF44474A.toInt())
         val surfaceContainer = MaterialColors.getColor(
             this, com.google.android.material.R.attr.colorSurfaceContainer, 0xFFE8E8E8.toInt())
-        val surfaceCard = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorSurfaceContainerHigh, surfaceContainer)
+        // 卡片背景用 colorSurfaceContainer（每个颜色变体都定义了、跟主题走）。
+        // 不要用 colorSurfaceContainerHigh：只有基础主题定义了它（固定值），颜色变体没覆盖，
+        // 会导致卡片继承基础主题的固定灰、不跟当前主题色变。
+        val surfaceCard = surfaceContainer
         val bg = MaterialColors.getColor(
             this, android.R.attr.colorBackground, 0xFFFAFAFA.toInt())
         val accent = MaterialColors.getColor(

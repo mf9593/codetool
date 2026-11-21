@@ -228,25 +228,30 @@ object GitConfigManager {
 
     // ---------------- SSH ----------------
 
-    fun sshPrivateKey(ctx: Context) = File(sshDir(ctx), "id_ed25519")
-    fun sshPublicKey(ctx: Context): String? =
-        File(sshDir(ctx), "id_ed25519.pub")
+    /** 各平台 SSH 私钥文件名：github → id_ed25519，gitee → id_ed25519_gitee（分平台独立密钥）。 */
+    private fun keyFileName(platform: String) = if (platform == "gitee") "id_ed25519_gitee" else "id_ed25519"
+
+    fun sshPrivateKey(ctx: Context, platform: String = "github") = File(sshDir(ctx), keyFileName(platform))
+
+    fun sshPublicKey(ctx: Context, platform: String = "github"): String? =
+        File(sshDir(ctx), keyFileName(platform) + ".pub")
             .takeIf { it.exists() }
             ?.let { runCatching { it.readText().trim() }.getOrNull() }
 
-    /** 生成 ed25519 密钥（已存在则直接返回现有公钥）。 */
-    fun generateSshKey(ctx: Context): Result<String> {
+    /** 生成 ed25519 密钥（已存在则直接返回现有公钥）。platform: "github" / "gitee"。 */
+    fun generateSshKey(ctx: Context, platform: String = "github"): Result<String> {
         if (!containerReady(ctx)) return Result.failure(IllegalStateException("容器尚未就绪"))
         val dir = sshDir(ctx).apply { mkdirs() }
         chmod(dir, 0x1C0) // 0700
-        val key = sshPrivateKey(ctx)
+        val key = sshPrivateKey(ctx, platform)
         if (key.exists()) {
-            return Result.success(sshPublicKey(ctx) ?: "密钥已存在")
+            return Result.success(sshPublicKey(ctx, platform) ?: "密钥已存在")
         }
+        val containerPath = "/root/.ssh/${keyFileName(platform)}"
         return runCatching {
             val p = TawcrootRuntime.get(ctx).exec(
-                root(ctx), "/usr/bin/ssh-keygen", "-t", "ed25519", "-N", "", "-C", "codetool",
-                "-f", "/root/.ssh/id_ed25519"
+                root(ctx), "/usr/bin/ssh-keygen", "-t", "ed25519", "-N", "", "-C", "codetool-$platform",
+                "-f", containerPath
             )
             val out = p.inputStream.bufferedReader().use { it.readText() }
             val code = p.waitFor()
@@ -254,42 +259,124 @@ object GitConfigManager {
                 throw IOException("ssh-keygen 失败（exit=$code）：${out.take(300)}")
             }
             chmod(key, 0x180) // 0600
-            File(dir, "id_ed25519.pub").takeIf { it.exists() }?.let { chmod(it, 0x1A4) } // 0644
-            // 预置 known_hosts，模型首次 ssh 时不必交互确认主机指纹
+            File(dir, "${keyFileName(platform)}.pub").takeIf { it.exists() }?.let { chmod(it, 0x1A4) } // 0644
+            writeSshConfig(ctx)
+            ensureKnownHosts(ctx, dir)
+            sshPublicKey(ctx, platform) ?: out.trim()
+        }
+    }
+
+    /** 预置 known_hosts，模型首次 ssh 时不必交互确认主机指纹。
+     *  ★ 后台 fire-and-forget：ssh-keyscan 要联网抓 github/gitee 指纹，网络慢会拖几秒，
+     *    不能阻塞「导入/生成密钥」的主流程（否则弹窗迟迟不消失）。调用方无需等待结果；
+     *    即使 known_hosts 还没写好，ssh 测试也带 StrictHostKeyChecking=accept-new 兜底。 */
+    private fun ensureKnownHosts(ctx: Context, dir: File) {
+        Thread {
             runCatching {
                 val scan = TawcrootRuntime.get(ctx).exec(
                     root(ctx), "/bin/bash", "-lc",
                     "command -v ssh-keyscan >/dev/null 2>&1 && " +
-                        "ssh-keyscan github.com gitee.com 2>/dev/null >> /root/.ssh/known_hosts || true"
+                        // -T 5：每个主机连接最多等 5 秒，避免某主机连不上时 ssh-keyscan 无限等待。
+                        "ssh-keyscan -T 5 github.com gitee.com 2>/dev/null >> /root/.ssh/known_hosts || true"
                 )
                 scan.inputStream.bufferedReader().use { it.readText() }
                 scan.waitFor()
                 File(dir, "known_hosts").takeIf { it.exists() }?.let { chmod(it, 0x1A4) }
             }
-            sshPublicKey(ctx) ?: out.trim()
+        }.start()
+    }
+
+    /** 手动导入已有 SSH 私钥（用户自备密钥，覆盖容器对应平台的私钥）。platform: "github" / "gitee"。 */
+    fun importSshKey(ctx: Context, privateKey: String, publicKey: String, platform: String = "github"): Result<String> {
+        if (!containerReady(ctx)) return Result.failure(IllegalStateException("容器尚未就绪"))
+        val priv = privateKey.trim()
+        if (!priv.startsWith("-----BEGIN") || !priv.contains("PRIVATE KEY-----")) {
+            return Result.failure(
+                IllegalArgumentException("私钥格式不对：应以 -----BEGIN ... PRIVATE KEY----- 开头")
+            )
+        }
+        return runCatching {
+            val dir = sshDir(ctx).apply { mkdirs() }
+            chmod(dir, 0x1C0) // 0700
+            val keyFile = sshPrivateKey(ctx, platform)
+            keyFile.writeText(priv + "\n")
+            chmod(keyFile, 0x180) // 0600
+            // ★ 必须用 ssh-keygen -y 从导入的私钥反推公钥写进 .pub，保证私钥/公钥严格配对。
+            //   不能直接信用户填的 publicKey：若用户只粘私钥、公钥留空或填错，
+            //   残留的旧 .pub 会和私钥不配对——ssh 认证时按 .pub 提供公钥，
+            //   提供了没在平台注册的旧公钥 → Permission denied（私钥本身是对的也没用）。
+            val derivedPub = derivePublicKey(ctx, platform) ?: publicKey.trim()
+            if (derivedPub.isNotEmpty()) {
+                val pubFile = File(dir, "${keyFileName(platform)}.pub")
+                pubFile.writeText(derivedPub.trim() + "\n")
+                chmod(pubFile, 0x1A4) // 0644
+            }
+            writeSshConfig(ctx)
+            ensureKnownHosts(ctx, dir)
+            sshPublicKey(ctx, platform) ?: "导入成功（未提供公钥，仅写入私钥）"
         }
     }
 
-    /** 用当前密钥测试 GitHub / Gitee 的 SSH 认证（ssh -T）。 */
+    /** 从容器对应平台私钥反推公钥（ssh-keygen -y），失败返回 null。 */
+    private fun derivePublicKey(ctx: Context, platform: String = "github"): String? {
+        return runCatching {
+            val p = TawcrootRuntime.get(ctx).exec(
+                root(ctx), "/usr/bin/ssh-keygen", "-y", "-f", "/root/.ssh/${keyFileName(platform)}"
+            )
+            val out = p.inputStream.bufferedReader().use { it.readText() }
+            val code = p.waitFor()
+            val line = out.trim()
+            if (code != 0 || !line.startsWith("ssh-") && !line.startsWith("ecdsa-") &&
+                !line.startsWith("rsa-")) null else line
+        }.getOrNull()
+    }
+
+    /** 写 ~/.ssh/config：把 github.com / gitee.com 各自映射到对应的 IdentityFile，
+     *  让 ssh / git 访问不同平台时自动用各自的密钥（分平台密钥的核心）。
+     *  IdentitiesOnly=yes 避免串用别的钥匙；missing 平台的 IdentityFile 不存在时 ssh 会跳过。 */
+    private fun writeSshConfig(ctx: Context) {
+        runCatching {
+            val dir = sshDir(ctx).apply { mkdirs() }
+            val cfg = buildString {
+                for (p in PROVIDERS) {
+                    append("Host ").append(p.host).append('\n')
+                    append("    IdentityFile ~/.ssh/").append(keyFileName(p.id)).append('\n')
+                    append("    IdentitiesOnly yes\n")
+                }
+            }
+            val f = File(dir, "config")
+            f.writeText(cfg)
+            chmod(f, 0x1A4) // 0644
+        }
+    }
+
+    /** 测试 GitHub / Gitee 的 SSH 认证（ssh -T）。分平台密钥：各主机用各自的 IdentityFile，
+     *  哪个平台没配钥匙就单独提示，不影响另一个平台的测试。 */
     fun verifySsh(ctx: Context): Result<String> {
         if (!containerReady(ctx)) return Result.failure(IllegalStateException("容器尚未就绪"))
-        if (!sshPrivateKey(ctx).exists()) return Result.failure(IllegalStateException("还没有 SSH 密钥，请先生成"))
+        writeSshConfig(ctx) // 确保分平台 IdentityFile 映射是最新
         val report = StringBuilder()
         var allOk = true
-        for (host in listOf("github.com", "gitee.com")) {
+        for (p in PROVIDERS) {
+            val host = p.host
+            if (!sshPrivateKey(ctx, p.id).exists()) {
+                allOk = false
+                report.append("– ").append(p.label).append("：未配置密钥，请先生成或导入").append('\n')
+                continue
+            }
             var ok = false
             var detail = ""
             var code = -1
             val err = runCatching {
-                val p = TawcrootRuntime.get(ctx).exec(
+                val q = TawcrootRuntime.get(ctx).exec(
                     root(ctx), "/usr/bin/ssh", "-T",
                     "-o", "StrictHostKeyChecking=accept-new",
                     "-o", "BatchMode=yes",
                     "-o", "ConnectTimeout=12",
                     "git@$host"
                 )
-                val out = p.inputStream.bufferedReader().use { it.readText() }
-                code = p.waitFor()
+                val out = q.inputStream.bufferedReader().use { it.readText() }
+                code = q.waitFor()
                 detail = out.trim()
                 ok = out.contains("successfully authenticated", true) || out.contains("Hi ", true)
             }.exceptionOrNull()

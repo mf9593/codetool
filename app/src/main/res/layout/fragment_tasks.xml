@@ -35,88 +35,45 @@
     </LinearLayout>
 
     <!-- 筛选行：级别 / 标签 / 时间 三个下拉（独立常显，范围更细） -->
+    <!-- 筛选状态栏：显示当前筛选摘要（无筛选时隐藏）；点击同样打开筛选底部弹窗。
+         主入口在标题栏「筛选」按钮，这里是辅助展示 + 快捷入口。 -->
     <LinearLayout
-        android:id="@+id/logFilterRow"
+        android:id="@+id/logFilterBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
         android:gravity="center_vertical"
-        android:paddingHorizontal="12dp"
-        android:paddingTop="2dp">
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="2dp"
+        android:paddingBottom="6dp"
+        android:visibility="gone">
 
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
+        <ImageView
+            android:layout_width="16dp"
+            android:layout_height="16dp"
+            android:src="@drawable/ic_filter"
+            android:importantForAccessibility="no" />
+
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/logFilterStatus"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:hint="级别"
-            app:boxStrokeColor="?attr/colorPrimary"
-            app:minHeight="40dp">
-
-            <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                android:id="@+id/logLevelDropdown"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="40dp"
-                android:gravity="center_vertical"
-                android:paddingStart="8dp"
-                android:paddingEnd="4dp"
-                android:textSize="12sp"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:ellipsize="end"
-                android:inputType="none" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1.3"
             android:layout_marginStart="8dp"
-            android:hint="标签"
-            app:boxStrokeColor="?attr/colorPrimary"
-            app:minHeight="40dp">
+            android:textSize="12sp"
+            android:maxLines="1"
+            android:ellipsize="end" />
 
-            <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                android:id="@+id/logTagDropdown"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="40dp"
-                android:gravity="center_vertical"
-                android:paddingStart="8dp"
-                android:paddingEnd="4dp"
-                android:textSize="12sp"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:ellipsize="end"
-                android:inputType="none" />
-        </com.google.android.material.textfield.TextInputLayout>
-
-        <com.google.android.material.textfield.TextInputLayout
-            style="@style/Widget.Material3.TextInputLayout.OutlinedBox.ExposedDropdownMenu"
-            android:layout_width="0dp"
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/logFilterClear"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1.2"
-            android:layout_marginStart="8dp"
-            android:hint="时间"
-            app:boxStrokeColor="?attr/colorPrimary"
-            app:minHeight="40dp">
-
-            <com.google.android.material.textfield.MaterialAutoCompleteTextView
-                android:id="@+id/logTimeDropdown"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:minHeight="40dp"
-                android:gravity="center_vertical"
-                android:paddingStart="8dp"
-                android:paddingEnd="4dp"
-                android:textSize="12sp"
-                android:maxLines="1"
-                android:singleLine="true"
-                android:ellipsize="end"
-                android:inputType="none" />
-        </com.google.android.material.textfield.TextInputLayout>
+            android:layout_marginStart="12dp"
+            android:text="清除"
+            android:textSize="12sp"
+            android:textColor="?attr/colorPrimary"
+            android:padding="4dp" />
     </LinearLayout>
 
     <!-- 搜索栏（标题栏放大镜展开）：关键词过滤 -->

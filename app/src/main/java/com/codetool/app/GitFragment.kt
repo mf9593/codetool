@@ -36,6 +36,8 @@ class GitFragment : Fragment() {
     private lateinit var sshBadge: MaterialTextView
     private lateinit var sshHint: MaterialTextView
     private lateinit var sshResult: MaterialTextView
+    /** SSH 卡片当前所选平台（github / gitee）：分平台独立密钥，生成/导入/复制作用于它。 */
+    private var selectedSshPlatform: String = "github"
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -46,8 +48,20 @@ class GitFragment : Fragment() {
         sshHint = v.findViewById(R.id.gitSshHint)
         sshResult = v.findViewById(R.id.gitSshResult)
 
+        // 平台切换：选中后刷新徽标/指纹，并让生成/导入/复制作用于该平台
+        val toggle = v.findViewById<com.google.android.material.button.MaterialButtonToggleGroup>(
+            R.id.gitSshPlatformToggle)
+        toggle.check(R.id.gitSshPlatformGithub)
+        toggle.addOnButtonCheckedListener { _, checkedId, isChecked ->
+            if (isChecked) {
+                selectedSshPlatform = if (checkedId == R.id.gitSshPlatformGitee) "gitee" else "github"
+                renderSsh()
+            }
+        }
+
         v.findViewById<MaterialButton>(R.id.btnEditIdentity).setOnClickListener { showIdentityDialog() }
         v.findViewById<MaterialButton>(R.id.btnGenSsh).setOnClickListener { generateSsh() }
+        v.findViewById<MaterialButton>(R.id.btnImportSsh).setOnClickListener { importSsh() }
         v.findViewById<MaterialButton>(R.id.btnCopySsh).setOnClickListener { copyPublicKey() }
         v.findViewById<MaterialButton>(R.id.btnTestSsh).setOnClickListener { testSsh() }
         return v
@@ -281,50 +295,122 @@ class GitFragment : Fragment() {
 
     private fun renderSsh() {
         val ctx = requireContext()
-        val pub = GitConfigManager.sshPublicKey(ctx)
-        val hasKey = GitConfigManager.sshPrivateKey(ctx).exists()
-        sshBadge.text = if (hasKey) "已生成" else "未生成"
+        val plat = selectedSshPlatform
+        val platLabel = if (plat == "gitee") "Gitee" else "GitHub"
+        val pub = GitConfigManager.sshPublicKey(ctx, plat)
+        val hasKey = GitConfigManager.sshPrivateKey(ctx, plat).exists()
+        sshBadge.text = if (hasKey) "$platLabel 已配置" else "$platLabel 未配置"
         sshBadge.background = ContextCompat.getDrawable(
             ctx, if (hasKey) R.drawable.bg_badge_current else R.drawable.bg_badge_off)
         sshBadge.setTextColor(MaterialColors.getColor(
             sshBadge, if (hasKey) com.google.android.material.R.attr.colorOnPrimaryContainer
             else com.google.android.material.R.attr.colorOnSurfaceVariant))
         sshHint.text = if (pub != null) {
-            "公钥指纹：" + pub.take(60) + if (pub.length > 60) "…" else ""
+            "$platLabel 公钥指纹：" + pub.take(60) + if (pub.length > 60) "…" else ""
         } else {
-            "ed25519 密钥在容器内 /root/.ssh 生成，私钥不会离开设备。"
+            "当前选中 $platLabel，尚无密钥。ed25519 密钥在容器内 /root/.ssh 生成，私钥不会离开设备；两个平台各自独立一把。"
         }
         (view?.findViewById<MaterialButton>(R.id.btnCopySsh))?.isEnabled = pub != null
     }
 
     private fun generateSsh() {
-        if (GitConfigManager.sshPrivateKey(requireContext()).exists()) {
-            toast("SSH 密钥已存在，可直接复制公钥去 GitHub/Gitee 添加")
+        val plat = selectedSshPlatform
+        val platLabel = if (plat == "gitee") "Gitee" else "GitHub"
+        if (GitConfigManager.sshPrivateKey(requireContext(), plat).exists()) {
+            toast("$platLabel 密钥已存在，可直接复制公钥去平台添加")
             return
         }
-        toast("正在生成 SSH 密钥…")
+        toast("正在生成 $platLabel SSH 密钥…")
         lifecycleScope.launch {
-            val r = withContext(Dispatchers.IO) { GitConfigManager.generateSshKey(requireContext()) }
+            val r = withContext(Dispatchers.IO) {
+                GitConfigManager.generateSshKey(requireContext(), plat)
+            }
             r.onSuccess {
-                toast("SSH 密钥已生成，记得复制公钥到 GitHub/Gitee")
+                toast("$platLabel 密钥已生成，记得复制公钥到平台添加")
                 renderSsh()
             }.onFailure { e ->
-                FileLog.e(requireContext(), "Git", "生成 SSH 密钥失败", e)
+                FileLog.e(requireContext(), "Git", "生成 $platLabel SSH 密钥失败", e)
                 sshResult.visibility = View.VISIBLE
                 sshResult.text = "生成失败：${e.message}"
             }
         }
     }
 
+    /** 手动导入用户已有的 SSH 私钥（覆盖现有密钥，覆盖前二次确认）。 */
+    private fun importSsh() {
+        val ctx = requireContext()
+        val v = layoutInflater.inflate(R.layout.dlg_git_ssh_import, null)
+        val etPriv = v.findViewById<TextInputEditText>(R.id.etSshPriv)
+        val etPub = v.findViewById<TextInputEditText>(R.id.etSshPub)
+        val tvResult = v.findViewById<MaterialTextView>(R.id.tvSshImportResult)
+
+        fun showResult(text: String, error: Boolean) {
+            tvResult.visibility = View.VISIBLE
+            tvResult.text = text
+            tvResult.setTextColor(MaterialColors.getColor(
+                v, if (error) com.google.android.material.R.attr.colorError
+                else com.google.android.material.R.attr.colorPrimary))
+        }
+
+        val dialog = MaterialAlertDialogBuilder(ctx)
+            .setTitle("手动导入 SSH 密钥")
+            .setView(v)
+            .setNegativeButton("取消", null)
+            .setPositiveButton("导入", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val priv = etPriv.text?.toString().orEmpty().trim()
+                if (priv.isEmpty()) {
+                    showResult("请先粘贴私钥", true)
+                    return@setOnClickListener
+                }
+                val pub = etPub.text?.toString().orEmpty().trim()
+                val plat = selectedSshPlatform
+                val platLabel = if (plat == "gitee") "Gitee" else "GitHub"
+                val saveBtn = dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE)
+                saveBtn.isEnabled = false
+                fun proceed() {
+                    lifecycleScope.launch {
+                        val r = withContext(Dispatchers.IO) {
+                            GitConfigManager.importSshKey(ctx, priv, pub, plat)
+                        }
+                        saveBtn.isEnabled = true
+                        r.onSuccess {
+                            FileLog.i(ctx, "Git", "已手动导入 $platLabel SSH 密钥")
+                            dialog.dismiss()
+                            toast("$platLabel SSH 密钥已导入，可用「测试 SSH」验证")
+                            renderSsh()
+                        }.onFailure { e ->
+                            FileLog.e(ctx, "Git", "导入 $platLabel SSH 密钥失败", e)
+                            showResult("✘ 导入失败：${e.message}", true)
+                        }
+                    }
+                }
+                if (GitConfigManager.sshPrivateKey(ctx, plat).exists()) {
+                    MaterialAlertDialogBuilder(ctx)
+                        .setTitle("覆盖现有密钥")
+                        .setMessage("容器里已有 $platLabel 的 SSH 密钥，导入会覆盖 /root/.ssh/${if (plat == "gitee") "id_ed25519_gitee" else "id_ed25519"}；若新公钥与平台已添加的不同，需在平台更新为新公钥。")
+                        .setPositiveButton("覆盖") { _, _ -> proceed() }
+                        .setNegativeButton("取消", null)
+                        .show()
+                } else proceed()
+            }
+        }
+        dialog.show()
+    }
+
     private fun copyPublicKey() {
-        val pub = GitConfigManager.sshPublicKey(requireContext())
+        val plat = selectedSshPlatform
+        val platLabel = if (plat == "gitee") "Gitee" else "GitHub"
+        val pub = GitConfigManager.sshPublicKey(requireContext(), plat)
         if (pub == null) {
-            toast("还没有公钥，请先生成")
+            toast("$platLabel 还没有公钥，请先生成或导入")
             return
         }
         val cm = requireContext().getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
         cm.setPrimaryClip(ClipData.newPlainText("ssh public key", pub))
-        toast("公钥已复制，去 GitHub/Gitee → SSH Keys 粘贴")
+        toast("$platLabel 公钥已复制，去 $platLabel → SSH Keys 粘贴")
     }
 
     private fun testSsh() {

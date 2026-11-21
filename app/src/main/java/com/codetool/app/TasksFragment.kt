@@ -35,9 +35,9 @@ class TasksFragment : Fragment() {
     private lateinit var logTabs: TabLayout
     private lateinit var logSearchBar: View
     private lateinit var logSearchInput: com.google.android.material.textfield.TextInputEditText
-    private lateinit var logLevelDropdown: com.google.android.material.textfield.MaterialAutoCompleteTextView
-    private lateinit var logTagDropdown: com.google.android.material.textfield.MaterialAutoCompleteTextView
-    private lateinit var logTimeDropdown: com.google.android.material.textfield.MaterialAutoCompleteTextView
+    private lateinit var logFilterBar: View
+    private lateinit var logFilterStatus: android.widget.TextView
+    private lateinit var logFilterClear: android.widget.TextView
     private lateinit var btnLogScroll: com.google.android.material.floatingactionbutton.FloatingActionButton
     private val handler = Handler(Looper.getMainLooper())
 
@@ -75,23 +75,14 @@ class TasksFragment : Fragment() {
 
     private val refreshTask = object : Runnable {
         override fun run() {
-            // 用户正展开某个筛选下拉时暂停本轮刷新：刷新会重建/更新日志 UI，会把下拉强制关掉。
-            if (!anyFilterPopupShowing()) loadLog()
+            // 筛选底部弹窗打开时不刷新：刷新会重设日志文本，弹窗背后的列表会跳，且状态不同步。
+            if (!filterSheetShowing) loadLog()
             if (autoRefresh) handler.postDelayed(this, refreshIntervalMs.toLong())
         }
     }
 
-    /** 任一筛选下拉（级别/标签/时间）的弹窗当前是否展开。 */
-    private fun anyFilterPopupShowing(): Boolean =
-        isPopupShowing(logLevelDropdown) || isPopupShowing(logTagDropdown) || isPopupShowing(logTimeDropdown)
-
-    /** MaterialAutoCompleteTextView 没有公开 isPopupShowing（@hide），反射读真实弹窗状态。 */
-    private fun isPopupShowing(v: com.google.android.material.textfield.MaterialAutoCompleteTextView): Boolean =
-        runCatching {
-            val m = android.widget.AutoCompleteTextView::class.java.getDeclaredMethod("isPopupShowing")
-            m.isAccessible = true
-            m.invoke(v) as Boolean
-        }.getOrDefault(false)
+    /** 筛选底部弹窗当前是否展示（打开期间暂停自动刷新）。 */
+    private var filterSheetShowing = false
 
     override fun onCreateView(
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
@@ -108,9 +99,9 @@ class TasksFragment : Fragment() {
 
         logSearchBar = v.findViewById(R.id.logSearchBar)
         logSearchInput = v.findViewById(R.id.logSearchInput)
-        logLevelDropdown = v.findViewById(R.id.logLevelDropdown)
-        logTagDropdown = v.findViewById(R.id.logTagDropdown)
-        logTimeDropdown = v.findViewById(R.id.logTimeDropdown)
+        logFilterBar = v.findViewById(R.id.logFilterBar)
+        logFilterStatus = v.findViewById(R.id.logFilterStatus)
+        logFilterClear = v.findViewById(R.id.logFilterClear)
 
         // 搜索框输入 → 更新关键字并重新加载（过滤）
         logSearchInput.addTextChangedListener(object : android.text.TextWatcher {
@@ -121,48 +112,11 @@ class TasksFragment : Fragment() {
                 loadLog()
             }
         })
-        // 级别下拉：Material 暴露式下拉菜单，选中即筛选
-        logLevelDropdown.setAdapter(
-            android.widget.ArrayAdapter(
-                requireContext(),
-                android.R.layout.simple_list_item_1,
-                levelNames
-            )
-        )
-        logLevelDropdown.setText(levelNames[levelFilter], false)
-        logLevelDropdown.setOnItemClickListener { _, _, position, _ ->
-            levelFilter = position
-            loadLog()
-        }
-        // 标签下拉：选项在 loadLog 里按日志内容动态刷新
-        logTagDropdown.setText(tagOptions[0], false)
-        logTagDropdown.setOnItemClickListener { _, _, position, _ ->
-            tagFilter = if (position == 0) "" else tagOptions.getOrNull(position).orEmpty()
-            loadLog()
-        }
-        // 时间下拉：全部 / 最近1小时 / 最近24小时 / 今天
-        logTimeDropdown.setAdapter(
-            android.widget.ArrayAdapter(
-                requireContext(),
-                android.R.layout.simple_list_item_1,
-                timeNames
-            )
-        )
-        logTimeDropdown.setText(timeNames[timeFilter], false)
-        logTimeDropdown.setOnItemClickListener { _, _, position, _ ->
-            if (position == 4) {
-                // 自定义：先把显示还原成当前值，等弹窗确认后再写区间
-                logTimeDropdown.setText(timeLabel, false)
-                showTimeRangeDialog()
-            } else {
-                timeFilter = position
-                rangeStart = 0L
-                rangeEnd = 0L
-                timeLabel = timeNames[position]
-                logTimeDropdown.setText(timeLabel, false)
-                loadLog()
-            }
-        }
+        // 筛选状态栏：点击打开筛选底部弹窗（与标题栏「筛选」按钮同入口）
+        logFilterBar.setOnClickListener { showFilterSheet() }
+        // 清除按钮：一键重置所有筛选
+        logFilterClear.setOnClickListener { resetFilters() }
+        updateFilterBar()
 
         // 悬浮「回到顶部 / 回到底部」按钮；自动滚动模式下切到顶部会暂停跟随（读历史），
         // 切回底部恢复跟随贴底。
@@ -285,6 +239,174 @@ class TasksFragment : Fragment() {
         if (show) logSearchInput.requestFocus()
     }
 
+    /**
+     * 标题栏「筛选」/ 筛选状态栏入口：底部弹窗里选 时间 / 级别 / 标签。
+     * 用单选按钮组（每节一组），选中即应用并刷新；弹窗内不做搜索（搜索走标题栏放大镜）。
+     */
+    fun showFilterSheet() {
+        if (!isAdded) return
+        val ctx = requireContext()
+        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        filterSheetShowing = true
+        val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(ctx)
+        sheet.setOnDismissListener { filterSheetShowing = false }
+        val container = android.widget.LinearLayout(ctx).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(24), dp(16), dp(24), dp(28))
+        }
+
+        // 标题 + 副标题
+        container.addView(android.widget.TextView(ctx).apply {
+            text = "筛选日志"
+            textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setPadding(0, 0, 0, dp(4))
+        })
+        container.addView(android.widget.TextView(ctx).apply {
+            text = "按时间 / 级别 / 模块标签过滤运行日志（选中即生效）"
+            textSize = 13f
+            setPadding(0, 0, 0, dp(16))
+        })
+
+        // —— 时间 ——
+        container.addView(sectionLabel(ctx, "时间", dp))
+        val timeGroup = android.widget.RadioGroup(ctx).apply { orientation = android.widget.RadioGroup.VERTICAL }
+        val timeValues = arrayOf("全部", "最近15分钟", "最近1小时", "最近24小时", "今天", "自定义…")
+        // 现有 timeFilter 编码：0全部 1最近1小时 2最近24小时 3今天 4自定义。这里加入「最近15分钟」，
+        // 用内部索引映射到 timeFilter 编码，避免打乱旧编码。
+        val timeMap = intArrayOf(0, 15, 1, 2, 3, 4)  // UI 行 -> timeFilter 值（15 表示新的「最近15分钟」）
+        val currentTimeRow = timeMap.indexOf(timeFilter).let { if (it < 0) 0 else it }
+        timeValues.forEachIndexed { idx, name ->
+            timeGroup.addView(makeRadioRow(ctx, name, idx == currentTimeRow) {
+                when (val tf = timeMap[idx]) {
+                    4 -> {
+                        // 自定义：先关弹窗再弹时间段选择，确认后写区间
+                        sheet.dismiss()
+                        showTimeRangeDialog()
+                    }
+                    15 -> {  // 最近15分钟（新增）
+                        timeFilter = 15
+                        timeLabel = "最近15分钟"
+                        loadLog()
+                        updateFilterBar()
+                    }
+                    else -> {
+                        timeFilter = tf
+                        rangeStart = 0L
+                        rangeEnd = 0L
+                        timeLabel = timeValues[idx]
+                        loadLog()
+                        updateFilterBar()
+                    }
+                }
+            })
+        }
+        container.addView(timeGroup)
+
+        // —— 级别 ——
+        container.addView(sectionLabel(ctx, "级别", dp))
+        val levelGroup = android.widget.RadioGroup(ctx).apply { orientation = android.widget.RadioGroup.VERTICAL }
+        levelNames.forEachIndexed { idx, name ->
+            levelGroup.addView(makeRadioRow(ctx, name, idx == levelFilter) {
+                levelFilter = idx
+                loadLog()
+                updateFilterBar()
+            })
+        }
+        container.addView(levelGroup)
+
+        // —— 标签 ——
+        container.addView(sectionLabel(ctx, "模块标签", dp))
+        val tagGroup = android.widget.RadioGroup(ctx).apply { orientation = android.widget.RadioGroup.VERTICAL }
+        val currentTag = tagFilter.ifEmpty { "全部" }
+        tagOptions.forEach { tag ->
+            tagGroup.addView(makeRadioRow(ctx, tag, tag == currentTag) {
+                tagFilter = if (tag == "全部") "" else tag
+                loadLog()
+                updateFilterBar()
+            })
+        }
+        container.addView(tagGroup)
+
+        // 清除全部筛选按钮
+        val clearBtn = com.google.android.material.button.MaterialButton(ctx).apply {
+            text = "清除全部筛选"
+            setTextColor(com.google.android.material.color.MaterialColors.getColor(ctx, com.google.android.material.R.attr.colorPrimary, 0))
+            setBackgroundColor(android.graphics.Color.TRANSPARENT)
+            setPadding(0, dp(12), 0, 0)
+            setOnClickListener {
+                sheet.dismiss()
+                resetFilters()
+            }
+        }
+        container.addView(clearBtn)
+
+        // 内容可能超一屏（时间+级别+标签+按钮），包一层 NestedScrollView 让弹窗能上下滑动。
+        // 必须用 NestedScrollView（参与 nested scrolling）：BottomSheetDialog 的拖拽手势会把
+        // 内部滚动让给 NestedScrollView，普通 ScrollView 会被 BottomSheet 抢走滑动、变成收起弹窗。
+        val scrollWrap = androidx.core.widget.NestedScrollView(ctx).apply {
+            layoutParams = android.view.ViewGroup.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+            )
+            isVerticalScrollBarEnabled = true
+            addView(container)
+        }
+        sheet.setContentView(scrollWrap)
+        sheet.show()
+    }
+
+    /** 弹窗里的小节标题（灰色小字）。 */
+    private fun sectionLabel(ctx: Context, text: String, dp: (Int) -> Int): android.widget.TextView =
+        android.widget.TextView(ctx).apply {
+            this.text = text
+            textSize = 12f
+            setTextColor(com.google.android.material.color.MaterialColors.getColor(ctx, com.google.android.material.R.attr.colorOnSurfaceVariant, 0))
+            setPadding(0, dp(4), 0, dp(6))
+        }
+
+    /** 弹窗里的单选行：RadioButton + 文字，整行可点。 */
+    private fun makeRadioRow(ctx: Context, text: String, checked: Boolean, onPick: () -> Unit): android.widget.RadioButton {
+        val pad = (12 * ctx.resources.displayMetrics.density).toInt()
+        val padH = (8 * ctx.resources.displayMetrics.density).toInt()
+        return android.widget.RadioButton(ctx).apply {
+            this.text = text
+            this.isChecked = checked
+            textSize = 15f
+            setPadding(padH, pad, padH, pad)
+            setOnClickListener { onPick() }
+        }
+    }
+
+    private fun dp8(ctx: Context): Int = (8 * ctx.resources.displayMetrics.density).toInt()
+
+    /** 重置所有筛选条件（时间/级别/标签），保留搜索关键字。 */
+    fun resetFilters() {
+        timeFilter = 0
+        rangeStart = 0L
+        rangeEnd = 0L
+        timeLabel = timeNames[0]
+        levelFilter = 0
+        tagFilter = ""
+        loadLog()
+        updateFilterBar()
+    }
+
+    /** 刷新筛选状态栏：有任一筛选生效则显示摘要，否则隐藏。 */
+    private fun updateFilterBar() {
+        if (!isAdded || view == null) return
+        val parts = mutableListOf<String>()
+        if (timeFilter != 0) parts.add(timeLabel)
+        if (levelFilter != 0) parts.add(levelNames[levelFilter])
+        if (tagFilter.isNotEmpty()) parts.add(tagFilter)
+        if (parts.isEmpty()) {
+            logFilterBar.visibility = View.GONE
+        } else {
+            logFilterBar.visibility = View.VISIBLE
+            logFilterStatus.text = "筛选：${parts.joinToString(" · ")}"
+        }
+    }
+
     /** 是否有任一筛选条件生效。 */
     private fun anyFilterActive(): Boolean =
         searchQuery.isNotEmpty() || levelFilter != 0 || tagFilter.isNotEmpty() || timeFilter != 0
@@ -348,16 +470,17 @@ class TasksFragment : Fragment() {
             } catch (_: Exception) {
                 ""
             }
-            // 解析日志里出现过的模块标签（供标签下拉）
+            // 解析日志里出现过的模块标签（供筛选弹窗里的标签选项）
             val tags = collectTags(raw)
+            activity?.runOnUiThread { tagOptions = listOf("全部") + tags }
             // 应用级别/标签/时间筛选 + 搜索关键字过滤
             val text = applyFilter(raw)
             activity?.runOnUiThread {
                 loading = false
                 if (!isAdded || view == null) return@runOnUiThread
-                // 弹窗正展开：跳过本轮 UI 更新，避免关掉用户正在筛的下拉（数据下一轮再刷）。
-                if (anyFilterPopupShowing()) return@runOnUiThread
-                refreshTagDropdown(tags)
+                // 筛选弹窗打开期间跳过本轮列表更新（避免背后列表跳动、状态不同步）。
+                if (filterSheetShowing) return@runOnUiThread
+                updateFilterBar()
                 if (text.isBlank()) {
                     logText.text = ""
                     emptyState.visibility = View.VISIBLE
@@ -411,34 +534,6 @@ class TasksFragment : Fragment() {
         return set.toList()
     }
 
-    /** 刷新标签下拉选项（保持当前选择；选中的标签消失则回到「全部」）。 */
-    private fun refreshTagDropdown(tags: List<String>) {
-        val options = listOf("全部") + tags
-        if (options == tagOptions) return
-        tagOptions = options
-        // 复用已有 adapter 原地更新数据（clear+addAll），而不是重建 setAdapter：
-        // setAdapter 会重建下拉弹窗，日志每 2 秒刷新时若用户正展开标签下拉会被强制关闭；
-        // 原地更新只重绘列表，已展开的下拉保持打开。
-        val current = logTagDropdown.adapter
-        if (current is android.widget.ArrayAdapter<*>) {
-            @Suppress("UNCHECKED_CAST")
-            val arr = current as android.widget.ArrayAdapter<Any?>
-            arr.clear()
-            arr.addAll(options)
-        } else {
-            logTagDropdown.setAdapter(
-                android.widget.ArrayAdapter(
-                    requireContext(),
-                    android.R.layout.simple_list_item_1,
-                    options
-                )
-            )
-        }
-        val idx = options.indexOf(tagFilter).let { if (it < 0) 0 else it }
-        logTagDropdown.setText(options[idx], false)
-        if (idx == 0) tagFilter = ""
-    }
-
     /** 自定义时间段：起止时间选择弹窗（日期 → 时刻 两段式）。 */
     private fun showTimeRangeDialog() {
         if (!isAdded || view == null) return
@@ -470,7 +565,6 @@ class TasksFragment : Fragment() {
                 rangeEnd = end
                 timeFilter = 4
                 timeLabel = rangeLabel(start, end)
-                logTimeDropdown.setText(timeLabel, false)
                 loadLog()
             }
             .setNeutralButton("清除") { _, _ ->
@@ -478,7 +572,6 @@ class TasksFragment : Fragment() {
                 rangeEnd = 0L
                 timeFilter = 0
                 timeLabel = timeNames[0]
-                logTimeDropdown.setText(timeLabel, false)
                 loadLog()
             }
             .setNegativeButton("取消", null)
@@ -535,6 +628,7 @@ class TasksFragment : Fragment() {
         val q = searchQuery.lowercase()
         val now = System.currentTimeMillis()
         val from = when (timeFilter) {
+            15 -> now - 15 * 60_000L
             1 -> now - 3600_000L
             2 -> now - 24 * 3600_000L
             3 -> startOfToday()
@@ -543,22 +637,35 @@ class TasksFragment : Fragment() {
         }
         val to = if (timeFilter == 4 && rangeEnd > 0) rangeEnd else Long.MAX_VALUE
         var lastInTime = true
+        var lastLevel = 0  // 上一条日志的级别（1=D 2=I 3=W 4=E），供续行（堆栈）继承
+        // 级别字母 -> 内部级别编码
+        fun levelOf(ch: Char): Int = when (ch) {
+            'D' -> 1; 'I' -> 2; 'W' -> 3; 'E' -> 4; else -> 0
+        }
         return raw.lines().filter { line ->
-            // 时间：有时间戳就解析，续行（堆栈）继承上一行的判定
+            // 时间 + 级别：行首有时间戳就解析（`时间去 级别/标签: 消息`），续行继承上一条
             val ts = parseLineTime(line)
             lastInTime = if (ts != null) ts in from..to else lastInTime
             val timeOk = timeFilter == 0 || lastInTime
-            val levelOk = when (levelFilter) {
-                1 -> line.contains(" D/")
-                2 -> line.contains(" I/")
-                3 -> line.contains(" W/")
-                4 -> line.contains(" E/")
-                else -> true
-            }
+            // 级别：从时间戳后的 ` X/` 解析级别字母（比 contains 更准），续行继承上一条级别
+            val lvl = levelPrefix(line)?.let { levelOf(it) }
+            if (lvl != null) lastLevel = lvl
+            val levelOk = levelFilter == 0 || lastLevel == levelFilter
             val tagOk = tagFilter.isEmpty() || line.contains("/$tagFilter:")
             val searchOk = q.isEmpty() || line.lowercase().contains(q)
             timeOk && levelOk && tagOk && searchOk
         }.joinToString("\n")
+    }
+
+    /**
+     * 从日志行解析级别字母：行首时间戳（23 字符）后紧跟 ` X/`，返回该字母（D/I/W/E/V）。
+     * 非日志头行（续行 / 堆栈）返回 null，由调用方继承上一条级别。
+     */
+    private fun levelPrefix(line: String): Char? {
+        if (line.length < 26) return null
+        if (line[23] != ' ') return null
+        val ch = line[24]
+        return if (ch in 'A'..'Z' && line[25] == '/') ch else null
     }
 
     private fun parseLineTime(line: String): Long? {

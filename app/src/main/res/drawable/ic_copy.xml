@@ -2,7 +2,15 @@
     android:width="24dp" android:height="24dp"
     android:viewportWidth="24" android:viewportHeight="24"
     android:tint="?attr/colorControlNormal">
-    <!-- 复制：两张叠放的文档 -->
-    <path android:fillColor="@android:color/white"
-        android:pathData="M16,1H4C2.9,1 2,1.9 2,3v14h2V3h12V1zM19,5H8C6.9,5 6,5.9 6,7v14c0,1.1 0.9,2 2,2h11c1.1,0 2,-0.9 2,-2V7c0,-1.1 -0.9,-2 -2,-2zM19,21H8V7h11V21z" />
+    <!-- 复制：两张叠放的文档。
+         原路径几乎铺满 24×24 视口，比 search/settings 等自带留白的图标视觉偏大；
+         这里以中心 (12,12) 缩放 0.8，留出一圈边距，与其它标题栏图标视觉等大。 -->
+    <group
+        android:scaleX="0.8"
+        android:scaleY="0.8"
+        android:pivotX="12"
+        android:pivotY="12">
+        <path android:fillColor="@android:color/white"
+            android:pathData="M16,1H4C2.9,1 2,1.9 2,3v14h2V3h12V1zM19,5H8C6.9,5 6,5.9 6,7v14c0,1.1 0.9,2 2,2h11c1.1,0 2,-0.9 2,-2V7c0,-1.1 -0.9,-2 -2,-2zM19,21H8V7h11V21z" />
+    </group>
 </vector>

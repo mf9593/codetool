@@ -4,6 +4,9 @@ import android.content.Context
 import android.os.Bundle
 import android.view.Menu
 import android.view.MenuItem
+import android.view.View
+import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.appcompat.widget.Toolbar
@@ -27,16 +30,18 @@ class SkillEditorActivity : AppCompatActivity() {
         const val RESULT_SAVED = RESULT_FIRST_USER
     }
 
-    private lateinit var etName: TextInputEditText
-    private lateinit var etDesc: TextInputEditText
-    private lateinit var etBody: CodeEditor
+    // findViewById 在个别设备/系统版本上可能返回 null（真机偶发），统一用可空类型 +
+    // 安全访问，缺视图时功能降级（不工作）而不是启动即 NPE 崩溃。
+    private var etName: TextInputEditText? = null
+    private var etDesc: TextInputEditText? = null
+    private var etBody: CodeEditor? = null
 
     /** 进入时的初始 description / 正文：用于返回时判断「是否有改动」→ 提示保存。 */
     private var initialDesc: String = ""
     private var initialBody: String = ""
 
-    /** 内联搜索（点标题栏搜索按钮展开，输入即搜编辑内容）。 */
-    private lateinit var search: EditorSearchController
+    /** 内联搜索（点标题栏搜索按钮展开，输入即搜编辑内容）。依赖的视图缺失时保持 null。 */
+    private var search: EditorSearchController? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         setTheme(com.codetool.app.theme.ThemeManager.resolveStyle(this))
@@ -52,22 +57,34 @@ class SkillEditorActivity : AppCompatActivity() {
         etBody = findViewById(R.id.etSkillBody)
 
         // 内联搜索：点标题栏搜索按钮展开搜索条，输入即搜编辑内容（sora EditorSearcher 高亮）
-        search = EditorSearchController(
-            etBody,
-            findViewById(R.id.searchBar),
-            findViewById(R.id.searchInput),
-            findViewById(R.id.searchCount),
-            findViewById(R.id.searchPrev),
-            findViewById(R.id.searchNext),
-            findViewById(R.id.searchClose),
-        )
+        // 仅当编辑器与搜索条相关视图全部就绪才构建控制器；任一缺失则保持 null（搜索功能降级）。
+        etBody?.let { body ->
+            val searchBar = findViewById<View>(R.id.searchBar)
+            val searchInput = findViewById<EditText>(R.id.searchInput)
+            val searchCount = findViewById<TextView>(R.id.searchCount)
+            val searchPrev = findViewById<View>(R.id.searchPrev)
+            val searchNext = findViewById<View>(R.id.searchNext)
+            val searchClose = findViewById<View>(R.id.searchClose)
+            if (searchBar != null && searchInput != null && searchCount != null &&
+                searchPrev != null && searchNext != null && searchClose != null) {
+                search = EditorSearchController(
+                    body,
+                    searchBar,
+                    searchInput,
+                    searchCount,
+                    searchPrev,
+                    searchNext,
+                    searchClose,
+                )
+            }
+        }
 
         val name = intent.getStringExtra(EXTRA_NAME).orEmpty()
         val desc = intent.getStringExtra(EXTRA_DESC).orEmpty()
         val body = intent.getStringExtra(EXTRA_BODY).orEmpty()
         if (name.isNotEmpty()) {
-            etName.setText(name)
-            etName.isEnabled = false   // name = 目录名，编辑时不改
+            etName?.setText(name)
+            etName?.isEnabled = false   // name = 目录名，编辑时不改
             // 主标题「编辑 Skill」+ 副标题 skill 名：现在标题栏只留搜索/保存 2 个图标，
             // 空间充足，两个都显示得下（名字用 subtitle 完整可见，不再被图标挤压）。
             title = "编辑 Skill"
@@ -76,7 +93,7 @@ class SkillEditorActivity : AppCompatActivity() {
             title = "新增 Skill"
             supportActionBar?.subtitle = null
         }
-        etDesc.setText(desc)
+        etDesc?.setText(desc)
         initialDesc = desc
         initialBody = body
         // 返回（标题栏返回箭头 + 系统返回键）统一走 confirmExit：有改动先提示保存
@@ -84,20 +101,26 @@ class SkillEditorActivity : AppCompatActivity() {
         // sora-editor 的 setText 在布局完成前调用偶发不渲染，post 到下一帧确保正文显示。
         // 注意：必须先 setText 再 applyTo 设语言——TextMate 语法加载是异步的，
         // 语言设置的太早会把已渲染的正文清掉（正文区全空）。
-        etBody.post {
-            etBody.setText(body)
-            // Markdown 语法高亮（skill 正文是 .md）
-            com.codetool.app.util.TextMateEditor.applyTo(etBody, "skill.md")
+        // sora-editor 的 setText 在布局完成前调用偶发不渲染，post 到下一帧确保正文显示。
+        // 注意：必须先 setText 再 applyTo 设语言——TextMate 语法加载是异步的，
+        // 语言设置的太早会把已渲染的正文清掉（正文区全空）。
+        // post 的 lambda 无参数（Runnable），故捕获非空的局部 val，避免在 lambda 里再读可空字段。
+        etBody?.let { bodyView ->
+            bodyView.post {
+                bodyView.setText(body)
+                // Markdown 语法高亮（skill 正文是 .md）
+                com.codetool.app.util.TextMateEditor.applyTo(bodyView, "skill.md")
+            }
         }
 
-        toolbar.setOnMenuItemClickListener { item ->
+        toolbar?.setOnMenuItemClickListener { item ->
             when (item.itemId) {
                 R.id.action_skill_save -> { saveAndFinish(); true }
                 R.id.action_skill_copy -> { copyToClipboard(); true }
                 R.id.action_skill_help -> { showHelp(); true }
-                R.id.action_skill_search -> { search.toggle(); true }
-                R.id.action_skill_undo -> { etBody.undo(); true }
-                R.id.action_skill_redo -> { etBody.redo(); true }
+                R.id.action_skill_search -> { search?.toggle(); true }
+                R.id.action_skill_undo -> { etBody?.undo(); true }
+                R.id.action_skill_redo -> { etBody?.redo(); true }
                 else -> false
             }
         }
@@ -111,7 +134,7 @@ class SkillEditorActivity : AppCompatActivity() {
 
     /** 复制 skill 完整内容（正文为主）到剪贴板。 */
     private fun copyToClipboard() {
-        val text = etBody.text.toString()
+        val text = etBody?.text?.toString() ?: ""
         val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         cm.setPrimaryClip(android.content.ClipData.newPlainText("skill", text))
         Toast.makeText(this, "已复制 skill 正文到剪贴板", Toast.LENGTH_SHORT).show()
@@ -137,9 +160,9 @@ class SkillEditorActivity : AppCompatActivity() {
     }
 
     private fun saveAndFinish() {
-        val name = etName.text?.toString()?.trim().orEmpty()
-        val desc = etDesc.text?.toString()?.trim().orEmpty()
-        val body = etBody.text.toString()
+        val name = etName?.text?.toString()?.trim().orEmpty()
+        val desc = etDesc?.text?.toString()?.trim().orEmpty()
+        val body = etBody?.text?.toString() ?: ""
         if (name.isEmpty()) {
             Toast.makeText(this, "名称必填（小写字母/数字/连字符）", Toast.LENGTH_SHORT).show()
             return
@@ -157,8 +180,8 @@ class SkillEditorActivity : AppCompatActivity() {
 
     /** 内容是否有改动（description 或正文相对进入时的初始值）。名称编辑时禁用，不参与判断。 */
     private fun isModified(): Boolean =
-        etDesc.text?.toString().orEmpty() != initialDesc ||
-            etBody.text.toString() != initialBody
+        etDesc?.text?.toString().orEmpty() != initialDesc ||
+            (etBody?.text?.toString() ?: "") != initialBody
 
     /**
      * 返回拦截：内容有改动时弹「已修改是否保存」对话框（保存 / 不保存 / 取消），

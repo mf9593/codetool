@@ -5,6 +5,9 @@ import android.content.ClipboardManager
 import android.content.Context
 import android.content.Intent
 import android.os.Bundle
+import android.view.View
+import android.widget.EditText
+import android.widget.TextView
 import android.widget.Toast
 import androidx.appcompat.app.AppCompatActivity
 import androidx.activity.addCallback
@@ -60,9 +63,11 @@ class ScriptEditActivity : AppCompatActivity() {
         }
     }
 
-    private lateinit var editor: CodeEditor
-    private lateinit var nameLayout: TextInputLayout
-    private lateinit var nameInput: TextInputEditText
+    // findViewById 在个别设备/系统版本上可能返回 null（真机偶发），统一用可空类型 +
+    // 安全访问，缺视图时功能降级（不工作）而不是启动即 NPE 崩溃。
+    private var editor: CodeEditor? = null
+    private var nameLayout: TextInputLayout? = null
+    private var nameInput: TextInputEditText? = null
     private var scriptFile: File? = null
     private var createMode = false
 
@@ -72,8 +77,8 @@ class ScriptEditActivity : AppCompatActivity() {
     /** 编辑内容区是否自动换行（开=长行换行，关=横向滚动，默认关）。 */
     private var wordWrap = false
 
-    /** 内联搜索（点操作行搜索按钮展开，输入即搜编辑内容）。 */
-    private lateinit var search: EditorSearchController
+    /** 内联搜索（点操作行搜索按钮展开，输入即搜编辑内容）。依赖视图缺失时保持 null。 */
+    private var search: EditorSearchController? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         ThemeManager.apply(this)
@@ -88,37 +93,49 @@ class ScriptEditActivity : AppCompatActivity() {
         nameInput = findViewById(R.id.nameInput)
         // 保存按钮已移入标题栏（menu action_save）；底部不再放按钮
         // 返回（标题栏返回箭头 + 系统返回键）统一走 confirmExit：有改动先提示保存
-        toolbar.setNavigationOnClickListener { confirmExit() }
+        toolbar?.setNavigationOnClickListener { confirmExit() }
         onBackPressedDispatcher.addCallback(this) { confirmExit() }
 
         // 标题栏菜单：复制全部（带 .log 内容出去）+ 保存（主操作，移入标题栏）
         // 操作按钮放在标题栏下方独立一行：次操作靠左、主操作「保存」靠右，紧凑高度。
-        findViewById<MaterialButton>(R.id.btnEditCopyAll).setOnClickListener { copyAll() }
-        findViewById<MaterialButton>(R.id.btnEditSave).setOnClickListener { save() }
+        findViewById<MaterialButton>(R.id.btnEditCopyAll)?.setOnClickListener { copyAll() }
+        findViewById<MaterialButton>(R.id.btnEditSave)?.setOnClickListener { save() }
 
         // 撤销/重做：调 sora CodeEditor 原生 undo()/redo()（编辑器自带撤销栈，不造轮子）
-        findViewById<MaterialButton>(R.id.btnEditUndo).setOnClickListener { editor.undo() }
-        findViewById<MaterialButton>(R.id.btnEditRedo).setOnClickListener { editor.redo() }
+        findViewById<MaterialButton>(R.id.btnEditUndo)?.setOnClickListener { editor?.undo() }
+        findViewById<MaterialButton>(R.id.btnEditRedo)?.setOnClickListener { editor?.redo() }
         // 自动换行开关（图标按钮）：切换的是**编辑内容区**的换行，不是标题。
         val wrapBtn = findViewById<MaterialButton>(R.id.btnEditWrap)
-        wrapBtn.setOnClickListener {
+        wrapBtn?.setOnClickListener {
             wordWrap = !wordWrap
-            applyWordWrap(wrapBtn)
+            wrapBtn.let { applyWordWrap(it) }
         }
 
         // 内联搜索：点操作行搜索按钮展开搜索条，输入即搜编辑内容（sora EditorSearcher 高亮）
-        findViewById<MaterialButton>(R.id.btnEditSearch).setOnClickListener {
-            search.toggle()
+        findViewById<MaterialButton>(R.id.btnEditSearch)?.setOnClickListener {
+            search?.toggle()
         }
-        search = EditorSearchController(
-            editor,
-            findViewById(R.id.searchBar),
-            findViewById(R.id.searchInput),
-            findViewById(R.id.searchCount),
-            findViewById(R.id.searchPrev),
-            findViewById(R.id.searchNext),
-            findViewById(R.id.searchClose),
-        )
+        // 仅当编辑器与搜索条相关视图全部就绪才构建控制器；任一缺失则保持 null（搜索功能降级）。
+        editor?.let { ed ->
+            val searchBar = findViewById<View>(R.id.searchBar)
+            val searchInput = findViewById<EditText>(R.id.searchInput)
+            val searchCount = findViewById<TextView>(R.id.searchCount)
+            val searchPrev = findViewById<View>(R.id.searchPrev)
+            val searchNext = findViewById<View>(R.id.searchNext)
+            val searchClose = findViewById<View>(R.id.searchClose)
+            if (searchBar != null && searchInput != null && searchCount != null &&
+                searchPrev != null && searchNext != null && searchClose != null) {
+                search = EditorSearchController(
+                    ed,
+                    searchBar,
+                    searchInput,
+                    searchCount,
+                    searchPrev,
+                    searchNext,
+                    searchClose,
+                )
+            }
+        }
 
         // 状态栏 inset 由 AppBarLayout(fitsSystemWindows) 自动消费；
         // 保存按钮已移入标题栏，底部无控件，导航条 inset 交给编辑器自身留白
@@ -127,45 +144,45 @@ class ScriptEditActivity : AppCompatActivity() {
         createMode = intent.getBooleanExtra(EXTRA_CREATE, false)
 
         if (createMode) {
-            toolbar.title = intent.getStringExtra(EXTRA_TITLE) ?: "新建脚本"
-            toolbar.subtitle = null
-            nameLayout.visibility = android.view.View.VISIBLE
+            toolbar?.title = intent.getStringExtra(EXTRA_TITLE) ?: "新建脚本"
+            toolbar?.subtitle = null
+            nameLayout?.visibility = android.view.View.VISIBLE
             // 协议头模板
-            editor.setText("#!/bin/sh\n#codetool: \n#codetool-desc: \n\n")
-            initialContent = editor.text.toString()
+            editor?.setText("#!/bin/sh\n#codetool: \n#codetool-desc: \n\n")
+            initialContent = editor?.text?.toString() ?: ""
             // 光标定位到 #codetool: 后（sora-editor 的 setSelection 是 line+column，非单 index）
-            editor.requestFocus()
-            val text = editor.text.toString()
+            editor?.requestFocus()
+            val text = editor?.text?.toString() ?: ""
             val idx = text.indexOf("#codetool: ")
             if (idx >= 0) {
                 val before = text.substring(0, idx + "#codetool: ".length)
                 val line = before.count { it == '\n' }
                 val col = before.length - (before.lastIndexOf('\n') + 1)
-                editor.setSelection(line, col)
+                editor?.setSelection(line, col)
             } else {
-                editor.setSelection(0, 0)
+                editor?.setSelection(0, 0)
             }
         } else {
             val p = path ?: run { finish(); return }
             val f = File(p)
             if (!f.exists()) { finish(); return }
             scriptFile = f
-            toolbar.title = "编辑脚本"
-            toolbar.subtitle = f.name   // 副标题：显示正在编辑的文件名
-            editor.setText(runCatching { f.readText() }.getOrDefault(""))
-            initialContent = editor.text.toString()
+            toolbar?.title = "编辑脚本"
+            toolbar?.subtitle = f.name   // 副标题：显示正在编辑的文件名
+            editor?.setText(runCatching { f.readText() }.getOrDefault(""))
+            initialContent = editor?.text?.toString() ?: ""
         }
         // 按文件类型设 TextMate 语法高亮（.sh 脚本高亮）
-        com.codetool.app.util.TextMateEditor.applyTo(
-            editor,
-            if (createMode) "新建脚本.sh" else (scriptFile?.name ?: path ?: "script.sh")
-        )
+        editor?.let {
+            com.codetool.app.util.TextMateEditor.applyTo(
+                it,
+                if (createMode) "新建脚本.sh" else (scriptFile?.name ?: path ?: "script.sh")
+            )
+        }
         // 标题已在上面设置：把标题字体调小（默认 20sp，长文件名更不容易截断），
         // 并应用编辑内容区换行初始状态。
-        toolbarTitleView(toolbar)?.setTextSize(
-            android.util.TypedValue.COMPLEX_UNIT_SP, 15f
-        )
-        applyWordWrap(findViewById(R.id.btnEditWrap))
+        toolbar?.let { toolbarTitleView(it)?.setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, 15f) }
+        findViewById<MaterialButton>(R.id.btnEditWrap)?.let { applyWordWrap(it) }
     }
 
     /** 工具栏标题 TextView：MaterialToolbar 的标题是内部子 TextView，遍历取之。 */
@@ -177,18 +194,18 @@ class ScriptEditActivity : AppCompatActivity() {
     }
 
     /** 应用编辑内容区自动换行：开=长行换行显示，关=横向滚动（默认）。 */
-    private fun applyWordWrap(wrapBtn: MaterialButton) {
-        wrapBtn.isChecked = wordWrap
-        wrapBtn.contentDescription = if (wordWrap) "关闭自动换行" else "自动换行"
-        editor.setWordwrap(wordWrap)
+    private fun applyWordWrap(wrapBtn: MaterialButton?) {
+        wrapBtn?.isChecked = wordWrap
+        wrapBtn?.contentDescription = if (wordWrap) "关闭自动换行" else "自动换行"
+        editor?.setWordwrap(wordWrap)
     }
 
     private fun save() {
         try {
-            val content = editor.text.toString()
+            val content = editor?.text?.toString() ?: ""
             val target: File
             if (createMode) {
-                val name = nameInput.text?.toString()?.trim().orEmpty()
+                val name = nameInput?.text?.toString()?.trim().orEmpty()
                 if (name.isEmpty()) {
                     Toast.makeText(this, "请输入脚本文件名", Toast.LENGTH_SHORT).show()
                     return
@@ -214,7 +231,7 @@ class ScriptEditActivity : AppCompatActivity() {
     }
 
     /** 内容是否有改动（相对进入时的初始内容）。 */
-    private fun isModified(): Boolean = editor.text.toString() != initialContent
+    private fun isModified(): Boolean = (editor?.text?.toString() ?: "") != initialContent
 
     /**
      * 返回拦截：内容有改动时弹「已修改是否保存」对话框（保存 / 不保存 / 取消），
@@ -233,7 +250,7 @@ class ScriptEditActivity : AppCompatActivity() {
 
     /** 把编辑器全文复制到剪贴板（含大 .log 也能一键带出）。 */
     private fun copyAll() {
-        val text = editor.text.toString()
+        val text = editor?.text?.toString() ?: ""
         if (text.isEmpty()) {
             Toast.makeText(this, "内容为空", Toast.LENGTH_SHORT).show()
             return
