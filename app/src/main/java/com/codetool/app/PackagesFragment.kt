@@ -19,7 +19,6 @@ import com.google.android.material.button.MaterialButton
  * - 安装 MiMo Code：官方脚本（curl 不存在时先安装 curl）
  * - 安装 opencode：官方脚本（失败时回退 npm 的 opencode-ai）
  * - 安装星火商店：下载 arm64 deb 后用 apt 安装（URL 已修复：tag 无 v 前缀）
- * - 安装 APM：从官方 APT 仓库安装 amber-pm 包管理器
  * - 安装浏览器：Google Chrome + Mozilla Firefox（官方 arm64 版）
  * - 启动星火商店：先开合成器 + 强制 Wayland/软件渲染（修复黑屏）
  */
@@ -142,29 +141,6 @@ class PackagesFragment : Fragment() {
                 )
             }
         }
-        v.findViewById<MaterialButton>(R.id.btnApmInstall).setOnClickListener {
-            runInTerminal(
-                "安装 APM",
-                aptWaitLock +
-                    "command -v wget >/dev/null 2>&1 || { apt-get update && apt-get install -y wget ca-certificates; }\n" +
-                    "export DEBIAN_FRONTEND=noninteractive\n" +
-                    "dpkg --configure -a\n" +
-                    "mkdir -p /etc/apt/trusted.gpg.d\n" +
-                    "echo '=== 下载 APM GPG 密钥 ==='\n" +
-                    "( set -e\n" +
-                    "  wget -q -O /etc/apt/trusted.gpg.d/apm.gpg 'https://gitee.com/amber-ce/amber-pm/raw/master/src/etc/apt/trusted.gpg.d/apm.gpg'\n" +
-                    "  [ -s /etc/apt/trusted.gpg.d/apm.gpg ] || { echo '[ERROR] GPG 密钥下载失败（空文件，网络问题）'; exit 1; }\n" +
-                    "  echo 'deb [signed-by=/etc/apt/trusted.gpg.d/apm.gpg] https://d.spark-app.store/apm-deb-source /' > /etc/apt/sources.list.d/apm.list\n" +
-                    "  apt-get update\n" +
-                    "  apt-get install -y apm\n" +
-                    ") || echo '[ERROR] APM 安装中断，看上方报错（GPG 密钥/网络）'\n" +
-                    "echo ''\n" +
-                    "echo '=== 安装结果（真实自检）==='\n" +
-                    "command -v apm >/dev/null 2>&1 && echo '[OK] APM 已可用：apm' || echo '[ERROR] APM 未装上，看上方报错（gitee 密钥下载或 apt 源）'\n" +
-                    "echo '用法：apm install <包名> 安装应用'\n" +
-                    "echo '网页商店：https://erotica.spark-app.store/arm64-apm/'"
-            )
-        }
         // 安装 ADB：Ubuntu rootfs 不带 adb，apt 装官方 android-tools 包；
         // 容器与 App 共享网络命名空间（tawcroot 不隔离 netns），可直连本机无线调试。
         v.findViewById<MaterialButton>(R.id.btnAdbInstall).setOnClickListener {
@@ -269,7 +245,7 @@ class PackagesFragment : Fragment() {
         refreshInstallStatus()
     }
 
-    /** 浏览器/星火/ADB/MiMo/opencode/APM 都是「不预装、包管理一键装」：按钮实时反映 rootfs 里的安装状态。 */
+    /** 浏览器/星火/ADB/MiMo/opencode 都是「不预装、包管理一键装」：按钮实时反映 rootfs 里的安装状态。 */
     private fun refreshInstallStatus() {
         val ctx = requireContext()
         val chrome = view?.findViewById<MaterialButton>(R.id.btnChromeInstall) ?: return
@@ -278,7 +254,6 @@ class PackagesFragment : Fragment() {
         val adb = view?.findViewById<MaterialButton>(R.id.btnAdbInstall)
         val mimoBtn = view?.findViewById<MaterialButton>(R.id.btnMimo)
         val ocBtn = view?.findViewById<MaterialButton>(R.id.btnOpencode)
-        val apmBtn = view?.findViewById<MaterialButton>(R.id.btnApmInstall)
         val da = com.codetool.app.gui.DesktopApps
 
         chrome.text = if (da.browserInstalled(ctx))
@@ -302,11 +277,6 @@ class PackagesFragment : Fragment() {
                         else "安装 MiMo Code"
         ocBtn?.text = if (oc.installed) installedText("opencode", oc.version)
                       else "安装 opencode（AI 编程助手）"
-
-        // APM 由 apt 安装，版本从容器 dpkg 数据库读（纯文件，不启动进程）
-        apmBtn?.text = if (da.resolveBinary(ctx, "apm") != null)
-            installedText("APM", dpkgVersion(ctx, "apm", "amber-pm"))
-        else "安装 APM（应用包管理器）"
     }
 
     /** 已安装按钮文案：有版本就带上，拿不到版本时明确写「版本未知」。 */

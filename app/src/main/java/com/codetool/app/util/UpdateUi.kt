@@ -5,12 +5,9 @@ import android.content.Context
 import android.content.Intent
 import android.content.SharedPreferences
 import android.net.Uri
-import android.view.ViewGroup
-import android.widget.LinearLayout
 import android.widget.Toast
 import androidx.fragment.app.Fragment
 import androidx.lifecycle.lifecycleScope
-import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
@@ -84,41 +81,20 @@ object UpdateUi {
                 append(if (notes.length > 600) notes.take(600) + "…" else notes)
             }
         }
-        // 「忽略此版本」做成勾选框，避免按钮超过 3 个。
-        // MaterialCheckBox + 与正文左右内边距一致的外层容器，避免裸 CheckBox 直接 setView 显得局促。
-        val density = activity.resources.displayMetrics.density
-        val dp = { v: Int -> (v * density).toInt() }
-        val ignore = MaterialCheckBox(activity).apply {
-            text = "不再提示此版本"
-            textSize = 15f
-        }
-        val ignoreWrap = LinearLayout(activity).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(24), dp(0), dp(24), dp(0))
-            addView(ignore, LinearLayout.LayoutParams(
-                ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-                topMargin = dp(4)
-                bottomMargin = dp(4)
-            })
-        }
+        val directUrl = rel.apkUrl ?: rel.pageUrl
         val builder = MaterialAlertDialogBuilder(activity)
             .setTitle(if (rel.isPrerelease) "发现预发行版本 ${rel.tag}" else "发现新版本 ${rel.tag}")
             .setMessage(msg)
-            .setView(ignoreWrap)
-            .setPositiveButton("去下载") { _, _ ->
-                if (ignore.isChecked) prefs.edit().putString(KEY_IGNORED_TAG, rel.tag).apply()
-                open(activity, rel.apkUrl ?: rel.pageUrl)
+            // 按钮顺序（Material 约定：negative 左 / neutral 中 / positive 右）：
+            //   取消（negative，仅关闭）· 不再提示（neutral，忽略此版本）· 下载更新（positive，跳转下载）
+            // 「不再提示」从中选框改成中立按钮：去掉勾选框后不存在对齐问题，三个按钮语义也更清晰。
+            .setNegativeButton("取消", null)
+            .setNeutralButton("不再提示") { _, _ ->
+                prefs.edit().putString(KEY_IGNORED_TAG, rel.tag).apply()
             }
-            .setNegativeButton("以后再说") { _, _ ->
-                if (ignore.isChecked) prefs.edit().putString(KEY_IGNORED_TAG, rel.tag).apply()
+            .setPositiveButton("下载更新") { _, _ ->
+                open(activity, directUrl)
             }
-        // 有 APK 直链时给国内镜像（GitHub 资产直连容易失败）
-        if (rel.apkUrl != null) {
-            builder.setNeutralButton("镜像下载") { _, _ ->
-                if (ignore.isChecked) prefs.edit().putString(KEY_IGNORED_TAG, rel.tag).apply()
-                open(activity, "https://gh-proxy.com/" + rel.apkUrl)
-            }
-        }
         builder.show()
     }
 

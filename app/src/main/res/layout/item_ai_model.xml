@@ -36,19 +36,6 @@
                 android:textColor="?attr/colorOnSurface" />
 
             <com.google.android.material.textview.MaterialTextView
-                android:id="@+id/modelTarget"
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="8dp"
-                android:paddingStart="8dp"
-                android:paddingEnd="8dp"
-                android:paddingTop="3dp"
-                android:paddingBottom="3dp"
-                android:textSize="11sp"
-                android:textStyle="bold"
-                android:visibility="gone" />
-
-            <com.google.android.material.textview.MaterialTextView
                 android:id="@+id/modelBadge"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
@@ -61,12 +48,47 @@
                 android:visibility="gone" />
         </LinearLayout>
 
-        <!-- 目标 / 协议 摘要 -->
+        <!-- CLI 归属标签：独立一行，mimo / opencode 各一个，同步后两个都亮。靠左对齐（无 marginStart），
+             与标题左边缘齐平；上下间距统一 8dp。 -->
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:gravity="center_vertical"
+            android:layout_marginTop="8dp">
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/modelTarget"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+
+            <com.google.android.material.textview.MaterialTextView
+                android:id="@+id/modelTarget2"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:paddingStart="8dp"
+                android:paddingEnd="8dp"
+                android:paddingTop="3dp"
+                android:paddingBottom="3dp"
+                android:textSize="11sp"
+                android:textStyle="bold"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- 目标 / 协议 摘要：与标签行间距统一 8dp -->
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/modelMeta"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
-            android:layout_marginTop="2dp"
+            android:layout_marginTop="8dp"
             android:textSize="12sp"
             android:textColor="?attr/colorOnSurfaceVariant" />
 

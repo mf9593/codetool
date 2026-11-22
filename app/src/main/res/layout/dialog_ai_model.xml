@@ -113,6 +113,24 @@
                 android:inputType="textPassword" />
         </com.google.android.material.textfield.TextInputLayout>
 
+        <!-- 上下文长度（可选）：部分服务商（如 xfyun）的 /models 不返回上下文长度，
+             「获取能力」拿不到值时在此手动填写，保存后卡片即显示，不再显示「未知」。留空则用拉到的值。 -->
+        <com.google.android.material.textfield.TextInputLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="8dp"
+            android:hint="上下文长度（可选，拉不到时手填，如 131072）"
+            app:helperText="服务商 /models 不返回时手动填写；填写后优先用此值">
+            <com.google.android.material.textfield.TextInputEditText
+                android:id="@+id/etAiContextLength"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:minHeight="56dp"
+                android:gravity="center_vertical"
+                android:textSize="15sp"
+                android:inputType="number" />
+        </com.google.android.material.textfield.TextInputLayout>
+
         <!-- API 协议：Chat Completions 或 OpenAI Responses API -->
         <com.google.android.material.textview.MaterialTextView
             android:layout_width="wrap_content"

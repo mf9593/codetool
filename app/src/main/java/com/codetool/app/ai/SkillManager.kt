@@ -48,7 +48,7 @@ object SkillManager {
      */
     val BUILTIN_IDS: Set<String> = setOf(
         "codetool-browser", "codetool-shizuku", "codetool-system",
-        "multi-search-engine", "dev-god",
+        "multi-search-engine", "dev-god", "app-debug-rules",
     )
 
     /** 标准扫描根（相对容器根）。 */
@@ -549,6 +549,47 @@ sh gradlew :app:assembleDebug                  # Debug 包；release 加签名�
         // 不再注册 codetool-dev，并清理已装旧包（幂等）。
         val oldDev = File(dir(ctx), "codetool-dev")
         if (oldDev.exists() && runCatching { oldDev.deleteRecursively() }.getOrDefault(false)) n++
+        // 启动时同步外部 skill 源码目录 → 容器：源码放在 /storage/.../codetool/skill/<name>/，
+        // 改完重启 APP 即生效（无需重新编译 APK）。同名覆盖，源码永不丢（在 git/外部存储里）。
+        n += syncExternalSkills(ctx)
+        return n
+    }
+
+    /**
+     * 把外部 skill 源码目录同步进容器 ~/.agents/skills/。
+     * 源目录：/storage/emulated/0/Download/codetool/skill/<skill-id>/SKILL.md（可含 references/ 等子目录）。
+     * 规则：
+     *  - 源目录里每个含 SKILL.md 的子目录，整体递归复制进容器，**同名覆盖**（源码为准）。
+     *  - 只增/改，不删除容器里源目录已没有的 skill（避免误删用户在容器内自建的）。
+     *  - 目录不存在 / 无存储权限时静默跳过（返回 0），不影响内置 skill 播种。
+     * 返回本次实际复制/更新的 skill 个数。
+     */
+    private fun syncExternalSkills(ctx: Context): Int {
+        // 源码 skill 根目录（外部存储，APP 有 READ/WRITE_EXTERNAL_STORAGE 即可读）。
+        val srcRoot = File("/storage/emulated/0/Download/codetool/skill")
+        if (!srcRoot.isDirectory) return 0
+        val dstRoot = dir(ctx)
+        if (!dstRoot.isDirectory && !dstRoot.mkdirs()) return 0
+        var n = 0
+        val dirs = srcRoot.listFiles { f -> f.isDirectory } ?: return 0
+        for (src in dirs) {
+            // 只同步含 SKILL.md 的目录（合法 skill），跳过临时/隐藏/备份（.bak .tmp 以 . 开头）。
+            val id = src.name
+            if (id.startsWith(".") || id.endsWith(".bak") || id.endsWith(".tmp")) continue
+            if (!File(src, "SKILL.md").isFile) continue
+            val dst = File(dstRoot, id)
+            // 内容一致则跳过（按 SKILL.md 长度 + 目录文件数粗判，避免每次启动都重写时间戳）。
+            if (dst.isDirectory && File(dst, "SKILL.md").isFile &&
+                File(dst, "SKILL.md").length() == File(src, "SKILL.md").length() &&
+                (dst.walkTopDown().count { it.isFile }) == (src.walkTopDown().count { it.isFile })
+            ) continue
+            runCatching {
+                dst.deleteRecursively()
+                if (!dst.exists() && !dst.mkdirs()) return@runCatching
+                src.copyRecursively(dst, overwrite = true)
+                n++
+            }
+        }
         return n
     }
 

@@ -229,7 +229,7 @@
                     android:layout_marginTop="8dp"
                     android:maxLines="3"
                     android:ellipsize="end"
-                    android:text="提示：CLI 模型列表 = 本页配置的模型 + CLI 内置注册表模型（如 xiaomi 等）。不在注册表的自定义供应商/模型，同步写入配置后同样可被 CLI 识别。"
+                    android:text="提示：CLI 模型列表 = 本页配置的模型 + CLI 内置注册表模型。不在注册表的自定义供应商/模型，同步写入配置后同样可被 CLI 识别。"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
 

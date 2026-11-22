@@ -14,8 +14,8 @@ android {
         applicationId = "com.codetool.app"
         minSdk = 26
         targetSdk = 34
-        versionCode = 7
-        versionName = "2.0.5"
+        versionCode = 8
+        versionName = "2.0.6"
         // 只打 arm64（tawcroot 和 rootfs 都是 aarch64）
         ndk { abiFilters += "arm64-v8a" }
     }

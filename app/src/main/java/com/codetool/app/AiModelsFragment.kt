@@ -167,6 +167,7 @@ class AiModelsFragment : Fragment() {
             val btnEdit = row.findViewById<MaterialButton>(R.id.btnModelEdit)
             val btnDelete = row.findViewById<MaterialButton>(R.id.btnModelDelete)
             val targetBadge = row.findViewById<MaterialTextView>(R.id.modelTarget)
+            val targetBadge2 = row.findViewById<MaterialTextView>(R.id.modelTarget2)
 
             name.text = m.name
             // 状态用徽标放在标题右侧，颜色跟随主题，不混进标题文字
@@ -187,25 +188,26 @@ class AiModelsFragment : Fragment() {
                 }
                 else -> badge.visibility = View.GONE
             }
-            // 目标徽标：mimo / opencode，颜色跟随主题，一眼看出模型属于哪个 CLI 配置
-            when (m.target) {
-                "opencode" -> {
-                    targetBadge.text = "opencode"
-                    targetBadge.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_oc)
-                    targetBadge.setTextColor(MaterialColors.getColor(
-                        ctx, com.google.android.material.R.attr.colorOnSecondaryContainer, Color.GRAY))
-                    targetBadge.visibility = View.VISIBLE
-                }
-                else -> {
-                    targetBadge.text = "mimo"
-                    targetBadge.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_mimo)
-                    targetBadge.setTextColor(MaterialColors.getColor(
-                        ctx, com.google.android.material.R.attr.colorOnPrimaryContainer, Color.GRAY))
-                    targetBadge.visibility = View.VISIBLE
-                }
-            }
-            meta.text = "目标 ${m.target}  ·  " +
-                if (m.apiType == AiModelManager.ApiType.RESPONSES) "Responses API" else "Chat Completions API"
+            // CLI 归属徽标：读两个 CLI 的真实配置文件，判断此模型实际被声明在哪些 CLI，
+            // 有哪个亮哪个（两个都在就都亮）。不再用过时的 target 单字段，避免误读成「只在一个 CLI」。
+            val inClis = AiModelManager.clisContaining(ctx, m)
+            // 第一个标签：mimo
+            if ("mimo" in inClis) {
+                targetBadge.text = "mimo"
+                targetBadge.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_mimo)
+                targetBadge.setTextColor(MaterialColors.getColor(
+                    ctx, com.google.android.material.R.attr.colorOnPrimaryContainer, Color.GRAY))
+                targetBadge.visibility = View.VISIBLE
+            } else targetBadge.visibility = View.GONE
+            // 第二个标签：opencode
+            if ("opencode" in inClis) {
+                targetBadge2.text = "opencode"
+                targetBadge2.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_oc)
+                targetBadge2.setTextColor(MaterialColors.getColor(
+                    ctx, com.google.android.material.R.attr.colorOnSecondaryContainer, Color.GRAY))
+                targetBadge2.visibility = View.VISIBLE
+            } else targetBadge2.visibility = View.GONE
+            meta.text = if (m.apiType == AiModelManager.ApiType.RESPONSES) "Responses API" else "Chat Completions API"
             provider.text = AiModelManager.providerLabel(ctx, m.provider)
             modelId.text = m.modelId
             baseUrl.text = m.baseUrl.ifEmpty { "未设置" }
@@ -259,6 +261,11 @@ class AiModelsFragment : Fragment() {
         val testResult = v.findViewById<MaterialTextView>(R.id.tvAiTestResult)
         val btnFetchCaps = v.findViewById<MaterialButton>(R.id.btnAiFetchCaps)
         val tvCapsResult = v.findViewById<MaterialTextView>(R.id.tvAiCapsResult)
+        val etContextLength = v.findViewById<TextInputEditText>(R.id.etAiContextLength)
+        // 编辑已有模型时回填上下文长度（>0 才填，0 表示未知留空）
+        existing?.let { ex ->
+            if (ex.contextLength > 0) etContextLength.setText(ex.contextLength.toString())
+        }
 
         // 编辑历史模型时，若其 provider 已不在列表（旧数据 / 自定义项被删），
         // 临时补一项，保证「添加后还能编辑修改」不会把 provider 悄悄改掉。
@@ -311,6 +318,8 @@ class AiModelsFragment : Fragment() {
         swAiEnabled.isChecked = existing?.enabled ?: true
 
         var target = existing?.target ?: "mimo"
+        // 「获取能力」拉到的最新能力值；保存时 readForm() 优先用它，避免旧值覆盖新能力。
+        var fetchedCaps: AiModelManager.Model? = null
         targetBtn.text = "目标：$target（点击切换）"
         targetBtn.setOnClickListener {
             target = if (target == "mimo") "opencode" else "mimo"
@@ -327,12 +336,16 @@ class AiModelsFragment : Fragment() {
             enabled = swAiEnabled.isChecked,
             target = target,
             current = existing?.current ?: false,
-            contextLength = existing?.contextLength ?: 0,
-            maxOutputLength = existing?.maxOutputLength ?: 0,
-            supportsToolCall = existing?.supportsToolCall ?: true,
-            supportsReasoning = existing?.supportsReasoning ?: true,
-            supportsImage = existing?.supportsImage ?: true,
-            supportsTemperature = existing?.supportsTemperature ?: true,
+            // 能力字段：优先用「获取能力」刚拉到的值（fetchedCaps），避免保存时用旧值覆盖掉新能力。
+            // 上下文长度：手填框（etContextLength）优先——部分服务商（如 xfyun）/models 不返回该字段，
+            // 用户手填后以此为准；留空则用拉到的值 / 旧值。
+            contextLength = etContextLength.text?.toString()?.trim()?.toIntOrNull()
+                ?: fetchedCaps?.contextLength ?: existing?.contextLength ?: 0,
+            maxOutputLength = fetchedCaps?.maxOutputLength ?: existing?.maxOutputLength ?: 0,
+            supportsToolCall = fetchedCaps?.supportsToolCall ?: existing?.supportsToolCall ?: true,
+            supportsReasoning = fetchedCaps?.supportsReasoning ?: existing?.supportsReasoning ?: true,
+            supportsImage = fetchedCaps?.supportsImage ?: existing?.supportsImage ?: true,
+            supportsTemperature = fetchedCaps?.supportsTemperature ?: existing?.supportsTemperature ?: true,
         )
 
         var lastPos = providers.indexOfFirst { it.id == existing?.provider.orEmpty() }.coerceAtLeast(0)
@@ -425,14 +438,16 @@ class AiModelsFragment : Fragment() {
                     tvCapsResult.text = "✓ 连接成功，但列表中未找到模型 ${m.modelId}"
                     return@launch
                 }
-                AiModelManager.upsertModel(ctx, m.copy(
+                val caps = m.copy(
                     contextLength = matched.contextLength,
                     maxOutputLength = matched.maxOutputLength,
                     supportsToolCall = matched.supportsToolCall,
                     supportsReasoning = matched.supportsReasoning,
                     supportsImage = matched.supportsImage,
                     supportsTemperature = matched.supportsTemperature,
-                ))
+                )
+                AiModelManager.upsertModel(ctx, caps)
+                fetchedCaps = caps   // 缓存，保存时 readForm() 优先用它，避免旧值回退
                 val ctxLen = AiModelManager.formatContextLength(matched.contextLength)
                 tvCapsResult.text = "✓ 已更新能力：上下文 ${if (ctxLen.isEmpty()) "未知" else ctxLen} · " +
                     "工具${if (matched.supportsToolCall) "✓" else "✗"} · " +
@@ -487,7 +502,17 @@ class AiModelsFragment : Fragment() {
                     val tip = if (clis.isNotEmpty()) {
                         "；检测到 ${clis.joinToString("、")} 仍在运行，请重启终端后生效"
                     } else ""
-                    toast("已同步 $okCount 个目标：${details.joinToString("，")}$tip")
+                    // 明确口径：报「同步到哪些 CLI、各几个模型」，避免「成功 2 个」被误读成只同步了一个模型。
+                    // details 形如「mimo 8 个模型 ✓」，直接拼进 Toast；失败的（✗）单独点出。
+                    val okParts = details.filter { it.contains("✓") }
+                    val failParts = details.filter { it.contains("✗") || it.contains("跳过") }
+                    val msg = buildString {
+                        append(if (okParts.isNotEmpty()) "已同步到 ${okParts.joinToString("、")}" else "没有同步任何 CLI")
+                        if (failParts.isNotEmpty()) append("；未同步：${failParts.joinToString("、")}")
+                        append(tip)
+                    }
+                    toast(msg)
+                    android.util.Log.i("AiSync", "syncAll details=${details.joinToString("，")}")
                     if (isAdded) refresh()
                 }
             }
@@ -671,9 +696,10 @@ class AiModelsFragment : Fragment() {
             .setNegativeButton("取消", null).show()
     }
 
-    /** 拼接模型能力摘要：工具 / 推理 / 图片逐项展示，无能力信息时提示兜底。上下文长度单独一行展示。 */
+    /** 拼接模型能力摘要：工具 / 推理 / 图片逐项展示。上下文长度单独一行展示，不再绑架能力显示——
+     *  工具/推理/图片是独立字段（部分服务商如 xfyun 的 /models 不返回，但默认按支持处理），
+     *  即使上下文未知也应把已知的能力显示出来，而不是整体显示「未知」。 */
     private fun buildCapabilityText(m: AiModelManager.Model): String {
-        if (m.contextLength <= 0) return "未知（同步默认全支持）"
         return "工具${if (m.supportsToolCall) "✓" else "✗"} · " +
             "推理${if (m.supportsReasoning) "✓" else "✗"} · " +
             "图片${if (m.supportsImage) "✓" else "✗"}"

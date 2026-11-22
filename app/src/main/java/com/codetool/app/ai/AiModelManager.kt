@@ -243,6 +243,39 @@ object AiModelManager {
         }.getOrDefault(mutableListOf())
     }
 
+    /**
+     * 查询某模型实际被声明在哪些 CLI（读两个 CLI 的真实配置文件，而非过时的 target 单字段）。
+     * 判定依据：
+     *  - opencode：opencode.json 的 provider.<prov>.models.<modelId> 是否存在
+     *  - mimo：mimocode.jsonc（JSONC）的 provider.<prov>.models.<modelId> 是否存在
+     * 返回集合，取值 "mimo" / "opencode"；都不在则空集（模型还没同步进任何 CLI）。
+     * provider 用 effProvider 兜底，和写入时一致，保证能对上。
+     */
+    fun clisContaining(ctx: Context, m: Model, all: List<Model> = listModels(ctx)): Set<String> {
+        val out = mutableSetOf<String>()
+        val prov = effProvider(m, all)
+        val mid = m.modelId
+        // opencode.json（纯 JSON）
+        runCatching {
+            val oc = opencodeCfg(ctx)
+            if (oc.isFile) {
+                val pObj = JSONObject(oc.readText()).optJSONObject("provider")?.optJSONObject(prov)
+                if (pObj?.optJSONObject("models")?.has(mid) == true) out.add("opencode")
+            }
+        }
+        // mimocode.jsonc（JSONC）——必须用现成的 Jsonc.parse()，不能自己写正则去注释：
+        // 自写 Regex("//.*") 会把 baseURL 里的 https:// 一起砍掉，JSON 损坏、解析失败、mimo 判定丢失。
+        runCatching {
+            val mc = mimoConfig(ctx)
+            if (mc.isFile) {
+                val parsed = Jsonc.parse(mc.readText())
+                val pObj = parsed?.obj?.optJSONObject("provider")?.optJSONObject(prov)
+                if (pObj?.optJSONObject("models")?.has(mid) == true) out.add("mimo")
+            }
+        }
+        return out
+    }
+
     private fun saveModels(ctx: Context, list: List<Model>) {
         val file = modelsFile(ctx).apply { parentFile?.mkdirs() }
         val arr = JSONArray()
@@ -571,28 +604,25 @@ object AiModelManager {
     fun syncAll(ctx: Context, targets: List<String> = listOf("mimo", "opencode")): Pair<Int, List<String>> {
         val details = mutableListOf<String>()
         var okCount = 0
+        val allEnabled = listModels(ctx).filter { it.enabled }
         for (target in targets) {
-            var cur = listModels(ctx).find { it.target == target && it.current }
-            android.util.Log.w("AiSync", "syncAll target=$target cur=${cur?.name} key=${cur?.apiKey?.take(8)} baseUrl=${cur?.baseUrl}")
+            // 当前模型：优先该 target 标记为 current 的；没有就用第一个启用模型兜底。
+            // （同步写入的是「全部启用模型」，target 只决定哪个 CLI 把哪个模型当默认，
+            //   不再按 target 切分——否则把所有模型目标都留在 mimo 时，同步 opencode 会一个都写不进去。）
+            var cur = listModels(ctx).find { it.target == target && it.current && it.enabled }
+                ?: allEnabled.firstOrNull()
             if (cur == null) {
-                // 该目标没选当前模型：自动把第一个已启用模型设为当前再同步，避免"跳过"让用户困惑。
-                val fallback = listModels(ctx).firstOrNull { it.target == target && it.enabled }
-                if (fallback == null) {
-                    details.add("$target：无已启用模型，跳过")
-                    continue
-                }
-                setCurrent(ctx, fallback.name, target)
-                cur = listModels(ctx).find { it.target == target && it.current }
-                details.add("$target：自动选中 ${fallback.name}")
-                if (cur == null) continue
+                details.add("$target：没有已启用模型，跳过")
+                continue
             }
+            // 关键：写入该 CLI 的是「全部启用模型」（让 CLI 一次认得全部），cur 作默认（recent[0]）。
             val ok = if (target == "mimo") {
-                writeMimo(ctx, cur, listModels(ctx).filter { it.target == target && it.enabled })
+                writeMimo(ctx, cur, allEnabled)
             } else {
-                writeOpencode(ctx, cur, listModels(ctx).filter { it.target == target && it.enabled })
+                writeOpencode(ctx, cur, allEnabled)
             }
-            android.util.Log.w("AiSync", "syncAll target=$target ok=$ok authAfter=${mimoAuth(ctx).takeIf { it.isFile }?.readText()?.take(80)}")
-            details.add("$target：${cur.name} ${if (ok) "✓" else "✗"}")
+            android.util.Log.w("AiSync", "syncAll target=$target ok=$ok models=${allEnabled.size} cur=${cur.name}")
+            details.add("$target ${allEnabled.size} 个模型${if (ok) " ✓" else " ✗"}")
             if (ok) okCount++
         }
         return okCount to details
@@ -805,8 +835,32 @@ object AiModelManager {
     private fun parseFetchedModel(o: JSONObject): FetchedModel? {
         val id = o.optString("id", "").ifEmpty { o.optString("name", "") }.takeIf { it.isNotEmpty() }
             ?: return null
-        var contextLength = o.optInt("context_length", 0)
-        var maxOutputLength = o.optInt("max_output_length", 0)
+        // 上下文/输出长度：各服务商字段名不统一，逐个兜底尝试（实测只有 context_length 命中时
+        // 其余服务商拿到的都是 0，卡片永远显示「未知」）：
+        //   context_length        —— 部分服务商（裸字段）
+        //   max_model_len         —— vLLM / Ollama / 多数自托管
+        //   context_window        —— Groq
+        //   top_provider.context_length / max_completion_tokens —— OpenRouter（嵌套对象）
+        fun pickInt(vararg paths: Pair<String, String>): Int {
+            for ((obj, key) in paths) {
+                val target = if (obj == ".") o else o.optJSONObject(obj) ?: continue
+                val v = target.optInt(key, 0)
+                if (v > 0) return v
+            }
+            return 0
+        }
+        val contextLength = pickInt(
+            "." to "context_length",
+            "." to "max_model_len",
+            "." to "context_window",
+            "top_provider" to "context_length",
+        )
+        val maxOutputLength = pickInt(
+            "." to "max_output_length",
+            "." to "max_completion_tokens",
+            "." to "max_tokens",
+            "top_provider" to "max_completion_tokens",
+        )
         // supported_features 存在才覆盖默认值（无此字段的服务商保持 true 兜底）
         val sf = o.optJSONArray("supported_features")
         var toolCall = true
