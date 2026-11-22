@@ -162,7 +162,9 @@ class ScheduledTasksFragment : Fragment() {
         val s = ModelScheduleManager.load(ctx)
         val curName = if (peak) s.peakModel else s.offModel
         val curTarget = if (peak) s.peakTarget else s.offTarget
-        val labels = all.map { "${it.name}（${it.target}）" }.toTypedArray()
+        // 标签显示服务商（provider），不再显示 target（mimo/opencode）：定时切换现在
+        // 两个 CLI 同时生效，标 target 会误导成「只切这个 CLI」；provider 才能区分同名模型。
+        val labels = all.map { "${it.name}（${it.provider}）" }.toTypedArray()
         MaterialAlertDialogBuilder(ctx)
             .setTitle(if (peak) "选择高峰模型" else "选择闲时模型")
             .setSingleChoiceItems(labels, all.indexOfFirst { it.name == curName && it.target == curTarget }) { d, which ->

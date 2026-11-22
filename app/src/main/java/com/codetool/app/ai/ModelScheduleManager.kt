@@ -275,7 +275,7 @@ object ModelScheduleManager {
             slot.holiday -> "法定节假日闲时"
             else -> "闲时"
         }
-        return true to "已按${label}时段（北京时间 ${fmtNow()}）把 ${slot.target} 模型从「${cur ?: "未设置"}」切换为「${slot.model}」"
+        return true to "已按${label}时段（北京时间 ${fmtNow()}）把默认模型从「${cur ?: "未设置"}」切换为「${slot.model}」（mimo、opencode 同时生效）"
     }
 
     /**

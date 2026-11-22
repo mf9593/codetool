@@ -30,6 +30,9 @@ object Changelog {
                 "AI 模型页提示文案精简（去掉「（如 xiaomi 等）」括号）。",
                 "移除 APM 安装入口（绑定星火商店生态，不再提供一键安装）。",
                 "app-debug-rules 内置 skill 升级到 v1.1.0，合并「禁止用截图验证 UI」规范，并支持外部 skill 目录启动同步。",
+                "修复 opencode 模型全挤进 free 分组的问题：写入配置时不再把 cost 硬编码为 0，模型按服务商（sensenova / xfyun 等）正常分组显示。",
+                "定时切换改为 mimo、opencode 两个 CLI 同时生效（此前因模型 target 恒为 mimo，到点只切 mimo、opencode 默认模型不动）。",
+                "定时任务选模型标签改显示服务商（不再显示误导的 target），切换提示注明两个 CLI 同时生效。",
             ),
         ),
         Entry(

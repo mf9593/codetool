@@ -372,9 +372,13 @@ object AiModelManager {
         val m = found ?: return false
         if (!m.enabled) return false   // 停用的模型不能设为当前
         saveModels(ctx, list)
-        // 写该 target 下所有启用模型（都能被 CLI 识别），m 作默认（recent[0]）
-        val enabled = list.filter { it.target == target && it.enabled }
-        return if (target == "opencode") writeOpencode(ctx, m, enabled) else writeMimo(ctx, m, enabled)
+        // 默认模型两个 CLI 一起切：同步已把全部启用模型写进 mimo 和 opencode，
+        // 切默认（recent[0] / model）就该两个 CLI 同时生效，否则只动一个 CLI
+        // （历史上 target 恒为 mimo 时，定时切换从不动 opencode）。target 只保留作内部状态标记。
+        val enabled = list.filter { it.enabled }
+        val okMimo = writeMimo(ctx, m, enabled)
+        val okOc = writeOpencode(ctx, m, enabled)
+        return okMimo || okOc
     }
 
     /** 从 CLI 现有原生配置导入为清单条目（首次/清单为空时用）。 */
@@ -530,7 +534,7 @@ object AiModelManager {
                         ).put(
                             "output", if (mm.maxOutputLength > 0) mm.maxOutputLength else 65536
                         ))
-                        decl.put("cost", JSONObject().put("input", 0).put("output", 0).put("cache_read", 0))
+                        // 不硬编码 cost=0：与 opencode 一致，假定价数据无意义（mimo 靠 registry 而非 cost 识别模型）。
                         modelsMap.put(mm.modelId, decl)
                     }
                     p.put("models", modelsMap)
@@ -583,7 +587,9 @@ object AiModelManager {
                     ).put(
                         "output", if (mm.maxOutputLength > 0) mm.maxOutputLength else 65536
                     ))
-                    decl.put("cost", JSONObject().put("input", 0).put("output", 0).put("cache_read", 0))
+                    // 不硬编码 cost=0：opencode 会按 cost 给模型分类，全填 0 会被当成
+                    // 「免费模型」挤进 free 分组，看不出哪个跟哪个。去掉 cost 字段后
+                    // opencode 按 provider 分组显示（sensenova 一组、xfyun 一组），贴合服务商。
                     modelsMap.put(mm.modelId, decl)
                 }
                 pObj.put("models", modelsMap)
