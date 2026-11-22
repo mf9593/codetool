@@ -548,8 +548,13 @@ object AiModelManager {
     }.getOrDefault(false)
 
     /**
-     * 写 opencode.json：model（=current 默认）+ env.{PROVIDER}_API_KEY + provider.<id>.options.baseURL，
-     * 并把所有启用模型声明进 provider.<id>.models.<modelId>（让 opencode 一次认得全部，不止 current）。
+     * 写 opencode.json（对齐 opencode 官方 provider 格式）：
+     * provider.<id> = { npm, name, options.{baseURL,apiKey}, models.<modelId>.name }
+     * - npm：固定 @ai-sdk/openai-compatible（OpenAI 兼容协议），缺了 opencode 认不出 provider。
+     * - name：provider 显示名（取自 BUILTIN_PROVIDERS.label，自定义则用 id）。
+     * - options：baseURL + apiKey 都放这里（不是顶层 env），opencode 从 options 读连接信息。
+     * - models.<modelId>.name：每个模型只声明 name（opencode 靠 provider 分组，无需 cost/limit 等字段）。
+     * 顶层 model = current 默认（providerId/modelId）。
      */
     fun writeOpencode(ctx: Context, current: Model, enabled: List<Model> = listOf(current)): Boolean = runCatching {
         val m = current
@@ -557,39 +562,27 @@ object AiModelManager {
         val file = opencodeCfg(ctx).apply { parentFile?.mkdirs() }
         val obj = if (file.isFile) runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject()) else JSONObject()
         obj.put("model", "${mProv}/${m.modelId}")
-        // 所有启用模型的 provider 都写 key（同一 provider 取第一个非空 key）；分组用 groupByProvider 兜底
         val byProvider = groupByProvider(enabled)
-        val env = obj.optJSONObject("env") ?: JSONObject()
-        byProvider.forEach { (prov, models) ->
-            val key = models.firstOrNull { it.apiKey.isNotEmpty() }?.apiKey ?: models.first().apiKey
-            if (key.isNotEmpty()) env.put("${prov.uppercase()}_API_KEY", key)
-        }
-        if (m.apiKey.isNotEmpty()) env.put("${mProv.uppercase()}_API_KEY", m.apiKey)
-        obj.put("env", env)
         if (byProvider.isNotEmpty()) {
             val providers = obj.optJSONObject("provider") ?: JSONObject()
             byProvider.forEach { (prov, models) ->
-                val pObj = providers.optJSONObject(prov) ?: JSONObject()
-                val options = pObj.optJSONObject("options") ?: JSONObject()
+                val pObj = JSONObject()
+                // npm：opencode 靠它选 SDK 适配器；我们全是 OpenAI 兼容协议
+                pObj.put("npm", "@ai-sdk/openai-compatible")
+                // name：provider 显示名（内置取 label，自定义兜底用 id）
+                pObj.put("name", providerById(ctx, prov)?.label ?: prov)
+                // options：baseURL + apiKey 都放这里（同一 provider 取第一个非空）
+                val options = JSONObject()
                 val bu = models.firstOrNull { it.baseUrl.isNotEmpty() }?.baseUrl.orEmpty()
                 if (bu.isNotEmpty()) options.put("baseURL", bu)
-                val modelsMap = pObj.optJSONObject("models") ?: JSONObject()
+                val key = models.firstOrNull { it.apiKey.isNotEmpty() }?.apiKey.orEmpty()
+                if (key.isNotEmpty()) options.put("apiKey", key)
+                pObj.put("options", options)
+                // models.<modelId>.name：只声明 name，opencode 按 provider 分组显示
+                val modelsMap = JSONObject()
                 models.forEach { mm ->
                     val decl = JSONObject()
-                    decl.put("id", mm.modelId)
                     decl.put("name", mm.name.substringAfter('/').ifEmpty { mm.modelId })
-                    decl.put("reasoning", mm.supportsReasoning)
-                    decl.put("tool_call", mm.supportsToolCall)
-                    decl.put("temperature", mm.supportsTemperature)
-                    decl.put("attachment", mm.supportsImage)
-                    decl.put("limit", JSONObject().put(
-                        "context", if (mm.contextLength > 0) mm.contextLength else 262144
-                    ).put(
-                        "output", if (mm.maxOutputLength > 0) mm.maxOutputLength else 65536
-                    ))
-                    // 不硬编码 cost=0：opencode 会按 cost 给模型分类，全填 0 会被当成
-                    // 「免费模型」挤进 free 分组，看不出哪个跟哪个。去掉 cost 字段后
-                    // opencode 按 provider 分组显示（sensenova 一组、xfyun 一组），贴合服务商。
                     modelsMap.put(mm.modelId, decl)
                 }
                 pObj.put("models", modelsMap)
