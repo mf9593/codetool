@@ -1,7 +1,9 @@
 package com.codetool.app
 
 import android.app.Activity
+import android.content.Intent
 import android.content.res.ColorStateList
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.view.Gravity
@@ -37,6 +39,9 @@ class AboutActivity : Activity() {
 
     /** 普通 Activity 没有 lifecycleScope，自建并在 onDestroy 取消。 */
     private val scope = MainScope()
+
+    /** 官网 = GitHub 仓库主页（用于宣传项目）。 */
+    private val WEBSITE_URL = "https://github.com/mf9593/codetool"
 
     override fun onDestroy() {
         scope.cancel()
@@ -305,6 +310,52 @@ class AboutActivity : Activity() {
         }.also { changelogRow.addView(it) }
         layout2.addView(divider())
         layout2.addView(changelogRow)
+
+        // ─── 官网行（GitHub 仓库主页，用于宣传项目）───
+        val websiteRow = LinearLayout(this).apply {
+            orientation = LinearLayout.HORIZONTAL
+            gravity = Gravity.CENTER_VERTICAL
+            setPadding(0, dp(16), 0, dp(16))
+            isClickable = true
+            isFocusable = true
+            val ripple = android.util.TypedValue()
+            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
+            setBackgroundResource(ripple.resourceId)
+            setOnClickListener {
+                runCatching {
+                    startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(WEBSITE_URL)))
+                }.onFailure { Toast.makeText(this@AboutActivity, "没有可用的浏览器", Toast.LENGTH_SHORT).show() }
+            }
+        }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_open)
+            layoutParams = LinearLayout.LayoutParams(dp(24), dp(24))
+            setColorFilter(accent)
+        }.also { websiteRow.addView(it) }
+        LinearLayout(this).apply {
+            orientation = LinearLayout.VERTICAL
+            layoutParams = LinearLayout.LayoutParams(
+                0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            ).also { it.leftMargin = dp(12) }
+            addView(TextView(this@AboutActivity).apply {
+                text = "官网"
+                textSize = 14f
+                setTextColor(onSurface)
+                setTypeface(typeface, android.graphics.Typeface.BOLD)
+            })
+            addView(TextView(this@AboutActivity).apply {
+                text = WEBSITE_URL.removePrefix("https://")
+                textSize = 13f
+                setTextColor(onSurfaceVariant)
+            })
+        }.also { websiteRow.addView(it) }
+        ImageView(this).apply {
+            setImageResource(R.drawable.ic_chevron_right)
+            layoutParams = LinearLayout.LayoutParams(dp(20), dp(20))
+            setColorFilter(onSurfaceVariant)
+        }.also { websiteRow.addView(it) }
+        layout2.addView(divider())
+        layout2.addView(websiteRow)
 
         // ─── 用户协议与免责声明行 ───
         val agreementRow = LinearLayout(this).apply {
