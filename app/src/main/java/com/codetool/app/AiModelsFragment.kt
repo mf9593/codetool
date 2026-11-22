@@ -190,21 +190,21 @@ class AiModelsFragment : Fragment() {
             }
             // CLI 归属徽标：读两个 CLI 的真实配置文件，判断此模型实际被声明在哪些 CLI，
             // 有哪个亮哪个（两个都在就都亮）。不再用过时的 target 单字段，避免误读成「只在一个 CLI」。
+            // 两个标签同色（secondaryContainer 底 + onSecondaryContainer 字），并列关系不再用颜色区分。
             val inClis = AiModelManager.clisContaining(ctx, m)
-            // 第一个标签：mimo
+            val badgeText = MaterialColors.getColor(
+                ctx, com.google.android.material.R.attr.colorOnSecondaryContainer, Color.GRAY)
+            val badgeBg = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_mimo)
             if ("mimo" in inClis) {
                 targetBadge.text = "mimo"
-                targetBadge.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_mimo)
-                targetBadge.setTextColor(MaterialColors.getColor(
-                    ctx, com.google.android.material.R.attr.colorOnPrimaryContainer, Color.GRAY))
+                targetBadge.background = badgeBg
+                targetBadge.setTextColor(badgeText)
                 targetBadge.visibility = View.VISIBLE
             } else targetBadge.visibility = View.GONE
-            // 第二个标签：opencode
             if ("opencode" in inClis) {
                 targetBadge2.text = "opencode"
                 targetBadge2.background = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_oc)
-                targetBadge2.setTextColor(MaterialColors.getColor(
-                    ctx, com.google.android.material.R.attr.colorOnSecondaryContainer, Color.GRAY))
+                targetBadge2.setTextColor(badgeText)
                 targetBadge2.visibility = View.VISIBLE
             } else targetBadge2.visibility = View.GONE
             meta.text = if (m.apiType == AiModelManager.ApiType.RESPONSES) "Responses API" else "Chat Completions API"

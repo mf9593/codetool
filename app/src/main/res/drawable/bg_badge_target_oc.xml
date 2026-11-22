@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- 目标徽标（opencode）：圆角 8dp，填充 secondaryContainer，跟随主题。 -->
+<!-- CLI 归属徽标（opencode）：圆角 8dp，填充 secondaryContainer，跟随主题。
+     与 mimo 标签同色——两者是并列关系（同步后两个 CLI 都含此模型），不再用颜色区分。 -->
 <shape xmlns:android="http://schemas.android.com/apk/res/android"
     android:shape="rectangle">
     <solid android:color="?attr/colorSecondaryContainer" />
