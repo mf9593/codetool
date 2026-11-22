@@ -74,7 +74,7 @@ class HomeFragment : Fragment() {
             if (!isAdded) return
             val now = Calendar.getInstance(TimeZone.getTimeZone("Asia/Shanghai"))
             timeText.text = String.format(
-                "终端时间: %04d-%02d-%02d %02d:%02d:%02d（北京时间，与终端 date 一致）",
+                "终端时间: %04d-%02d-%02d %02d:%02d:%02d",
                 now.get(Calendar.YEAR), now.get(Calendar.MONTH) + 1, now.get(Calendar.DAY_OF_MONTH),
                 now.get(Calendar.HOUR_OF_DAY), now.get(Calendar.MINUTE), now.get(Calendar.SECOND)
             )

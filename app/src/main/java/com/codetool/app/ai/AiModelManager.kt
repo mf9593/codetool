@@ -255,11 +255,11 @@ object AiModelManager {
         val out = mutableSetOf<String>()
         val prov = effProvider(m, all)
         val mid = m.modelId
-        // opencode.json（纯 JSON）
+        // opencode.json（纯 JSON）——V2 格式顶层是 providers（复数），读它判定归属
         runCatching {
             val oc = opencodeCfg(ctx)
             if (oc.isFile) {
-                val pObj = JSONObject(oc.readText()).optJSONObject("provider")?.optJSONObject(prov)
+                val pObj = JSONObject(oc.readText()).optJSONObject("providers")?.optJSONObject(prov)
                 if (pObj?.optJSONObject("models")?.has(mid) == true) out.add("opencode")
             }
         }
@@ -339,16 +339,16 @@ object AiModelManager {
                 }
             }
         } else {
-            // opencode.json：删 provider.<id>（纯 JSON）
+            // opencode.json：删 providers.<id>（V2 格式，纯 JSON）
             val file = opencodeCfg(ctx)
             if (file.isFile) {
                 runCatching {
                     val obj = JSONObject(file.readText())
-                    val providers = obj.optJSONObject("provider") ?: return@runCatching
+                    val providers = obj.optJSONObject("providers") ?: return@runCatching
                     if (providers.has(provider)) {
                         backupFile(file)
                         providers.remove(provider)
-                        if (providers.length() == 0) obj.remove("provider")
+                        if (providers.length() == 0) obj.remove("providers")
                         file.writeText(jsonPretty(obj))
                     }
                 }
@@ -413,11 +413,12 @@ object AiModelManager {
                 val slash = oc.indexOf('/')
                 val p = if (slash > 0) oc.substring(0, slash) else ""
                 val mid = if (slash > 0) oc.substring(slash + 1) else oc
-                val key = cfg.optJSONObject("env")?.optString("${p.uppercase()}_API_KEY", "").orEmpty()
+                // V2：连接信息在 providers.<p>.settings（baseURL/apiKey），不是 V1 的 env/provider.options
+                val pSettings = cfg.optJSONObject("providers")?.optJSONObject(p)?.optJSONObject("settings")
+                val key = pSettings?.optString("apiKey", "").orEmpty()
                 list.add(Model(
                     name = oc, provider = p, modelId = mid, apiKey = key,
-                    baseUrl = cfg.optJSONObject("provider")?.optJSONObject(p)
-                        ?.optJSONObject("options")?.optString("baseURL", "").orEmpty(),
+                    baseUrl = pSettings?.optString("baseURL", "").orEmpty(),
                     target = "opencode", current = true,
                 ))
                 added++
@@ -548,12 +549,13 @@ object AiModelManager {
     }.getOrDefault(false)
 
     /**
-     * 写 opencode.json（对齐 opencode 官方 provider 格式）：
-     * provider.<id> = { npm, name, options.{baseURL,apiKey}, models.<modelId>.name }
-     * - npm：固定 @ai-sdk/openai-compatible（OpenAI 兼容协议），缺了 opencode 认不出 provider。
-     * - name：provider 显示名（取自 BUILTIN_PROVIDERS.label，自定义则用 id）。
-     * - options：baseURL + apiKey 都放这里（不是顶层 env），opencode 从 options 读连接信息。
-     * - models.<modelId>.name：每个模型只声明 name（opencode 靠 provider 分组，无需 cost/limit 等字段）。
+     * 写 opencode.json（opencode V2 格式，V1 的 provider/npm/options 已 deprecated）：
+     * providers.<id> = { name, package, settings.{baseURL,apiKey}, models.<modelId> = { name, capabilities, limit } }
+     * - package：@opencode/ai/providers/openai-compatible（OpenAI 兼容协议），V1 叫 npm、已废弃。
+     * - name：provider 显示名（BUILTIN_PROVIDERS.label，自定义兜底 id）。
+     * - settings：baseURL + apiKey 都放这里（V1 放 options、顶层 env，均已废弃）。
+     * - models.<modelId>：带 capabilities（tools/reasoning/temperature/input/output）+ limit（context/output），
+     *   这是 opencode 模型列表区分能力/分类的依据——只写 name 的话列表里每行只有 ID、看不出差异。
      * 顶层 model = current 默认（providerId/modelId）。
      */
     fun writeOpencode(ctx: Context, current: Model, enabled: List<Model> = listOf(current)): Boolean = runCatching {
@@ -564,35 +566,60 @@ object AiModelManager {
         obj.put("model", "${mProv}/${m.modelId}")
         val byProvider = groupByProvider(enabled)
         if (byProvider.isNotEmpty()) {
-            val providers = obj.optJSONObject("provider") ?: JSONObject()
+            // V2 顶层键是 providers（复数）；顺手清掉 V1 残留的 provider/options/env，避免新旧混用。
+            val providers = obj.optJSONObject("providers") ?: JSONObject()
+            obj.remove("provider")
             byProvider.forEach { (prov, models) ->
                 val pObj = JSONObject()
-                // npm：opencode 靠它选 SDK 适配器；我们全是 OpenAI 兼容协议
-                pObj.put("npm", "@ai-sdk/openai-compatible")
-                // name：provider 显示名（内置取 label，自定义兜底用 id）
                 pObj.put("name", providerById(ctx, prov)?.label ?: prov)
-                // options：baseURL + apiKey 都放这里（同一 provider 取第一个非空）
-                val options = JSONObject()
+                // package：opencode V2 靠它选运行时适配器（OpenAI 兼容协议）
+                pObj.put("package", "@opencode/ai/providers/openai-compatible")
+                // settings：baseURL + apiKey（同一 provider 取第一个非空）
+                val settings = JSONObject()
                 val bu = models.firstOrNull { it.baseUrl.isNotEmpty() }?.baseUrl.orEmpty()
-                if (bu.isNotEmpty()) options.put("baseURL", bu)
+                if (bu.isNotEmpty()) settings.put("baseURL", bu)
                 val key = models.firstOrNull { it.apiKey.isNotEmpty() }?.apiKey.orEmpty()
-                if (key.isNotEmpty()) options.put("apiKey", key)
-                pObj.put("options", options)
-                // models.<modelId>.name：只声明 name，opencode 按 provider 分组显示
+                if (key.isNotEmpty()) settings.put("apiKey", key)
+                pObj.put("settings", settings)
                 val modelsMap = JSONObject()
                 models.forEach { mm ->
-                    val decl = JSONObject()
-                    decl.put("name", mm.name.substringAfter('/').ifEmpty { mm.modelId })
-                    modelsMap.put(mm.modelId, decl)
+                    modelsMap.put(mm.modelId, buildOpencodeModelDecl(mm))
                 }
                 pObj.put("models", modelsMap)
                 providers.put(prov, pObj)
             }
-            obj.put("provider", providers)
+            obj.put("providers", providers)
         }
         file.writeText(jsonPretty(obj))
         true
     }.getOrDefault(false)
+
+    /**
+     * 构造单个模型的 V2 声明：name + capabilities + limit。
+     * capabilities 把清单里已知的模型能力（工具/推理/温度/图片）映射成 opencode 的分类元数据，
+     * 让 /models 列表能显示每个模型的能力差异，而不是只列一列 ID。
+     */
+    private fun buildOpencodeModelDecl(mm: Model): JSONObject {
+        val decl = JSONObject()
+        decl.put("name", mm.name.substringAfter('/').ifEmpty { mm.modelId })
+        val caps = JSONObject()
+        caps.put("tools", mm.supportsToolCall)
+        caps.put("temperature", mm.supportsTemperature)
+        // reasoning：v2 是对象 { supported: bool }，不是裸 boolean
+        caps.put("reasoning", JSONObject().put("supported", mm.supportsReasoning))
+        // input：媒体类型数组；支持图片则含 image，恒含 text
+        val input = JSONArray().put("text")
+        if (mm.supportsImage) input.put("image")
+        caps.put("input", input)
+        caps.put("output", JSONArray().put("text"))
+        decl.put("capabilities", caps)
+        // limit：上下文 / 输出上限（缺省给常用兜底值，0 会让 opencode 当未知）
+        val limit = JSONObject()
+        limit.put("context", if (mm.contextLength > 0) mm.contextLength else 262144)
+        limit.put("output", if (mm.maxOutputLength > 0) mm.maxOutputLength else 65536)
+        decl.put("limit", limit)
+        return decl
+    }
 
     /**
      * 同步到 CLI：把每个目标（mimo / opencode）当前模型重新写入 CLI 原生配置。
