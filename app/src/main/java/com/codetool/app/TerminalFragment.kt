@@ -631,6 +631,16 @@ class TerminalFragment : Fragment() {
     }
 
     /** 关闭标签前的确认提示。 */
+    /** 撤销上一条消息（^X U）二次确认：撤销会丢掉刚发的提示，误触代价高。 */
+    private fun confirmUndo() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("撤销上一条消息？")
+            .setMessage("将向 CLI 发送撤销指令（Ctrl+X 然后 U），刚发送的最后一条提示可能被撤回。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("撤销") { _, _ -> sendAiCommand('u') }
+            .show()
+    }
+
     private fun confirmCloseTab(index: Int) {
         val tab = TerminalTabs.tabs.getOrNull(index) ?: return
         if (TerminalTabs.tabs.size <= 1) {
@@ -751,7 +761,7 @@ class TerminalFragment : Fragment() {
                     android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 // ^X ↵：回车主字符单独调大（突出回车，与其他键稍区分）
                 if (label.endsWith("↵")) {
-                    sp.setSpan(android.text.style.RelativeSizeSpan(1.7f), label.length - 1,
+                    sp.setSpan(android.text.style.RelativeSizeSpan(2.1f), label.length - 1,
                         label.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 return sp
@@ -902,10 +912,11 @@ class TerminalFragment : Fragment() {
             Triple("AI_NEW", "^X N", 0)
         )
         val row4 = listOf(
-            Triple("AI_QUEUE", "^X ↵", 0), Triple("AI_UNDO", "^X U", 0),
+            Triple("AI_UNDO", "^X U", 0),
             Triple("AI_QUIT", "^X Q", 0), Triple("AI_AGENT", "^X A", 0),
             Triple("AI_SIDEBAR", "^X B", 0), Triple("AI_JUMPMSG", "^X G", 0),
-            Triple("AI_EXPORT", "^X X", 0), Triple("AI_CLOSETAB", "^X W", 0)
+            Triple("AI_EXPORT", "^X X", 0), Triple("AI_CLOSETAB", "^X W", 0),
+            Triple("AI_QUEUE", "^X ↵", 0)   // 排队发送放最右（回车字符大，靠右不挤其它键）
         )
         val pages = listOf(listOf(row1, row2), listOf(row3, row4))
 
@@ -942,7 +953,7 @@ class TerminalFragment : Fragment() {
             "AI_SESSIONS" -> sendAiCommand('l') // ^X 然后 l = Switch session
             "AI_NEW" -> sendAiCommand('n')      // ^X 然后 n = New session
             "AI_QUEUE" -> sendAiCommand('\r')   // ^X 然后 Enter = Queue prompt（排队发送）
-            "AI_UNDO" -> sendAiCommand('u')     // ^X 然后 u = 撤销上一条消息
+            "AI_UNDO" -> confirmUndo()   // ^X 然后 u = 撤销上一条消息（误触代价高，二次确认）
             "AI_QUIT" -> sendAiCommand('q')     // ^X 然后 q = 退出
             "AI_AGENT" -> sendAiCommand('a')    // ^X 然后 a = 选择 Agent
             "AI_SIDEBAR" -> sendAiCommand('b')  // ^X 然后 b = 切换侧边栏
