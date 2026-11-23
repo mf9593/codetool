@@ -36,12 +36,30 @@ class TerminalService : Service() {
 
         const val ACTION_START = "com.codetool.action.START_TERMINAL"
         const val ACTION_STOP = "com.codetool.action.STOP_TERMINAL"
+        const val ACTION_KEEPALIVE = "com.codetool.action.KEEPALIVE_TERMINAL"
         const val EXTRA_KEEP_WIFI = "keep_wifi"
 
         // 单例引用，方便 Fragment 直接拿
         @Volatile
         var instance: TerminalService? = null
             private set
+
+        /**
+         * App 启动时保活拉起（幂等）。与浏览器桥一样在 CodeToolApp.onCreate 调用，
+         * 让进程重启后终端服务能复活——此前只有桥在 Application 拉起，终端服务只能靠
+         * START_STICKY，国产 ROM 常抑制、force-stop 直接取消，导致「重启后桥活着、终端服务没了」。
+         * 用 ACTION_KEEPALIVE 只起前台通知、不持 wakeLock/WifiLock（没有真实会话时不耗电）；
+         * 用户真开终端时 TerminalSessionManager.prepare() 会发 ACTION_START 并 onSessionStarted 持锁。
+         */
+        fun start(context: Context) {
+            val intent = Intent(context, TerminalService::class.java).setAction(ACTION_KEEPALIVE)
+            try {
+                context.startForegroundService(intent)
+            } catch (e: Exception) {
+                // 后台启动受限等场景不致命：打开终端时 prepare() 会再拉起
+                Log.w(TAG, "start failed: ${e.message}")
+            }
+        }
     }
 
     private lateinit var wakeLock: PowerManager.WakeLock
@@ -65,6 +83,11 @@ class TerminalService : Service() {
                 stopForeground(STOP_FOREGROUND_REMOVE)
                 stopSelf()
                 return START_NOT_STICKY
+            }
+            ACTION_KEEPALIVE -> {
+                // App 启动保活：只起前台通知让服务常驻、可被系统识别，不持 wakeLock/WifiLock。
+                // 此时没有真实终端会话，持锁纯耗电；真开终端时 prepare() 会 ACTION_START + 持锁。
+                startForeground(NOTIF_ID, buildNotification("终端待命"))
             }
             else -> {
                 keepWifi = intent?.getBooleanExtra(EXTRA_KEEP_WIFI, true) ?: true
@@ -142,18 +165,16 @@ class TerminalService : Service() {
             Intent(this, MainActivity::class.java),
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
-        val stopPi = PendingIntent.getService(
-            this, 1,
-            Intent(this, TerminalService::class.java).setAction(ACTION_STOP),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-        )
+        // 不设「停止」Action：终端服务现在是 App 级保活常驻（与浏览器桥一致），
+        // 保留停止按钮容易在通知栏误触 → stopSelf + START_NOT_STICKY 永久停掉且不会自动复活。
+        // 要停终端会话请在终端页关标签页；服务本身常驻不耗电（保活模式不持锁）。
         return NotificationCompat.Builder(this, CodeToolApp.CHANNEL_TERMINAL)
             .setContentTitle("CodeTool 终端")
             .setContentText(text)
             .setSmallIcon(R.drawable.ic_terminal)
             .setContentIntent(pi)
-            .addAction(R.drawable.ic_stop, "停止", stopPi)
             .setOngoing(true)
+            .setOnlyAlertOnce(true)
             .setForegroundServiceBehavior(NotificationCompat.FOREGROUND_SERVICE_IMMEDIATE)
             .build()
     }

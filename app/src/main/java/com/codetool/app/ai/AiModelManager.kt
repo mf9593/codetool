@@ -563,6 +563,15 @@ object AiModelManager {
         val mProv = effProvider(m, enabled)
         val file = opencodeCfg(ctx).apply { parentFile?.mkdirs() }
         val obj = if (file.isFile) runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject()) else JSONObject()
+        // 文件被误删/重建后会丢非模型段（如 mcp）。MCP 由 McpManager 统一管理、两 CLI 同步写，
+        // 这里在 opencode 配置缺少 mcp 段时从 mimo 配置继承，保证同步后 MCP 不丢（含用户自建服务）。
+        if (!obj.has("mcp")) {
+            runCatching {
+                val mimoFile = f(ctx, "root/.config/mimocode/mimocode.jsonc")
+                val mimoMcp = if (mimoFile.isFile) Jsonc.parse(mimoFile.readText())?.obj?.optJSONObject("mcp") else null
+                if (mimoMcp != null && mimoMcp.length() > 0) obj.put("mcp", JSONObject(mimoMcp.toString()))
+            }
+        }
         obj.put("model", "${mProv}/${m.modelId}")
         val byProvider = groupByProvider(enabled)
         if (byProvider.isNotEmpty()) {
@@ -574,6 +583,10 @@ object AiModelManager {
                 pObj.put("name", providerById(ctx, prov)?.label ?: prov)
                 // package：opencode V2 靠它选运行时适配器（OpenAI 兼容协议）
                 pObj.put("package", "@opencode/ai/providers/openai-compatible")
+                // env：声明该 provider 的 API Key 环境变量名。opencode 只有识别到「环境连接」
+                //（provider.env 声明 + 服务进程环境变量已设置）才把 provider 当已连接，
+                // 模型选择器才会按服务商分组；否则 connected()=false，所有模型平铺混在 free 里。
+                pObj.put("env", JSONArray().put(envVarFor(prov)))
                 // settings：baseURL + apiKey（同一 provider 取第一个非空）
                 val settings = JSONObject()
                 val bu = models.firstOrNull { it.baseUrl.isNotEmpty() }?.baseUrl.orEmpty()
@@ -622,6 +635,44 @@ object AiModelManager {
     }
 
     /**
+     * opencode 环境连接用的 API Key 变量名：<PROVIDER_ID>_API_KEY（大写，非字母数字转下划线）。
+     * 与 opencode 官方目录 provider 的 env 命名约定一致（如 sensenova → SENSENOVA_API_KEY）。
+     */
+    private fun envVarFor(provider: String): String =
+        provider.replace(Regex("[^A-Za-z0-9]"), "_").uppercase() + "_API_KEY"
+
+    /**
+     * 把各 provider 的 API Key 写入 opencode 后台服务进程的环境变量（opencode service set env），
+     * 让 opencode 把 provider 识别为「环境连接」。这是模型选择器按服务商分组的必要条件：
+     * opencode 的 connected() 只看认证集成连接，配置里 settings.apiKey 不产生连接。
+     * 变量名 = envVarFor(provider)；无 key 的 provider 清掉旧变量。best-effort，失败不阻塞同步。
+     * 注意：每个 service set env 会重启 opencode 后台服务，多个 provider 连跑会连续重启（终态正确）。
+     */
+    fun applyOpencodeEnv(ctx: Context, enabled: List<Model>): Boolean = runCatching {
+        val app = ctx.applicationContext
+        val root = RootfsManager.get(app).containerRoot
+        val runtime = TawcrootRuntime.get(app)
+        val oc = opencodeBins(ctx).firstOrNull { it.isFile }?.absolutePath ?: return false
+        if (!root.isDirectory || !File(runtime.binaryPath).exists()) return false
+        val byProvider = groupByProvider(enabled)
+        val sb = StringBuilder()
+        byProvider.forEach { (prov, models) ->
+            val varName = envVarFor(prov)
+            val key = models.firstOrNull { it.apiKey.isNotEmpty() }?.apiKey.orEmpty()
+            if (key.isNotEmpty()) sb.append("\"$oc\" service set env $varName '${key.replace("'", "'\\''")}'\n")
+            else sb.append("\"$oc\" service unset env $varName\n")
+        }
+        if (sb.isEmpty()) return true
+        val p = runtime.exec(root, "/bin/sh", "-c", sb.toString())
+        p.inputStream.bufferedReader().readText()
+        if (!p.waitFor(25, TimeUnit.SECONDS)) {
+            p.destroy()
+            return false
+        }
+        p.exitValue() == 0
+    }.getOrDefault(false)
+
+    /**
      * 同步到 CLI：把每个目标（mimo / opencode）当前模型重新写入 CLI 原生配置。
      * 用途：改了 baseURL / 修了写入逻辑 / 手动改过 JSON 后，一键让 CLI 配置和清单对齐。
      * 可指定只同步某些目标（mimo / opencode），默认两个都同步。
@@ -645,7 +696,14 @@ object AiModelManager {
             val ok = if (target == "mimo") {
                 writeMimo(ctx, cur, allEnabled)
             } else {
-                writeOpencode(ctx, cur, allEnabled)
+                val okWrite = writeOpencode(ctx, cur, allEnabled)
+                // 同步 opencode 后建立「环境连接」：opencode 模型选择器只有 connected()=true 才按服务商分组，
+                // 否则所有模型平铺混在 free 里。settings.apiKey 不产生连接，必须 service set env。
+                if (okWrite) {
+                    val envOk = applyOpencodeEnv(ctx, allEnabled)
+                    android.util.Log.w("AiSync", "applyOpencodeEnv ok=$envOk providers=${groupByProvider(allEnabled).keys}")
+                }
+                okWrite
             }
             android.util.Log.w("AiSync", "syncAll target=$target ok=$ok models=${allEnabled.size} cur=${cur.name}")
             details.add("$target ${allEnabled.size} 个模型${if (ok) " ✓" else " ✗"}")

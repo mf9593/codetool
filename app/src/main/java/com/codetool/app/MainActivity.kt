@@ -63,6 +63,7 @@ class MainActivity : AppCompatActivity() {
     private val MENU_FILE_SETTINGS = 800
     private val MENU_LOG_SETTINGS = 810
     private val MENU_LOG_FILTER = 815
+    private val MENU_KEY_HELP = 850
     /** 合成器运行中（顶栏图标，仅运行时显示，点击回合成器）。 */
     private val MENU_COMPOSITOR_RUNNING = 820
 
@@ -399,6 +400,12 @@ class MainActivity : AppCompatActivity() {
         kb.icon?.mutate()?.setTint(iconColor)
         kb.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         kb.isVisible = (currentPage == 1)
+        // 说明（解释终端具体功能 + 底部按键作用；仅终端页可见）
+        val keyHelp = menu.add(0, MENU_KEY_HELP, 3, "说明")
+        keyHelp.setIcon(R.drawable.ic_info)
+        keyHelp.icon?.mutate()?.setTint(iconColor)
+        keyHelp.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
+        keyHelp.isVisible = (currentPage == 1)
         // GUI 显示（arlinux 风格桌面；仅终端页可见）
         val disp = menu.add(0, MENU_DISPLAY, 3, "显示")
         disp.setIcon(R.drawable.ic_display)
@@ -479,6 +486,10 @@ class MainActivity : AppCompatActivity() {
         }
         if (item.itemId == MENU_KEYBOARD) {
             TerminalFragment.instance?.toggleShortcutRow()
+            return true
+        }
+        if (item.itemId == MENU_KEY_HELP) {
+            showKeyHelpSheet()
             return true
         }
         if (item.itemId == MENU_COMPOSITOR_RUNNING) {
@@ -615,6 +626,100 @@ class MainActivity : AppCompatActivity() {
         sheetHint(container, "开启自动滚动后按选定的间隔（1~10 秒）自动刷新并滚动到最新日志（终端式）")
         sheet.setContentView(container)
         sheet.show()
+    }
+
+    /** 终端「说明」弹窗：精简功能说明 + 第一页/第二页快捷键逐行列出（可滚动）。 */
+    private fun showKeyHelpSheet() {
+        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+        val keyTypeface = android.graphics.Typeface.MONOSPACE
+        // attr 属性 ID 不能直接 getColor()（会 Resources$NotFoundException），须经 MaterialColors 解析。
+        val primaryColor = com.google.android.material.color.MaterialColors.getColor(
+            this, com.google.android.material.R.attr.colorPrimary, 0xFF00505A.toInt())
+
+        fun sectionTitle(text: String) = android.widget.TextView(this).apply {
+            this.text = text
+            textSize = 14f
+            setTextColor(primaryColor)
+            setPadding(0, dp(12), 0, dp(4))
+        }
+        // 每行：等宽快捷键列 + 作用说明；iconRes!=0 时快捷键列显示图标（大小与文字行一致）。
+        fun rowLine(key: String, desc: String, iconRes: Int = 0) = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            setPadding(0, dp(2), 0, dp(2))
+            if (iconRes != 0) {
+                addView(android.widget.ImageView(this@MainActivity).apply {
+                    setImageResource(iconRes)
+                    imageTintList = android.content.res.ColorStateList.valueOf(primaryColor)
+                    // FIT_START：图标贴列左端，与其它行文字左对齐（FIT_CENTER 会在 120dp 列内居中偏右）
+                    scaleType = android.widget.ImageView.ScaleType.FIT_START
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        dp(120), dp(20))
+                })
+            } else {
+                addView(android.widget.TextView(this@MainActivity).apply {
+                    text = key
+                    textSize = 13f
+                    typeface = keyTypeface
+                    setTextColor(primaryColor)
+                    layoutParams = android.widget.LinearLayout.LayoutParams(
+                        dp(120), android.view.ViewGroup.LayoutParams.WRAP_CONTENT)
+                })
+            }
+            addView(android.widget.TextView(this@MainActivity).apply {
+                text = desc
+                textSize = 13f
+                layoutParams = android.widget.LinearLayout.LayoutParams(
+                    0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f)
+            })
+        }
+
+        val intro = android.widget.TextView(this).apply {
+            text = "第一页 = 光标/编辑常用键；第二页 = AI 工具（opencode / mimo）命令面板。\n" +
+                "修饰键 CTRL/ALT/SHIFT 粘性：点一次带修饰；方向键 / BCK 长按连续；长按 AI 键显示提示。"
+            textSize = 13f
+            setPadding(0, dp(4), 0, dp(4))
+        }
+
+        val p1 = listOf(
+            Triple("ESC", "取消 / 退出", 0), Triple("TAB", "补全", 0), Triple("ALT", "Alt 修饰", 0),
+            Triple("BCK", "退格（长按连续删除）", 0), Triple("↑↓←→", "移动光标（长按连续）", 0),
+            Triple("", "执行命令", R.drawable.ic_key_enter),
+            Triple("HOME", "行首", 0), Triple("END", "行尾", 0), Triple("PGUP", "向上翻页", 0),
+            Triple("PGDN", "向下翻页", 0),
+            Triple("CTRL", "Ctrl 修饰", 0), Triple("SHIFT", "Shift 修饰", 0), Triple("/", "输入 /", 0),
+        )
+        val p2 = listOf(
+            "Ctrl+X 然后 M" to "切换模型", "Ctrl+X 然后 L" to "切换会话",
+            "Ctrl+X 然后 N" to "新建会话", "Ctrl+X 然后 ↵" to "排队发送提示（稍后处理）",
+            "Ctrl+X 然后 U" to "撤销上一条消息", "Ctrl+X 然后 Q" to "退出",
+            "Ctrl+X 然后 A" to "选择 Agent", "Ctrl+X 然后 B" to "切换侧边栏",
+            "Ctrl+X 然后 G" to "跳转到消息", "Ctrl+X 然后 X" to "导出会话到编辑器",
+            "Ctrl+X 然后 W" to "关闭当前标签页", "^P" to "打开设置", "^O" to "最近会话 + 项目一起开",
+            "^R" to "重命名当前会话",
+        )
+
+        val col = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.VERTICAL
+            setPadding(dp(24), dp(16), dp(24), dp(8))
+        }
+        col.addView(intro)
+        col.addView(sectionTitle("【第一页】"))
+        for ((k, v, i) in p1) col.addView(rowLine(k, v, i))
+        col.addView(sectionTitle("【第二页】AI 工具命令面板"))
+        for ((k, v) in p2) col.addView(rowLine(k, v))
+
+        val scroll = android.widget.ScrollView(this).apply {
+            addView(col)
+            // 限制最大高度，避免超出屏幕；内容多可滚动
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.7f).toInt())
+        }
+        com.google.android.material.dialog.MaterialAlertDialogBuilder(this)
+            .setTitle("说明")
+            .setView(scroll)
+            .setPositiveButton("知道了", null)
+            .show()
     }
 
     /** 主题选择底部弹窗：模式（浅色/深色/跟随系统按钮切换）+ 8 色网格 + 随机。 */
@@ -1009,6 +1114,82 @@ class MainActivity : AppCompatActivity() {
             setPadding(dp(28), dp(16), dp(28), dp(32))
         }
         sheetTitle(container, "终端设置")
+
+        // ---- 底部按键振动反馈 ----
+        val vibRow = android.widget.LinearLayout(this).apply {
+            orientation = android.widget.LinearLayout.HORIZONTAL
+            gravity = android.view.Gravity.CENTER_VERTICAL
+            setPadding(0, dp(16), 0, dp(0))
+        }
+        vibRow.addView(android.widget.TextView(this).apply {
+            text = "按键振动"
+            textSize = 16f
+            layoutParams = android.widget.LinearLayout.LayoutParams(
+                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
+            )
+        })
+        // 强度滑条在开关之后创建，但开关的 listener 要控制其可见性：用 lateinit 先声明。
+        lateinit var vibStrengthLabel: android.widget.TextView
+        lateinit var vibStrengthSlider: com.google.android.material.slider.Slider
+        lateinit var vibStrengthValue: android.widget.TextView
+        val vibSwitch = com.google.android.material.materialswitch.MaterialSwitch(this).apply {
+            isChecked = AppSettings.terminalVibration(this@MainActivity)
+        }
+        vibSwitch.setOnCheckedChangeListener { _, checked ->
+            AppSettings.setTerminalVibration(this@MainActivity, checked)
+            val vis = if (checked) android.view.View.VISIBLE else android.view.View.GONE
+            vibStrengthLabel.visibility = vis
+            vibStrengthSlider.visibility = vis
+            vibStrengthValue.visibility = vis
+        }
+        vibRow.addView(vibSwitch)
+        container.addView(vibRow)
+        container.addView(android.widget.TextView(this).apply {
+            text = "按终端底部按键时的振动反馈（长按方向键连续振动）"
+            textSize = 12f
+            setTextColor(getColor(android.R.color.darker_gray))
+            setPadding(0, dp(4), 0, dp(0))
+        })
+
+        // ---- 振动强度（无极滑条，默认弱）----
+        vibStrengthLabel = android.widget.TextView(this).apply {
+            text = "振动强度"
+            textSize = 16f
+            setPadding(0, dp(16), 0, dp(0))
+        }
+        container.addView(vibStrengthLabel)
+        vibStrengthValue = android.widget.TextView(this).apply {
+            textSize = 13f
+            setTextColor(getColor(android.R.color.darker_gray))
+            setPadding(0, dp(2), 0, dp(0))
+        }
+        container.addView(vibStrengthValue)
+        vibStrengthSlider = com.google.android.material.slider.Slider(this).apply {
+            valueFrom = AppSettings.MIN_VIBRATION_PCT.toFloat()
+            valueTo = AppSettings.MAX_VIBRATION_PCT.toFloat()
+            stepSize = 1f
+            value = AppSettings.vibrationStrengthPct(this@MainActivity).toFloat()
+            val vis = if (AppSettings.terminalVibration(this@MainActivity))
+                android.view.View.VISIBLE else android.view.View.GONE
+            visibility = vis
+        }
+        val vibLp = android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        )
+        vibLp.setMargins(0, dp(4), 0, dp(0))
+        container.addView(vibStrengthSlider, vibLp)
+        vibStrengthValue.text = "${AppSettings.vibrationStrengthPct(this@MainActivity)}%"
+        // 拖动实时生效（强度即时应用到按键振动），并在拖动时实时振动预览便于对比强弱
+        vibStrengthSlider.addOnChangeListener { _, value, fromUser ->
+            val pct = value.toInt()
+            vibStrengthValue.text = "$pct%"
+            AppSettings.setVibrationStrengthPct(this, pct)
+            if (fromUser) TerminalFragment.instance?.previewVibration()
+        }
+        vibStrengthLabel.visibility = if (AppSettings.terminalVibration(this@MainActivity))
+            android.view.View.VISIBLE else android.view.View.GONE
+
         val valueText = android.widget.TextView(this).apply {
             text = "${AppSettings.fontSize(this@MainActivity)}dp"
             textSize = 28f
@@ -1016,7 +1197,7 @@ class MainActivity : AppCompatActivity() {
         container.addView(android.widget.TextView(this).apply {
             text = "终端字体大小"
             textSize = 16f
-            setPadding(0, 0, 0, dp(4))
+            setPadding(0, dp(16), 0, dp(0))
         })
         val lp1 = android.widget.LinearLayout.LayoutParams(
             android.view.ViewGroup.LayoutParams.WRAP_CONTENT,
@@ -1034,7 +1215,7 @@ class MainActivity : AppCompatActivity() {
             android.view.ViewGroup.LayoutParams.MATCH_PARENT,
             android.view.ViewGroup.LayoutParams.WRAP_CONTENT
         )
-        lp2.setMargins(0, dp(8), 0, dp(8))
+        lp2.setMargins(0, dp(4), 0, dp(0))
         container.addView(slider, lp2)
         // 拖动实时生效（字号即时应用到终端）
         slider.addOnChangeListener { _, value, _ ->
@@ -1082,13 +1263,16 @@ class MainActivity : AppCompatActivity() {
             }
             override fun onNothingSelected(parent: android.widget.AdapterView<*>?) {}
         }
-        container.addView(mountSpinner)
+        container.addView(mountSpinner, android.widget.LinearLayout.LayoutParams(
+            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
+            android.view.ViewGroup.LayoutParams.WRAP_CONTENT
+        ).apply { bottomMargin = dp(8) })
 
         // ---- APT 换源（容器下载源镜像，默认清华） ----
         container.addView(android.widget.TextView(this).apply {
             text = "APT 换源"
             textSize = 16f
-            setPadding(0, dp(16), 0, dp(4))
+            setPadding(0, dp(8), 0, dp(4))
         })
         container.addView(android.widget.TextView(this).apply {
             text = "容器 apt 镜像下载源（默认清华）"

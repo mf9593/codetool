@@ -27,6 +27,10 @@ class CodeToolApp : Application() {
         com.codetool.app.shizuku.ShizukuBridge.start(this)
         // 浏览器桥前台服务常驻：让模型/CLI 调浏览器不依赖 GUI 合成器（无头 Chrome 后台跑）。
         BrowserBridgeService.start(this)
+        // 终端服务保活常驻：与浏览器桥同理，进程重启后能自动复活。
+        // 此前终端服务只在打开终端时按需拉起，进程一重启（force-stop/OEM 清理/崩溃）就只剩桥活着、
+        // 终端服务没了。保活模式只起前台通知、不持锁，不耗电。
+        com.codetool.app.terminal.TerminalService.start(this)
     }
 
     private fun createChannels() {

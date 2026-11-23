@@ -45,10 +45,20 @@
         </com.google.android.material.card.MaterialCardView>
 
         <com.google.android.material.button.MaterialButton
-            android:id="@+id/btnUpdate"
+            android:id="@+id/btnAptClean"
+            style="@style/Widget.Material3.Button.OutlinedButton"
             android:layout_width="match_parent"
             android:layout_height="56dp"
             android:layout_marginTop="20dp"
+            android:text="清理 apt 缓存"
+            app:icon="@drawable/ic_delete"
+            app:iconGravity="textStart" />
+
+        <com.google.android.material.button.MaterialButton
+            android:id="@+id/btnUpdate"
+            android:layout_width="match_parent"
+            android:layout_height="56dp"
+            android:layout_marginTop="12dp"
             android:text="更新依赖 · 装常用组件"
             app:icon="@drawable/ic_refresh"
             app:iconGravity="textStart" />

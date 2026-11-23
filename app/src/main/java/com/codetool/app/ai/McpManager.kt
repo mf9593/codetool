@@ -228,6 +228,10 @@ object McpManager {
     /**
      * 注册 / 自愈全部内置 MCP server（默认开启），让模型开箱可用。
      * 已存在但命令是旧版时只更新命令与类型，**保留用户的 enabled 开关**。
+     *
+     * 注意：必须**逐配置文件**检查内置服务是否齐全——若某份配置（如 opencode.json）
+     * 被误删/重建丢了 mcp 段，而另一份（mimocode.jsonc）里同名服务还在，用合并列表判断
+     * 会误以为"已存在"而漏补，导致该 CLI 的 MCP 消失。这里对每个 CLI 的配置文件分别补。
      */
     fun ensureBuiltin(ctx: Context): Int {
         // 日志 MCP 已下线：只移除确实指向旧内置脚本的条目，
@@ -239,15 +243,32 @@ object McpManager {
 
         var n = 0
         val current = listServers(ctx)
+        val targets = writeTargets(ctx)
         for (b in BUILTINS) {
             val existing = current.firstOrNull { it.name == b.name }
-            if (existing == null) {
-                if (upsert(ctx, b) == null) n++
-                continue
-            }
-            if (existing.command == b.command && existing.type == b.type) continue
-            if (upsert(ctx, b.copy(enabled = existing.enabled)) == null) n++
+            // 只要该内置服务在某一份配置文件里缺失，就补全（upsert 写所有目标，幂等）；
+            // 已存在但命令/类型变了也要更新（保留 enabled）。
+            val missingInSome = targets.any { (_, f) -> b.name !in readMcpNames(f) }
+            val changed = existing != null && (existing.command != b.command || existing.type != b.type)
+            if (!missingInSome && !changed) continue
+            val toAdd = if (existing != null) b.copy(enabled = existing.enabled) else b
+            if (upsert(ctx, toAdd) == null) n++
         }
         return n
+    }
+
+    /** 读取单个配置文件自己的 mcp 段里所有服务名（不跨文件合并）。 */
+    private fun readMcpNames(f: File): Set<String> {
+        if (!f.isFile) return emptySet()
+        val parsed = try {
+            Jsonc.parse(f.readText())
+        } catch (_: Throwable) {
+            null
+        } ?: return emptySet()
+        val mcp = parsed.obj.optJSONObject("mcp") ?: return emptySet()
+        val names = HashSet<String>()
+        val it = mcp.keys()
+        while (it.hasNext()) names.add(it.next())
+        return names
     }
 }

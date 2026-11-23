@@ -4,6 +4,7 @@
 
     <!-- 终端保活：唤醒锁，防止锁屏后 CPU 挂起导致断网 -->
     <uses-permission android:name="android.permission.WAKE_LOCK" />
+    <uses-permission android:name="android.permission.VIBRATE" />
     <!-- 前台服务（终端会话） -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />

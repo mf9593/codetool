@@ -39,7 +39,7 @@ class RootfsBackupService : Service() {
 
     companion object {
         private const val TAG = "RootfsBackup"
-        private const val NOTIF_ID = 1004   // 1001 终端 / 1002 解压 / 1003 保活
+        private const val NOTIF_ID = 1005   // 1001 终端 / 1002 解压 / 1003 保活 / 1004 浏览器桥
 
         const val ACTION_BACKUP = "com.codetool.action.BACKUP_ROOTFS"
         const val ACTION_RESTORE = "com.codetool.action.RESTORE_ROOTFS"

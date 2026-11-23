@@ -40,6 +40,29 @@ class PackagesFragment : Fragment() {
         inflater: LayoutInflater, container: ViewGroup?, savedInstanceState: Bundle?
     ): View {
         val v = inflater.inflate(R.layout.fragment_packages, container, false)
+        // 清理 apt 缓存：删除已下载的 .deb 与索引缓存，释放空间（不影响已安装包）。
+        // 破坏性低但属清理操作：按规范用描边样式 + 二次确认。
+        v.findViewById<MaterialButton>(R.id.btnAptClean).setOnClickListener {
+            android.app.AlertDialog.Builder(requireContext())
+                .setTitle("清理 apt 缓存")
+                .setMessage("将删除已下载的软件包缓存与索引缓存（/var/cache/apt、/var/lib/apt/lists），释放空间。\n" +
+                    "不影响已安装的软件，仅下次下载需重新拉取。")
+                .setPositiveButton("清理") { _, _ ->
+                    runInTerminal(
+                        "清理 apt 缓存",
+                        aptWaitLock +
+                            "echo '=== 清理前占用 ==='\n" +
+                            "du -sh /var/cache/apt/archives /var/lib/apt/lists 2>/dev/null || true\n" +
+                            "apt-get clean\n" +
+                            "apt-get autoclean\n" +
+                            "echo '=== 清理后占用 ==='\n" +
+                            "du -sh /var/cache/apt/archives /var/lib/apt/lists 2>/dev/null || true\n" +
+                            "echo '[OK] apt 缓存已清理'\n"
+                    )
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
         v.findViewById<MaterialButton>(R.id.btnUpdate).setOnClickListener {
             runInTerminal(
                 "更新依赖 · 装常用组件",

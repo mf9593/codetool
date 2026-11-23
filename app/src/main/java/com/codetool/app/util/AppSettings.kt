@@ -17,6 +17,9 @@ object AppSettings {
     private const val KEY_ONBOARDING_DONE = "onboarding_done"
     private const val KEY_MOUNT_MODE = "mount_mode"
     private const val KEY_APT_MIRROR = "apt_mirror"
+    private const val KEY_VIBRATION = "terminal_vibration"
+    private const val KEY_VIBRATION_STRENGTH = "terminal_vibration_strength"
+    private const val KEY_VIBRATION_PCT = "terminal_vibration_pct"
 
     /** 默认终端字号（dp）。Termux 默认 14，这里调大。 */
     const val DEFAULT_FONT_SIZE = 30
@@ -34,6 +37,9 @@ object AppSettings {
 
     /** 默认 APT 源镜像 id：清华（国内网络下官方源易被 DNS/CDN 污染导致 apt 挂死）。 */
     const val DEFAULT_APT_MIRROR = "tuna"
+
+    /** 默认终端按键振动反馈：开启。 */
+    const val DEFAULT_TERMINAL_VIBRATION = true
 
     fun fontSize(context: Context): Int =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -174,5 +180,31 @@ object AppSettings {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putString(KEY_APT_MIRROR, id).apply()
     }
+
+    /** 终端底部按键振动反馈。默认开启。 */
+    fun terminalVibration(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_VIBRATION, DEFAULT_TERMINAL_VIBRATION)
+
+    fun setTerminalVibration(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_VIBRATION, enabled).apply()
+    }
+
+    /** 终端按键振动强度百分比（无极滑条）。0~100，默认弱（30）。 */
+    fun vibrationStrengthPct(context: Context): Int =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getInt(KEY_VIBRATION_PCT, DEFAULT_VIBRATION_PCT)
+            .coerceIn(MIN_VIBRATION_PCT, MAX_VIBRATION_PCT)
+
+    fun setVibrationStrengthPct(context: Context, pct: Int) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putInt(KEY_VIBRATION_PCT, pct.coerceIn(MIN_VIBRATION_PCT, MAX_VIBRATION_PCT)).apply()
+    }
+
+    /** 振动强度滑条范围与默认（默认偏弱，接近输入法手感）。 */
+    const val MIN_VIBRATION_PCT = 5
+    const val MAX_VIBRATION_PCT = 100
+    const val DEFAULT_VIBRATION_PCT = 30
 
 }
