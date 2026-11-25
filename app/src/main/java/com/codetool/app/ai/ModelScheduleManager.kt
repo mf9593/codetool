@@ -268,7 +268,7 @@ object ModelScheduleManager {
         val cur = currentModel(ctx, slot.target)
         if (cur == slot.model) return false to ""
         val ok = AiModelManager.setCurrent(ctx, slot.model, slot.target)
-        if (!ok) return false to "定时切换失败：目标模型「${slot.model}」不存在或已停用"
+        if (!ok) return false to "定时切换失败：目标模型「${slot.model}」不存在/已停用，或配置写入失败"
         val label = when {
             slot.peak -> "高峰"
             slot.weekend -> "周末闲时"

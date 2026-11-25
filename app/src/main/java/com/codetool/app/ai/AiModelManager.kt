@@ -24,6 +24,17 @@ import java.util.concurrent.TimeUnit
  */
 object AiModelManager {
 
+    /** 与 McpManager 共享的配置文件写锁：AI 模型同步与 MCP 增删可能并发写同一份 mimo/opencode 配置，
+     *  统一用这把锁串行化「读-改-写」，避免互相覆盖对方刚写入的字段。 */
+    @JvmField
+    val configLock = Any()
+
+    /** 思考强度全部档位（opencode ReasoningEfforts 全集，不含 "default"）。
+     *  opencode：capabilities.reasoning.effort = 该集合（据此建 #variant，openai-compatible 协议每档一个）。
+     *  mimo：provider.<id>.models.<id>.variants = {每档:{}}（mimo 据此建可切档位）。
+     *  小米 MiMo 内置模型实测无档位（efforts:[]、reasoning_options:[{type:toggle}]），不写。 */
+    val ALL_EFFORTS = listOf("none", "minimal", "low", "medium", "high", "xhigh", "max")
+
     // ---------------- 服务商列表（规范：不让用户手填 provider） ----------------
 
     /** 服务商：写入配置的 id / 显示名 / 默认 Base URL / 常用模型。 */
@@ -107,7 +118,7 @@ object AiModelManager {
                 .put("id", p.id).put("label", p.label).put("baseUrl", p.baseUrl)
                 .put("models", JSONArray().also { a -> p.models.forEach { a.put(it) } }))
         }
-        file.writeText(jsonPretty(arr))
+        atomicWrite(file, jsonPretty(arr))
     }
 
     /** 新增自定义服务商；成功 true，id 重复 / 必填为空 / 与预置冲突返回 false。 */
@@ -160,6 +171,10 @@ object AiModelManager {
         var supportsReasoning: Boolean = true,
         var supportsImage: Boolean = true,
         var supportsTemperature: Boolean = true,
+        // 思考强度（reasoning effort）：""=默认（不声明）；否则为所选档位（none/minimal/low/medium/high/
+        // xhigh/max）。同步到 opencode 顶层 model#档位 + capabilities.reasoning.effort 支持集合，
+        // 以及 mimo provider.<id>.models.<id>.variants（据此建可切档位）。
+        var reasoningEffort: String = "",
     ) {
         fun toJson() = JSONObject()
             .put("name", name).put("provider", provider).put("modelId", modelId)
@@ -169,6 +184,7 @@ object AiModelManager {
             .put("contextLength", contextLength).put("maxOutputLength", maxOutputLength)
             .put("supportsToolCall", supportsToolCall).put("supportsReasoning", supportsReasoning)
             .put("supportsImage", supportsImage).put("supportsTemperature", supportsTemperature)
+            .put("reasoningEffort", reasoningEffort)
 
         companion object {
             fun fromJson(o: JSONObject) = Model(
@@ -187,6 +203,7 @@ object AiModelManager {
                 supportsReasoning = o.optBoolean("supportsReasoning", true),
                 supportsImage = o.optBoolean("supportsImage", true),
                 supportsTemperature = o.optBoolean("supportsTemperature", true),
+                reasoningEffort = o.optString("reasoningEffort", ""),
             )
 
             /**
@@ -280,7 +297,7 @@ object AiModelManager {
         val file = modelsFile(ctx).apply { parentFile?.mkdirs() }
         val arr = JSONArray()
         list.forEach { arr.put(it.toJson()) }
-        file.writeText(jsonPretty(arr))
+        atomicWrite(file, jsonPretty(arr))
     }
 
     fun upsertModel(ctx: Context, model: Model) {
@@ -312,6 +329,7 @@ object AiModelManager {
      * opencode：opencode.json 的 provider.<id>（纯 JSON）。
      */
     private fun cleanupProvider(ctx: Context, target: String, provider: String) {
+        synchronized(configLock) {
         if (target == "mimo") {
             // mimocode.jsonc：用 Jsonc 解析（保注释/容错），删 provider.<id> 后写回
             val cfg = mimoConfig(ctx)
@@ -323,7 +341,7 @@ object AiModelManager {
                     backupFile(cfg)
                     providers.remove(provider)
                     if (providers.length() == 0) parsed.obj.remove("provider")
-                    runCatching { cfg.writeText(jsonPretty(parsed.obj) + "\n") }
+                    runCatching { atomicWrite(cfg, jsonPretty(parsed.obj) + "\n") }
                 }
             }
             // auth.json：删 provider 的 key 段（纯 JSON）
@@ -334,7 +352,7 @@ object AiModelManager {
                     if (obj.has(provider)) {
                         backupFile(auth)
                         obj.remove(provider)
-                        auth.writeText(jsonPretty(obj))
+                        atomicWrite(auth, jsonPretty(obj))
                     }
                 }
             }
@@ -349,16 +367,32 @@ object AiModelManager {
                         backupFile(file)
                         providers.remove(provider)
                         if (providers.length() == 0) obj.remove("providers")
-                        file.writeText(jsonPretty(obj))
+                        atomicWrite(file, jsonPretty(obj))
                     }
                 }
             }
+        }
         }
     }
 
     /** 删改 CLI 配置前备份原文件为 <name>.codetool.bak（覆盖旧备份）。 */
     private fun backupFile(f: File) {
         runCatching { f.copyTo(File(f.parentFile, f.name + ".codetool.bak"), overwrite = true) }
+    }
+
+    /** 原子写：先写同目录临时文件再 rename（同文件系统原子替换），失败回退直接写。
+     *  避免写一半崩溃/断电留下截断 JSON，触发「损坏→空对象覆盖」的链式丢数据。 */
+    private fun atomicWrite(file: File, content: String) {
+        val dir = file.parentFile
+        if (dir != null) {
+            val tmp = File(dir, file.name + ".codetool.tmp")
+            try {
+                tmp.writeText(content)
+                if (tmp.renameTo(file)) return
+            } catch (_: Exception) { }
+            runCatching { tmp.delete() }
+        }
+        file.writeText(content)
     }
 
     /** 设为当前：同 target 内其它清 current，本条置 current，并写入对应 CLI 原生配置。 */
@@ -378,7 +412,8 @@ object AiModelManager {
         val enabled = list.filter { it.enabled }
         val okMimo = writeMimo(ctx, m, enabled)
         val okOc = writeOpencode(ctx, m, enabled)
-        return okMimo || okOc
+        // M5：两个 CLI 都要成功才返回 true——否则定时切换在 opencode 写失败时误报「同时生效」。
+        return okMimo && okOc
     }
 
     /** 从 CLI 现有原生配置导入为清单条目（首次/清单为空时用）。 */
@@ -410,14 +445,16 @@ object AiModelManager {
             val cfg = JSONObject(opencodeCfg(ctx).readText())
             val oc = cfg.optString("model", "")
             if (oc.isNotEmpty()) {
-                val slash = oc.indexOf('/')
-                val p = if (slash > 0) oc.substring(0, slash) else ""
-                val mid = if (slash > 0) oc.substring(slash + 1) else oc
+                val hash = oc.indexOf('#')
+                val noVar = if (hash > 0) oc.substring(0, hash) else oc   // 顶层 model 可能带 #档位（variant）
+                val slash = noVar.indexOf('/')
+                val p = if (slash > 0) noVar.substring(0, slash) else ""
+                val mid = if (slash > 0) noVar.substring(slash + 1) else noVar
                 // V2：连接信息在 providers.<p>.settings（baseURL/apiKey），不是 V1 的 env/provider.options
                 val pSettings = cfg.optJSONObject("providers")?.optJSONObject(p)?.optJSONObject("settings")
                 val key = pSettings?.optString("apiKey", "").orEmpty()
                 list.add(Model(
-                    name = oc, provider = p, modelId = mid, apiKey = key,
+                    name = noVar, provider = p, modelId = mid, apiKey = key,
                     baseUrl = pSettings?.optString("baseURL", "").orEmpty(),
                     target = "opencode", current = true,
                 ))
@@ -459,6 +496,22 @@ object AiModelManager {
         return out
     }
 
+    /** 小米 MiMo 模型：实测无思考强度档位（efforts:[]、reasoning_options:[{type:toggle}]，仅开/关）。
+     *  codetool 内置 id 是 "mimo"，mimo CLI 的 provider id 是 "xiaomi"，两者都算。 */
+    private fun isMimoModel(m: Model): Boolean {
+        val p = effProvider(m)
+        return p == "mimo" || p == "xiaomi" || m.provider == "mimo" || m.provider == "xiaomi"
+    }
+
+    /** 判断某 opencode providers.<id> 是否为 codetool 生成（清理旧残留时只动这些，不动内置/手工 provider）。
+     *  判据：package=@opencode/ai/providers/openai-compatible 且 env 首项以 _API_KEY 结尾（envVarFor 的形态）。 */
+    private fun isCodetoolProvider(po: JSONObject): Boolean {
+        val pkg = po.optString("package", "")
+        if (pkg != "@opencode/ai/providers/openai-compatible") return false
+        val env = po.optJSONArray("env") ?: return false
+        return env.length() > 0 && env.optString(0).endsWith("_API_KEY")
+    }
+
     /** 格式化上下文长度为可读字符串（262144 → "262K"，1048576 → "1M"），0 返回空。 */
     fun formatContextLength(tokens: Int): String = when {
         tokens >= 1000000 -> "${tokens / 1000000}M"
@@ -474,11 +527,15 @@ object AiModelManager {
      * 这样「配好模型 + 同步」即可被识别，不必逐个「设为当前」。
      * 注意：分组用 groupByProvider（provider 空时按 baseUrl 继承），保证每条启用模型都被声明。
      */
-    fun writeMimo(ctx: Context, current: Model, enabled: List<Model> = listOf(current)): Boolean = runCatching {
+    fun writeMimo(ctx: Context, current: Model, enabled: List<Model> = listOf(current)): Boolean = synchronized(configLock) {
+        runCatching {
         val m = current
         val mProv = effProvider(m, enabled)
         val auth = mimoAuth(ctx).apply { parentFile?.mkdirs() }
-        val obj = if (auth.isFile) runCatching { JSONObject(auth.readText()) }.getOrDefault(JSONObject()) else JSONObject()
+        // H1：auth.json 存在但解析失败（损坏/半写/编码错）时返回 false 不写盘，
+        // 避免空对象覆盖导致其它 provider 的 key 被静默清空。
+        val obj = if (auth.isFile) runCatching { JSONObject(auth.readText()) }.getOrNull() ?: return@runCatching false
+        else JSONObject()
         // 所有启用模型的 provider 都写 key（同一 provider 取第一个非空 key）；分组用 groupByProvider 兜底
         val byProvider = groupByProvider(enabled)
         byProvider.forEach { (prov, models) ->
@@ -490,16 +547,18 @@ object AiModelManager {
             if (bu.isNotEmpty()) entry.put("baseURL", bu)
             obj.put(prov, entry)
         }
-        auth.writeText(jsonPretty(obj))
+        atomicWrite(auth, jsonPretty(obj))
 
         val mf = mimoModel(ctx).apply { parentFile?.mkdirs() }
-        val mo = if (mf.isFile) runCatching { JSONObject(mf.readText()) }.getOrDefault(JSONObject()) else JSONObject()
+        // H1：model.json 存在但解析失败时返回 false 不写盘，避免清空 favorite/variant。
+        val mo = if (mf.isFile) runCatching { JSONObject(mf.readText()) }.getOrNull() ?: return@runCatching false
+        else JSONObject()
         val recent = JSONArray()
         recent.put(JSONObject().put("providerID", effProvider(m, enabled)).put("modelID", m.modelId))
         mo.put("recent", recent)
         mo.put("favorite", mo.optJSONArray("favorite") ?: JSONArray())
         mo.put("variant", mo.optJSONObject("variant") ?: JSONObject())
-        mf.writeText(jsonPretty(mo))
+        atomicWrite(mf, jsonPretty(mo))
 
         // 关键：mimo 列模型时按 provider.<id>.options.baseURL 取 API 地址（和 opencode
         // 的 opencode.json 同构）。只写 auth.json 的 baseURL 不够——实测 mimo 认得 provider
@@ -509,10 +568,10 @@ object AiModelManager {
         if (byProvider.isNotEmpty()) {
             val cfg = mimoConfig(ctx).apply { parentFile?.mkdirs() }
             val raw = if (cfg.isFile) runCatching { cfg.readText() }.getOrNull() else null
-            val parsed = when {
-                raw.isNullOrBlank() -> Jsonc.Parsed(JSONObject(), false)
-                else -> Jsonc.parse(raw)
-            }
+            // H1：mimocode.jsonc 存在但读取失败/内容无效（null/空白）→ 不写盘，
+            // 避免回退空对象覆盖，导致用户 JSONC 注释与其它字段（mcp/agent 等）被静默清空。
+            if (raw.isNullOrBlank() && cfg.isFile) return@runCatching false
+            val parsed = raw?.let { Jsonc.parse(it) } ?: Jsonc.Parsed(JSONObject(), false)
             if (parsed != null) {
                 val obj = parsed.obj
                 val providers = obj.optJSONObject("provider") ?: JSONObject().also { obj.put("provider", it) }
@@ -527,6 +586,13 @@ object AiModelManager {
                         decl.put("id", mm.modelId)
                         decl.put("name", mm.name.substringAfter('/').ifEmpty { mm.modelId })
                         decl.put("reasoning", mm.supportsReasoning)
+                        // 思考强度档位：mimo 内置模型无档位不写；其他模型写全量档位（mimo 据此建可切档位）。
+                        // 用户选中档位经 model.json 的 variant 状态（见下），TUI ctrl+t / /variants 可切。
+                        if (mm.supportsReasoning && !isMimoModel(mm)) {
+                            val variants = JSONObject()
+                            ALL_EFFORTS.forEach { variants.put(it, JSONObject()) }
+                            decl.put("variants", variants)
+                        }
                         decl.put("tool_call", mm.supportsToolCall)
                         decl.put("temperature", mm.supportsTemperature)
                         decl.put("attachment", mm.supportsImage)
@@ -542,11 +608,15 @@ object AiModelManager {
                     providers.put(prov, p)
                 }
                 obj.put("provider", providers)
-                cfg.writeText(jsonPretty(obj) + "\n")
+                // 原文件是 JSONC（含注释/尾逗号）→ 先备份（与 McpManager 对齐）；标准 JSON
+                // 序列化无法保留注释，备份至少可回退，避免用户注释被静默剥离。
+                if (parsed.needsRewrite && cfg.isFile) backupFile(cfg)
+                atomicWrite(cfg, jsonPretty(obj) + "\n")
             }
         }
         true
     }.getOrDefault(false)
+    }
 
     /**
      * 写 opencode.json（opencode V2 格式，V1 的 provider/npm/options 已 deprecated）：
@@ -558,11 +628,14 @@ object AiModelManager {
      *   这是 opencode 模型列表区分能力/分类的依据——只写 name 的话列表里每行只有 ID、看不出差异。
      * 顶层 model = current 默认（providerId/modelId）。
      */
-    fun writeOpencode(ctx: Context, current: Model, enabled: List<Model> = listOf(current)): Boolean = runCatching {
+    fun writeOpencode(ctx: Context, current: Model, enabled: List<Model> = listOf(current)): Boolean = synchronized(configLock) {
+        runCatching {
         val m = current
         val mProv = effProvider(m, enabled)
         val file = opencodeCfg(ctx).apply { parentFile?.mkdirs() }
-        val obj = if (file.isFile) runCatching { JSONObject(file.readText()) }.getOrDefault(JSONObject()) else JSONObject()
+        // H1：opencode.json 存在但解析失败时返回 false 不写盘，避免清空 mcp/agent/skills/theme 等字段。
+        val obj = if (file.isFile) runCatching { JSONObject(file.readText()) }.getOrNull() ?: return@runCatching false
+        else JSONObject()
         // 文件被误删/重建后会丢非模型段（如 mcp）。MCP 由 McpManager 统一管理、两 CLI 同步写，
         // 这里在 opencode 配置缺少 mcp 段时从 mimo 配置继承，保证同步后 MCP 不丢（含用户自建服务）。
         if (!obj.has("mcp")) {
@@ -572,12 +645,41 @@ object AiModelManager {
                 if (mimoMcp != null && mimoMcp.length() > 0) obj.put("mcp", JSONObject(mimoMcp.toString()))
             }
         }
-        obj.put("model", "${mProv}/${m.modelId}")
+        // 顶层 model = current 默认。若当前模型选了思考强度且支持档位（非 mimo），
+        // 经 variant 表达为 "provider/id#档位"（opencode 用 capabilities.reasoning.effort 建的 variant）；
+        // 默认（未选档位）不带 #，用模型自身默认档位。mimo 无档位，从不带 #。
+        val modelRef = if (m.reasoningEffort.isNotEmpty() && m.supportsReasoning && !isMimoModel(m)) {
+            "${mProv}/${m.modelId}#${m.reasoningEffort}"
+        } else {
+            "${mProv}/${m.modelId}"
+        }
+        obj.put("model", modelRef)
         val byProvider = groupByProvider(enabled)
         if (byProvider.isNotEmpty()) {
             // V2 顶层键是 providers（复数）；顺手清掉 V1 残留的 provider/options/env，避免新旧混用。
             val providers = obj.optJSONObject("providers") ?: JSONObject()
             obj.remove("provider")
+            // 清理旧残留：codetool 管理的 provider（本类生成的、带 env=<ID>_API_KEY + openai-compatible package）
+            // 不在本次启用清单（byProvider）的，整段删除；在清单里的，其 models 里不在启用列表的旧模型也删。
+            // 避免旧版本生成的无 effort 声明（如 xfyun/spark-x2.6）残留，也避免用户删除模型后配置不同步。
+            // 非 codetool 管理的（内置 opencode provider、用户手工加的其它 package）一律不动，防误删。
+            val codetoolProvs = ArrayList<String>()
+            providers.keys().forEach { codetoolProvs.add(it) }
+            for (pid in codetoolProvs) {
+                val po = providers.optJSONObject(pid) ?: continue
+                if (!isCodetoolProvider(po)) continue
+                if (pid !in byProvider.keys) {
+                    providers.remove(pid)
+                } else {
+                    val keepModels = byProvider[pid]?.map { it.modelId }?.toSet() ?: emptySet()
+                    val mo = po.optJSONObject("models") ?: continue
+                    val mids = ArrayList<String>()
+                    mo.keys().forEach { mids.add(it) }
+                    for (mid in mids) {
+                        if (mid !in keepModels) mo.remove(mid)
+                    }
+                }
+            }
             byProvider.forEach { (prov, models) ->
                 val pObj = JSONObject()
                 pObj.put("name", providerById(ctx, prov)?.label ?: prov)
@@ -603,9 +705,10 @@ object AiModelManager {
             }
             obj.put("providers", providers)
         }
-        file.writeText(jsonPretty(obj))
+        atomicWrite(file, jsonPretty(obj))
         true
     }.getOrDefault(false)
+    }
 
     /**
      * 构造单个模型的 V2 声明：name + capabilities + limit。
@@ -618,8 +721,18 @@ object AiModelManager {
         val caps = JSONObject()
         caps.put("tools", mm.supportsToolCall)
         caps.put("temperature", mm.supportsTemperature)
-        // reasoning：v2 是对象 { supported: bool }，不是裸 boolean
-        caps.put("reasoning", JSONObject().put("supported", mm.supportsReasoning))
+        // reasoning：v2 是对象 { supported: bool }，不是裸 boolean。
+        // 思考强度（schema 确认）：capabilities.reasoning.effort = 模型支持的档位集合，
+        // opencode 据此自动建 #variant（openai-compatible 协议每个档位一个 variant，settings.reasoningEffort）。
+        // 用户选中档位不写这里——它经顶层 model: "provider/id#档位" 选中对应 variant（见 writeOpencode）。
+        // 小米 MiMo 实测无档位（efforts:[]、reasoning_options:[{type:toggle}]，仅开/关思考），不写 effort。
+        val reasoning = JSONObject().put("supported", mm.supportsReasoning)
+        if (mm.supportsReasoning && !isMimoModel(mm)) {
+            val arr = JSONArray()
+            ALL_EFFORTS.forEach { arr.put(it) }
+            reasoning.put("effort", arr)
+        }
+        caps.put("reasoning", reasoning)
         // input：媒体类型数组；支持图片则含 image，恒含 text
         val input = JSONArray().put("text")
         if (mm.supportsImage) input.put("image")
@@ -850,7 +963,7 @@ object AiModelManager {
         val file = f(ctx, rel).apply { parentFile?.mkdirs() }
         // 写前备份（.codetool.bak），避免改坏后无法回退
         if (file.isFile) runCatching { file.copyTo(File(file.parentFile, file.name + ".codetool.bak"), overwrite = true) }
-        file.writeText(content)
+        atomicWrite(file, content)
         true
     }.getOrDefault(false)
 
@@ -994,7 +1107,9 @@ object AiModelManager {
 
         val models = runCatching { http("$base/models", "GET", m.apiKey, null) }.getOrNull()
         if (models != null && models.code in 200..299) {
-            val has = m.modelId.isNotEmpty() && models.body.contains(m.modelId, ignoreCase = true)
+            // 低危：按 id 精确匹配模型列表（兼容裸数组或 {"data":[...]} 包装），
+            // 避免 body.contains 撞上其它字段（如 "object":"...model..."）误报「在列表中」。
+            val has = m.modelId.isNotEmpty() && listContainsId(models.body, m.modelId)
             return if (has) "✓ 连接成功 (HTTP ${models.code})，模型 ${m.modelId} 在可用列表中"
             else "✓ 连接成功 (HTTP ${models.code})，但列表未找到 ${m.modelId}（请核对模型 ID）"
         }
@@ -1021,6 +1136,18 @@ object AiModelManager {
             else -> "✗ HTTP ${chat.code}（$proto）：${shortBody(chat.body)}"
         }
     }
+
+    /** 判断模型列表 JSON（裸数组或 {"data":[...]} 包装）是否含指定 id（精确匹配）。 */
+    private fun listContainsId(body: String, id: String): Boolean = runCatching {
+        val tryArr = runCatching { JSONArray(body) }.getOrNull()
+        if (tryArr != null) {
+            return@runCatching (0 until tryArr.length()).any { i ->
+                tryArr.optJSONObject(i)?.optString("id") == id
+            }
+        }
+        val data = runCatching { JSONObject(body).optJSONArray("data") }.getOrNull()
+        data != null && (0 until data.length()).any { i -> data.optJSONObject(i)?.optString("id") == id }
+    }.getOrDefault(false)
 
     // ---------------- PATH 修复 ----------------
 

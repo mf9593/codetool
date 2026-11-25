@@ -362,7 +362,11 @@ class TerminalFragment : Fragment() {
             // 到顶后继续下拉由 BottomSheet 接管收起/关闭。因此这里保留 sheet 默认可拖拽，
             // 不再 isDraggable=false（那会让弹窗无法下滑关闭）。
             // 只设直接全展开，跳过半折叠态带来的二次拖拽。
-            sheet.behavior.state = BottomSheetBehavior.STATE_EXPANDED
+            // H6：material 1.12.0 在 show() 前 getBehavior() 拿不到 decorView（可能返回 null → NPE）。
+            // 改用 setOnShowListener：onShow 时窗口已创建、behavior 一定有效（回调参数是 DialogInterface，cast 回 BottomSheetDialog）。
+            sheet.setOnShowListener { d ->
+                (d as? BottomSheetDialog)?.behavior?.state = BottomSheetBehavior.STATE_EXPANDED
+            }
             sheet.show()
         }
     }
@@ -443,7 +447,15 @@ class TerminalFragment : Fragment() {
             wireModifierProviders(mgr)
             try {
                 val spec = mgr.prepare()
-                activity?.runOnUiThread {
+                val act = activity
+                if (act == null) {
+                    // 低危：Fragment 已 detach（activity 为 null），runOnUiThread 回调不执行会
+                    // 卡死 addingTab——直接复位并放弃，后续 addTab 才能再次触发。
+                    addingTab = false
+                    mgr.abandon()
+                    return@Thread
+                }
+                act.runOnUiThread {
                     addingTab = false
                     if (!isAdded || view == null) {
                         mgr.abandon()
@@ -641,6 +653,16 @@ class TerminalFragment : Fragment() {
             .show()
     }
 
+    /** 压缩会话（^X C）二次确认：压缩会重排/合并会话，误触代价高。 */
+    private fun confirmCompact() {
+        MaterialAlertDialogBuilder(requireContext())
+            .setTitle("压缩会话？")
+            .setMessage("将向 CLI 发送压缩指令（Ctrl+X 然后 C），当前会话可能被压缩/重排，请确认。")
+            .setNegativeButton("取消", null)
+            .setPositiveButton("压缩") { _, _ -> sendAiCommand('c') }
+            .show()
+    }
+
     private fun confirmCloseTab(index: Int) {
         val tab = TerminalTabs.tabs.getOrNull(index) ?: return
         if (TerminalTabs.tabs.size <= 1) {
@@ -753,15 +775,39 @@ class TerminalFragment : Fragment() {
         fun styledKeyLabel(label: String, baseSize: Float): CharSequence {
             // 只处理「^X 前缀 + 主字符」的多字符组合；^P/^O 等 2 字符组合保持原样。
             if (label.startsWith("^X ") && label.length > 3) {
-                val sp = android.text.SpannableString(label)
+                // ^X ↵：↵(U+21B5) 在 Monospace 里 fallback 宽度与等宽主字符（M/L/N…）不同，
+                // 使整行宽度差、居中后 ^X 位置偏移。运行时测量 ↵（含 1.4f）与参照字符 M 的宽度差，
+                // 补足精确数量的空格让整行宽度与其它键一致，^X 回到相同水平位置（动态测量避免盲估）。
+                var text = label
+                if (label.endsWith("↵")) {
+                    val paint = android.graphics.Paint().apply {
+                        typeface = keyTypeface
+                        textSize = android.util.TypedValue.applyDimension(
+                            android.util.TypedValue.COMPLEX_UNIT_SP, baseSize,
+                            ctx.resources.displayMetrics)
+                    }
+                    val paintBig = android.graphics.Paint().apply {
+                        typeface = keyTypeface
+                        textSize = android.util.TypedValue.applyDimension(
+                            android.util.TypedValue.COMPLEX_UNIT_SP, baseSize * 1.4f,
+                            ctx.resources.displayMetrics)
+                    }
+                    val wRef = paint.measureText("M")
+                    val wEnter = paintBig.measureText("↵")
+                    // 用 NBSP（\u00A0）补宽度：普通尾随空格可能被 TextView 忽略，NBSP 保证计入。
+                    val wSpace = paint.measureText("\u00A0")
+                    val pad = if (wSpace > 0f) ((wRef - wEnter) / wSpace).toInt().coerceAtLeast(0) else 0
+                    text = label + "\u00A0".repeat(pad)
+                }
+                val sp = android.text.SpannableString(text)
                 // ^X 前缀（前 2 字符）上标 + 缩小
                 sp.setSpan(android.text.style.SuperscriptSpan(), 0, 2,
                     android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 sp.setSpan(android.text.style.RelativeSizeSpan(0.85f), 0, 2,
                     android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                // ^X ↵：回车主字符单独调大（突出回车，与其他键稍区分）
+                // ^X ↵：回车字符单独调大（1.4f，突出回车）
                 if (label.endsWith("↵")) {
-                    sp.setSpan(android.text.style.RelativeSizeSpan(2.1f), label.length - 1,
+                    sp.setSpan(android.text.style.RelativeSizeSpan(1.4f), label.length - 1,
                         label.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 return sp
@@ -772,11 +818,11 @@ class TerminalFragment : Fragment() {
         /** 组合键长按提示文案（作用说明），未知 tag 返回 null。包含 AI_ 组合键与 CLI 一键键 ^P/^O。 */
         fun aiHintFor(tag: String): String? = when (tag) {
             "CTRL_P" -> "打开设置（CLI）\n^P"
-            "CTRL_O" -> "最近会话 + 项目一起开（CLI）\n^O"
             "AI_MODELS" -> "Switch model（切换模型）\nCtrl+X 然后 M"
             "AI_SESSIONS" -> "Switch session（切换会话）\nCtrl+X 然后 L"
             "AI_NEW" -> "New session（新建会话）\nCtrl+X 然后 N"
             "AI_QUEUE" -> "Queue prompt（排队发送提示，稍后处理）\nCtrl+X 然后 Enter"
+            "AI_COMPACT" -> "压缩会话\nCtrl+X 然后 C"
             "AI_UNDO" -> "撤销上一条消息\nCtrl+X 然后 U"
             "AI_QUIT" -> "退出\nCtrl+X 然后 Q"
             "AI_AGENT" -> "选择 Agent\nCtrl+X 然后 A"
@@ -901,22 +947,23 @@ class TerminalFragment : Fragment() {
             Triple("END", "END", 0), Triple("PGDN", "PGDN", 0)
         )
         // 面板二：opencode/mimo 命令面板。显示字母统一大写（发送逻辑仍用小写，避免 ^X+大写失效）。
-        // 排序：@ $ 最前（不要尾部）→ ^P ^O ^R（两个字符键）→ ^X 双组合键（M L N ↵ U Q A B G X W）。
-        // ^X 组合：M=Switch model L=Switch session N=New session ↵=Queue prompt
+        // 排序：@ $ 最前（不要尾部）→ ^P ^R（两个字符键）→ ^X 双组合键（M L C ↵ …）。
+        // ^X ↵（Ctrl+X+回车）放第一行最右；^X N 顺延到第二行首位。
+        // ^X 组合：M=Switch model L=Switch session N=New session ↵=Queue prompt C=压缩会话
         // U=撤销上一条 Q=退出 A=选择 Agent B=切换侧边栏 G=跳转到消息 X=导出会话到编辑器 W=关闭当前标签页；
-        // ^P=Open settings ^O=最近会话+项目 ^R=重命名会话。
+        // ^P=Open settings ^R=重命名会话。（^O 在 mimo 用不了且 opencode 低频，已移除）
         val row3 = listOf(
             Triple("AT", "@", 0), Triple("DOLLAR", "\$", 0),
-            Triple("CTRL_P", "^P", 0), Triple("CTRL_O", "^O", 0), Triple("AI_RENAME", "^R", 0),
+            Triple("CTRL_P", "^P", 0), Triple("AI_RENAME", "^R", 0),
             Triple("AI_MODELS", "^X M", 0), Triple("AI_SESSIONS", "^X L", 0),
-            Triple("AI_NEW", "^X N", 0)
+            Triple("AI_COMPACT", "^X C", 0),
+            Triple("AI_QUEUE", "^X ↵", 0)
         )
         val row4 = listOf(
-            Triple("AI_UNDO", "^X U", 0),
+            Triple("AI_NEW", "^X N", 0), Triple("AI_UNDO", "^X U", 0),
             Triple("AI_QUIT", "^X Q", 0), Triple("AI_AGENT", "^X A", 0),
             Triple("AI_SIDEBAR", "^X B", 0), Triple("AI_JUMPMSG", "^X G", 0),
-            Triple("AI_EXPORT", "^X X", 0), Triple("AI_CLOSETAB", "^X W", 0),
-            Triple("AI_QUEUE", "^X ↵", 0)   // 排队发送放最右（回车字符大，靠右不挤其它键）
+            Triple("AI_EXPORT", "^X X", 0), Triple("AI_CLOSETAB", "^X W", 0)
         )
         val pages = listOf(listOf(row1, row2), listOf(row3, row4))
 
@@ -953,6 +1000,7 @@ class TerminalFragment : Fragment() {
             "AI_SESSIONS" -> sendAiCommand('l') // ^X 然后 l = Switch session
             "AI_NEW" -> sendAiCommand('n')      // ^X 然后 n = New session
             "AI_QUEUE" -> sendAiCommand('\r')   // ^X 然后 Enter = Queue prompt（排队发送）
+            "AI_COMPACT" -> confirmCompact()   // ^X 然后 c = 压缩会话（误触代价高，二次确认）
             "AI_UNDO" -> confirmUndo()   // ^X 然后 u = 撤销上一条消息（误触代价高，二次确认）
             "AI_QUIT" -> sendAiCommand('q')     // ^X 然后 q = 退出
             "AI_AGENT" -> sendAiCommand('a')    // ^X 然后 a = 选择 Agent
@@ -970,16 +1018,24 @@ class TerminalFragment : Fragment() {
     /**
      * AI 工具（opencode / mimo）命令面板动作：按 ^X 打开命令面板，再按一个字母键
      * （m=Switch model / l=Switch session / n=New session）触发对应动作。
-     * 面板打开需一点时间，用 Handler 延迟再发字母。
+     * 面板打开需一点时间，用 Handler 延迟再发字母（300ms：原值，opencode 一次生效；
+     * mimo 若需两次由用户手动补一次回车，不连发以免 opencode 重复）。
      */
+    /** sendAiCommand 的 300ms 延迟 Runnable，保存引用供 onDestroyView 取消（防视图销毁后向已退出会话 write）。 */
+    private var aiCmdRunnable: Runnable? = null
+
     private fun sendAiCommand(letter: Char) {
         val s = TerminalTabs.activeSession() ?: return
         vibrateKey(false)
         s.write(byteArrayOf(0x18), 0, 1)   // ^X 打开命令面板
-        keyRepeatHandler.postDelayed({
-            val s2 = TerminalTabs.activeSession() ?: return@postDelayed
+        aiCmdRunnable?.let { keyRepeatHandler.removeCallbacks(it) }
+        val r = Runnable {
+            val s2 = TerminalTabs.activeSession() ?: return@Runnable
             s2.write(byteArrayOf(letter.code.toByte()), 0, 1)
-        }, 300)
+            aiCmdRunnable = null
+        }
+        aiCmdRunnable = r
+        keyRepeatHandler.postDelayed(r, 300)
     }
 
     /**
@@ -1136,7 +1192,7 @@ class TerminalFragment : Fragment() {
                 base.length == 1 && base[0] == '4' -> "\u001bOS"
                 base.length == 1 && base[0] == '5' -> "\u001b[15~"
                 base.length == 1 && base[0] == '6' -> "\u001b[17~"
-                base.length == 1 && base[0] == '7' -> "\u0001b[18~"
+                base.length == 1 && base[0] == '7' -> "\u001b[18~"
                 base.length == 1 && base[0] == '8' -> "\u001b[19~"
                 base.length == 1 && base[0] == '9' -> "\u001b[20~"
                 base.length == 1 && base[0] == '0' -> "\u001b[21~"
@@ -1201,6 +1257,11 @@ class TerminalFragment : Fragment() {
         // 停止方向键长按重复（视图销毁时不再往会话发键）。
         keyRepeatRunnable?.let { keyRepeatHandler.removeCallbacks(it) }
         keyRepeatRunnable = null
+        // 低危：取消 sendAiCommand 的 300ms 延迟，避免视图销毁后仍向会话 write。
+        aiCmdRunnable?.let { keyRepeatHandler.removeCallbacks(it) }
+        aiCmdRunnable = null
+        // 低危：视图销毁后不再持有已废弃的 MaterialCardView。
+        modButtons.clear()
         if (instance === this) instance = null
         // 视图销毁但会话保留（后台继续运行）；下次进入时重建视图并重新挂接。
         // ★ 只清「当前容器里」的视图：通知栏进入时 standard 模式可能新建 MainActivity，

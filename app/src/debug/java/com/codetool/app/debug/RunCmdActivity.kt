@@ -15,6 +15,17 @@ class RunCmdActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // H8：debug 专用后门，仅允许 adb(shell uid=2000)/root(0)/本应用调用，拒绝任意第三方应用
+        // 通过 am start 触发容器内命令执行（如读 auth.json 并外泄）。API 29+ 用 getLaunchedFromUid()
+        // 校验调用方；API<29 无法可靠获取 caller uid，保留调试能力（debug 包不外发时风险可控）。
+        val callerUid = if (android.os.Build.VERSION.SDK_INT >= 29) getLaunchedFromUid() else -1
+        val myUid = android.os.Process.myUid()
+        val allowed = callerUid == 0 || callerUid == 2000 || callerUid == myUid
+        if (!allowed) {
+            File(filesDir, "debug-cmd.out").writeText("denied: caller uid=$callerUid\n")
+            finish()
+            return
+        }
         // 优先 cmd_b64（base64，避免 adb shell 引号剥离/特殊字符问题）；否则 cmd
         val b64 = intent.getStringExtra("cmd_b64")
         val cmd = if (!b64.isNullOrBlank()) {

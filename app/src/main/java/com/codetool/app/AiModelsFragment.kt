@@ -30,6 +30,14 @@ import kotlinx.coroutines.withContext
  * AI 模型管理（多模型）：实时读容器里的模型清单，列出全部模型，
  * 支持新增 / 编辑 / 删除 / 设为当前 / 从 CLI 导入 / 测试连接 / 自定义服务商。
  */
+/** refresh() 的 IO 读盘快照：CLI 状态 + 模型清单 + 每个模型预计算的 CLI 归属（避免渲染时反复读盘）。 */
+private data class RefreshSnapshot(
+    val mimo: String,
+    val oc: String,
+    val list: List<AiModelManager.Model>,
+    val clis: Map<String, Set<String>>,
+)
+
 class AiModelsFragment : Fragment() {
 
     private lateinit var statusMimo: MaterialTextView
@@ -57,9 +65,14 @@ class AiModelsFragment : Fragment() {
         v.findViewById<MaterialButton>(R.id.btnAiRefreshVersion).setOnClickListener { refreshVersions() }
         v.findViewById<MaterialButton>(R.id.btnAiAdd).setOnClickListener { showEditDialog(null) }
         v.findViewById<MaterialButton>(R.id.btnAiImport).setOnClickListener {
-            val n = AiModelManager.importFromCli(requireContext())
-            toast(if (n > 0) "已导入 $n 个现有模型" else "清单已有或无可导入配置")
-            refresh()
+            // 主线程 IO 修复：导入读/写两个 CLI 配置文件，移入 IO 线程，完成后回主线程刷新。
+            val ctx = requireContext().applicationContext
+            viewLifecycleOwner.lifecycleScope.launch {
+                val n = withContext(Dispatchers.IO) { AiModelManager.importFromCli(ctx) }
+                if (!isAdded) return@launch
+                toast(if (n > 0) "已导入 $n 个现有模型" else "清单已有或无可导入配置")
+                refresh()
+            }
         }
         v.findViewById<MaterialButton>(R.id.btnAiFetchModels).setOnClickListener { showFetchDialog() }
         v.findViewById<MaterialButton>(R.id.btnAiConfig).setOnClickListener {
@@ -134,24 +147,38 @@ class AiModelsFragment : Fragment() {
         }
     }
 
-    /** 实时刷新：每次都重新读盘。 */
+    /** 实时刷新：每次都重新读盘（读盘在 IO 线程，UI 更新回主线程，避免模型多时读盘卡 UI）。 */
     private fun refresh() {
-        val ctx = requireContext()
-        val mimo = AiModelManager.mimoStatus(ctx)
-        val oc = AiModelManager.opencodeStatus(ctx)
-        statusMimo.text = "MiMo Code：${mimo.detail}"
-        statusOc.text = "opencode：${oc.detail}"
+        val appCtx = requireContext().applicationContext
+        viewLifecycleOwner.lifecycleScope.launch {
+            val d = withContext(Dispatchers.IO) {
+                val list = AiModelManager.listModels(appCtx)
+                // 预计算每个模型的 CLI 归属（读两个 CLI 配置文件），渲染时查表不再读盘
+                val clis = HashMap<String, Set<String>>()
+                list.forEach { m ->
+                    clis[m.name + '\u0000' + m.target] = AiModelManager.clisContaining(appCtx, m)
+                }
+                RefreshSnapshot(
+                    AiModelManager.mimoStatus(appCtx).detail,
+                    AiModelManager.opencodeStatus(appCtx).detail,
+                    list,
+                    clis,
+                )
+            }
+            if (!isAdded) return@launch
+            val ctx = requireContext()
+            statusMimo.text = "MiMo Code：${d.mimo}"
+            statusOc.text = "opencode：${d.oc}"
 
-        modelList.removeAllViews()
-        val list = AiModelManager.listModels(ctx)
-        if (list.isEmpty()) {
-            modelList.addView(MaterialTextView(ctx).apply {
-                text = "暂无模型。点「新增模型」添加，或「导入现有」从 CLI 配置读取。"
-                setPadding(0, 8, 0, 8)
-            })
-            return
-        }
-        list.forEach { m ->
+            modelList.removeAllViews()
+            if (d.list.isEmpty()) {
+                modelList.addView(MaterialTextView(ctx).apply {
+                    text = "暂无模型。点「新增模型」添加，或「导入现有」从 CLI 配置读取。"
+                    setPadding(0, 8, 0, 8)
+                })
+                return@launch
+            }
+            d.list.forEach { m ->
             // 规范：列表项用 item_*.xml + inflate，不在 Kotlin 里 addView 拼布局
             val row = layoutInflater.inflate(R.layout.item_ai_model, modelList, false)
             val name = row.findViewById<MaterialTextView>(R.id.modelName)
@@ -191,7 +218,7 @@ class AiModelsFragment : Fragment() {
             // CLI 归属徽标：读两个 CLI 的真实配置文件，判断此模型实际被声明在哪些 CLI，
             // 有哪个亮哪个（两个都在就都亮）。不再用过时的 target 单字段，避免误读成「只在一个 CLI」。
             // 两个标签同色（secondaryContainer 底 + onSecondaryContainer 字），并列关系不再用颜色区分。
-            val inClis = AiModelManager.clisContaining(ctx, m)
+            val inClis = d.clis[m.name + '\u0000' + m.target] ?: emptySet()
             val badgeText = MaterialColors.getColor(
                 ctx, com.google.android.material.R.attr.colorOnSecondaryContainer, Color.GRAY)
             val badgeBg = ContextCompat.getDrawable(ctx, R.drawable.bg_badge_target_mimo)
@@ -235,12 +262,18 @@ class AiModelsFragment : Fragment() {
                     .setTitle("删除模型")
                     .setMessage("删除「${m.name}」？若这是「${m.provider}」在此目标下最后一个模型，会一并清理 CLI 配置里的 ${m.provider} 段$bakNote。")
                     .setPositiveButton("删除") { _, _ ->
-                        AiModelManager.removeModel(ctx, m.name, m.target)
-                        refresh()
+                        val appCtx = requireContext().applicationContext
+                        viewLifecycleOwner.lifecycleScope.launch {
+                            withContext(Dispatchers.IO) {
+                                AiModelManager.removeModel(appCtx, m.name, m.target)
+                            }
+                            if (isAdded) refresh()
+                        }
                     }
                     .setNegativeButton("取消", null).show()
             }
             modelList.addView(row)
+        }
         }
     }
 
@@ -256,6 +289,8 @@ class AiModelsFragment : Fragment() {
         val etKey = v.findViewById<TextInputEditText>(R.id.etAiKey)
         val targetBtn = v.findViewById<MaterialButton>(R.id.btnAiTarget)
         val spAiApiType = v.findViewById<Spinner>(R.id.spAiApiType)
+        val spAiEffort = v.findViewById<Spinner>(R.id.spAiEffort)
+        val tvAiEffortHint = v.findViewById<MaterialTextView>(R.id.tvAiEffortHint)
         val swAiEnabled = v.findViewById<MaterialSwitch>(R.id.swAiEnabled)
         val testBtn = v.findViewById<MaterialButton>(R.id.btnAiTest)
         val testResult = v.findViewById<MaterialTextView>(R.id.tvAiTestResult)
@@ -298,6 +333,13 @@ class AiModelsFragment : Fragment() {
             modelAdapter.addAll(p.models)
             modelAdapter.notifyDataSetChanged()
             btnDelProvider.visibility = if (p.builtin) View.GONE else View.VISIBLE
+            // 思考强度：小米 MiMo 无档位（仅开/关思考），禁用档位下拉避免选了无效配置。
+            // 其他服务商经 openai-compatible 声明 effort=[low,medium,high]，可选。
+            val mimo = p.id == "mimo" || p.id == "xiaomi"
+            spAiEffort.isEnabled = !mimo
+            spAiEffort.alpha = if (mimo) 0.4f else 1f
+            tvAiEffortHint.visibility = if (mimo) View.VISIBLE else View.GONE
+            if (mimo) spAiEffort.setSelection(0, false)   // 复位「默认」，mimo 不存档位
         }
 
         existing?.let {
@@ -316,6 +358,18 @@ class AiModelsFragment : Fragment() {
             AiModelManager.ApiType.positionOf(existing?.apiType ?: AiModelManager.ApiType.CHAT), false
         )
         swAiEnabled.isChecked = existing?.enabled ?: true
+
+        // 思考强度（reasoning effort）：默认=不声明（""）；其余为全部真实档位（none/minimal/low/medium/
+        // high/xhigh/max），作为「默认档位」同步到 opencode 顶层 model: "provider/id#档位"，
+        // 以及 mimo 的 provider.<id>.models.<id>.variants（据此建可切档位）。
+        // capabilities.reasoning.effort 写的是模型支持档位集合（全量，mimo 不写），不是用户选中值。
+        // 编辑已有模型时回填当前值；mimo 模型禁用（无档位）。
+        val effortLabels = listOf("默认") + AiModelManager.ALL_EFFORTS
+        val effortAdapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_item, effortLabels.toMutableList())
+        effortAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
+        spAiEffort.adapter = effortAdapter
+        val effortPos = effortLabels.indexOf(existing?.reasoningEffort ?: "").coerceAtLeast(0)
+        spAiEffort.setSelection(effortPos, false)
 
         var target = existing?.target ?: "mimo"
         // 「获取能力」拉到的最新能力值；保存时 readForm() 优先用它，避免旧值覆盖新能力。
@@ -346,6 +400,10 @@ class AiModelsFragment : Fragment() {
             supportsReasoning = fetchedCaps?.supportsReasoning ?: existing?.supportsReasoning ?: true,
             supportsImage = fetchedCaps?.supportsImage ?: existing?.supportsImage ?: true,
             supportsTemperature = fetchedCaps?.supportsTemperature ?: existing?.supportsTemperature ?: true,
+            // 思考强度：下拉「默认」存 ""（不声明档位）；否则存所选档位（none/minimal/.../max），
+            // 保存后经 writeOpencode 写顶层 model#档位、writeMimo 写 variants。mimo 模型被禁用、恒为 ""。
+            reasoningEffort = effortLabels.getOrNull(spAiEffort.selectedItemPosition).orEmpty()
+                .takeIf { it != "默认" && spAiEffort.isEnabled } ?: "",
         )
 
         var lastPos = providers.indexOfFirst { it.id == existing?.provider.orEmpty() }.coerceAtLeast(0)
@@ -446,7 +504,7 @@ class AiModelsFragment : Fragment() {
                     supportsImage = matched.supportsImage,
                     supportsTemperature = matched.supportsTemperature,
                 )
-                AiModelManager.upsertModel(ctx, caps)
+                withContext(Dispatchers.IO) { AiModelManager.upsertModel(ctx.applicationContext, caps) }
                 fetchedCaps = caps   // 缓存，保存时 readForm() 优先用它，避免旧值回退
                 val ctxLen = AiModelManager.formatContextLength(matched.contextLength)
                 tvCapsResult.text = "✓ 已更新能力：上下文 ${if (ctxLen.isEmpty()) "未知" else ctxLen} · " +
@@ -466,15 +524,23 @@ class AiModelsFragment : Fragment() {
                     toast("名称与模型 ID 必填")
                     return@setPositiveButton
                 }
-                // 改名：name+target 是主键，改了名要先删旧条目再存新名，并把 current 标记带过去
-                if (existing != null && existing.name != m.name) {
-                    val wasCurrent = existing.current
-                    AiModelManager.removeModel(ctx, existing.name, existing.target)
-                    if (wasCurrent) m.current = true
+                // 主线程 IO 修复：改名需删旧存新、保存写 model.json，一并移入 IO 线程。
+                val existing2 = existing
+                viewLifecycleOwner.lifecycleScope.launch {
+                    val appCtx = requireContext().applicationContext
+                    withContext(Dispatchers.IO) {
+                        // 改名：name+target 是主键，改了名要先删旧条目再存新名，并把 current 标记带过去
+                        if (existing2 != null && existing2.name != m.name) {
+                            val wasCurrent = existing2.current
+                            AiModelManager.removeModel(appCtx, existing2.name, existing2.target)
+                            if (wasCurrent) m.current = true
+                        }
+                        AiModelManager.upsertModel(appCtx, m)
+                    }
+                    if (!isAdded) return@launch
+                    toast("已保存（点「设为当前」写入 CLI）")
+                    refresh()
                 }
-                AiModelManager.upsertModel(ctx, m)
-                toast("已保存（点「设为当前」写入 CLI）")
-                refresh()
             }
             .setNegativeButton("取消", null).show()
     }
@@ -588,23 +654,29 @@ class AiModelsFragment : Fragment() {
             target = target,
         )
 
-        fun addModel(fm: AiModelManager.FetchedModel): Boolean {
+        // 主线程 IO 修复：baseModel() 读 EditText 须主线程；读/写盘用 withContext(IO)。
+        // suspend：单个/批量添加都在 lifecycleScope.launch（Main）里调用，读盘不卡 UI。
+        suspend fun addModel(fm: AiModelManager.FetchedModel): Boolean {
             val base = baseModel()
             val fullName = "${base.provider}/${fm.id}"
-            val existing = AiModelManager.listModels(ctx).firstOrNull {
-                it.name == fullName && it.target == base.target
+            val appCtx = requireContext().applicationContext
+            val existing = withContext(Dispatchers.IO) {
+                val found = AiModelManager.listModels(appCtx).firstOrNull {
+                    it.name == fullName && it.target == base.target
+                }
+                AiModelManager.upsertModel(appCtx, base.copy(
+                    name = fullName, modelId = fm.id,
+                    enabled = found?.enabled ?: true,
+                    current = found?.current ?: false,
+                    contextLength = fm.contextLength,
+                    maxOutputLength = fm.maxOutputLength,
+                    supportsToolCall = fm.supportsToolCall,
+                    supportsReasoning = fm.supportsReasoning,
+                    supportsImage = fm.supportsImage,
+                    supportsTemperature = fm.supportsTemperature,
+                ))
+                found
             }
-            AiModelManager.upsertModel(ctx, base.copy(
-                name = fullName, modelId = fm.id,
-                enabled = existing?.enabled ?: true,
-                current = existing?.current ?: false,
-                contextLength = fm.contextLength,
-                maxOutputLength = fm.maxOutputLength,
-                supportsToolCall = fm.supportsToolCall,
-                supportsReasoning = fm.supportsReasoning,
-                supportsImage = fm.supportsImage,
-                supportsTemperature = fm.supportsTemperature,
-            ))
             return existing != null
         }
 
@@ -638,9 +710,12 @@ class AiModelsFragment : Fragment() {
                             LinearLayout.LayoutParams.WRAP_CONTENT
                         ).apply { topMargin = dp(4) }
                         setOnClickListener {
-                            val wasUpdate = addModel(fm)
-                            toast(if (wasUpdate) "已更新：${fm.id}" else "已添加：${fm.id}")
-                            refresh()
+                            viewLifecycleOwner.lifecycleScope.launch {
+                                val wasUpdate = addModel(fm)
+                                if (!isAdded) return@launch
+                                toast(if (wasUpdate) "已更新：${fm.id}" else "已添加：${fm.id}")
+                                refresh()
+                            }
                         }
                     })
                 }
@@ -649,11 +724,14 @@ class AiModelsFragment : Fragment() {
         }
 
         btnAddAll.setOnClickListener {
-            var added = 0
-            var updated = 0
-            fetched.forEach { if (addModel(it)) updated++ else added++ }
-            toast("已添加 $added 个，更新 $updated 个")
-            refresh()
+            viewLifecycleOwner.lifecycleScope.launch {
+                var added = 0
+                var updated = 0
+                fetched.forEach { if (addModel(it)) updated++ else added++ }
+                if (!isAdded) return@launch
+                toast("已添加 $added 个，更新 $updated 个")
+                refresh()
+            }
         }
 
         MaterialAlertDialogBuilder(ctx)

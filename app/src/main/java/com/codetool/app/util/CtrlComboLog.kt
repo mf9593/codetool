@@ -11,25 +11,24 @@ object CtrlComboLog {
     @JvmStatic
     fun i(context: Context, msg: String) {
         FileLog.i(context, "CtrlCombo", msg)
-        appendPublic(msg)
+        appendPublic(context, msg)
     }
 
     @JvmStatic
     fun w(context: Context, msg: String) {
         FileLog.w(context, "CtrlCombo", msg)
-        appendPublic("WARN: $msg")
+        appendPublic(context, "WARN: $msg")
     }
 
-    private fun appendPublic(msg: String) {
+    private fun appendPublic(context: Context, msg: String) {
         runCatching {
-            // 写到 Download 根目录扁平文件，并显式设为全局可读，
-            // 否则应用私有 umask 会让外部 shell（不同 uid）读不到。
-            val f = File("/storage/emulated/0/Download/ctrlcombo.log")
+            // 安全：写到应用外部私有目录（不再写公共 Download 根 + 全局可读/可写），
+            // 防其它应用读取终端 Ctrl 组合键信息或篡改/删除日志。
+            val dir = context.getExternalFilesDir("logs") ?: return@runCatching
+            val f = File(dir, "ctrlcombo.log")
             val ts = java.text.SimpleDateFormat("HH:mm:ss.SSS", java.util.Locale.US)
                 .format(java.util.Date())
             f.appendText("[$ts] $msg\n")
-            f.setReadable(true, false)
-            f.setWritable(true, false)
         }
     }
 }

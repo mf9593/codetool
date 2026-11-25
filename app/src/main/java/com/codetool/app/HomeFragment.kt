@@ -211,43 +211,51 @@ class HomeFragment : Fragment() {
 
     /** 首页收藏区：脚本收藏 + 路径收藏（长按收藏；点击运行/打开文件管理）。 */
     private fun refreshFavorites() {
-        val ctx = requireContext()
-        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
-        scriptFavList.removeAllViews()
-        pathFavList.removeAllViews()
+        val appCtx = requireContext().applicationContext
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 主线程 IO：读脚本收藏/路径收藏（读脚本文件内容）放 IO 线程，避免主线程读盘卡 UI。
+            val data = withContext(Dispatchers.IO) {
+                val favScripts = ScriptManager.favScripts(appCtx)
+                    .mapNotNull { ScriptManager.parseScript(File(it)) }
+                    .sortedBy { it.name }
+                val favPaths = ScriptManager.favPaths(appCtx).sorted()
+                favScripts to favPaths
+            }
+            if (!isAdded) return@launch
+            val ctx = requireContext()
+            val (favScripts, favPaths) = data
+            val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
+            scriptFavList.removeAllViews()
+            pathFavList.removeAllViews()
 
-        // 脚本收藏（点击弹运行弹窗，点「运行」在终端内执行）
-        val favScripts = ScriptManager.favScripts(ctx)
-            .mapNotNull { ScriptManager.parseScript(File(it)) }
-            .sortedBy { it.name }
-        scriptFavEmpty.visibility = if (favScripts.isEmpty()) View.VISIBLE else View.GONE
-        for (s in favScripts) {
-            scriptFavList.addView(buildFavRow(
-                scriptFavList,
-                icon = R.drawable.ic_scripts,
-                title = s.name,
-                subtitle = s.file.name,
-                onClick = {
-                    com.codetool.app.script.ScriptRunDialog.show(ctx, s) { args ->
-                        // 在终端会话内运行（先选择目标标签，自动切到终端页）
-                        // 提示由 runScript 在实际发送后弹出，避免还没选标签就说“已运行”
-                        TerminalFragment.pickTabAndRun(ctx, s.file, s.name, *args)
+            scriptFavEmpty.visibility = if (favScripts.isEmpty()) View.VISIBLE else View.GONE
+            for (s in favScripts) {
+                scriptFavList.addView(buildFavRow(
+                    scriptFavList,
+                    icon = R.drawable.ic_scripts,
+                    title = s.name,
+                    subtitle = s.file.name,
+                    onClick = {
+                        com.codetool.app.script.ScriptRunDialog.show(ctx, s) { args ->
+                            // 在终端会话内运行（先选择目标标签，自动切到终端页）
+                            // 提示由 runScript 在实际发送后弹出，避免还没选标签就说“已运行”
+                            TerminalFragment.pickTabAndRun(ctx, s.file, s.name, *args)
+                        }
                     }
-                }
-            ))
-        }
+                ))
+            }
 
-        // 路径收藏（打开文件管理）
-        val favPaths = ScriptManager.favPaths(ctx).sorted()
-        pathFavEmpty.visibility = if (favPaths.isEmpty()) View.VISIBLE else View.GONE
-        for (p in favPaths) {
-            pathFavList.addView(buildFavRow(
-                pathFavList,
-                icon = R.drawable.ic_folder,
-                title = File(p).name.ifEmpty { p },
-                subtitle = p,
-                onClick = { (activity as? MainActivity)?.openFilesAt(p) }
-            ))
+            // 路径收藏（打开文件管理）
+            pathFavEmpty.visibility = if (favPaths.isEmpty()) View.VISIBLE else View.GONE
+            for (p in favPaths) {
+                pathFavList.addView(buildFavRow(
+                    pathFavList,
+                    icon = R.drawable.ic_folder,
+                    title = File(p).name.ifEmpty { p },
+                    subtitle = p,
+                    onClick = { (activity as? MainActivity)?.openFilesAt(p) }
+                ))
+            }
         }
     }
 
@@ -283,13 +291,14 @@ class HomeFragment : Fragment() {
         val ctx = requireContext()
         viewLifecycleOwner.lifecycleScope.launch {
             val rootfs = RootfsManager.get(ctx)
-            rootfs.refreshState()
             val runtime = TawcrootRuntime.get(ctx)
 
             // 计算状态（都是轻量判断：state + 读几个小文件）。
             // 不再统计 rootfs 占用大小——全盘 walkTopDown 遍历几万文件极慢，
             // 这个数字对用户也没什么用，直接显示「已就绪」。
             val snapshot = withContext(Dispatchers.IO) {
+                // 主线程 IO：refreshState 读 marker/目录状态，移入 IO 线程（原在主线程执行）。
+                rootfs.refreshState()
                 val label = when (val st = rootfs.state) {
                     is RootfsManager.State.Extracting -> "解压中 ${st.percent}%"
                     is RootfsManager.State.Failed -> "失败: ${st.error}"

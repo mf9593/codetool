@@ -30,9 +30,12 @@ object UpdateUi {
         val prefs = ctx.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val now = System.currentTimeMillis()
         if (now - prefs.getLong(KEY_LAST_CHECK, 0L) < COOLDOWN_MS) return
-        prefs.edit().putLong(KEY_LAST_CHECK, now).apply()
+        // 低危：不在检查前写 last_check——网络失败（Failure）不冷却可尽快重试；成功才写冷却。
         fragment.viewLifecycleOwner.lifecycleScope.launch {
             val r = UpdateChecker.check(currentVersion(ctx))
+            if (r !is UpdateChecker.Result.Failure) {
+                prefs.edit().putLong(KEY_LAST_CHECK, System.currentTimeMillis()).apply()
+            }
             if (r is UpdateChecker.Result.Update &&
                 r.release.tag != prefs.getString(KEY_IGNORED_TAG, null)
             ) {

@@ -697,8 +697,10 @@ class TasksFragment : Fragment() {
         val tsColor = com.google.android.material.color.MaterialColors.getColor(
             requireContext(), com.google.android.material.R.attr.colorTertiary, 0)
             .let { if (it == 0) 0xFF7986CB.toInt() else it }
-        val red = 0xFFE53935.toInt()
-        val orange = 0xFFFB8C00.toInt()
+        // 低危：颜色跟随主题（AGENTS.md 禁硬编码色值）；警告色无 Material 属性，用 tertiary 兜底。
+        val red = com.google.android.material.color.MaterialColors.getColor(
+            requireContext(), com.google.android.material.R.attr.colorError, 0xFFE53935.toInt())
+        val orange = tsColor
         // 整行级别着色
         var idx = 0
         for (line in text.lines()) {
@@ -761,7 +763,19 @@ class TasksFragment : Fragment() {
         var total = 0
         for (f in sorted) {
             if (total >= maxTotal) break
-            val text = f.readText()
+            // OOM 修复：限制每文件读取量（仅尾部 200KB），避免超大崩溃日志一次性读入内存。
+            val maxBytes = 200 * 1024L
+            val text = if (f.length() > maxBytes) {
+                RandomAccessFile(f, "r").use { raf ->
+                    val start = raf.length() - maxBytes
+                    raf.seek(start)
+                    val bytes = ByteArray(maxBytes.toInt())
+                    raf.readFully(bytes)
+                    String(bytes, Charsets.UTF_8)
+                }
+            } else {
+                f.readText()
+            }
             val lines = text.lines()
             val body = lines.takeLast(perFile)
             sb.append("--- ${f.name} ---\n")

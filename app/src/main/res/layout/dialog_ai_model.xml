@@ -148,6 +148,34 @@
             android:minHeight="48dp"
             android:spinnerMode="dropdown" />
 
+        <!-- 思考强度（reasoning effort）：同步到 opencode 时声明 capabilities.reasoning.effort，据此建 #variant -->
+        <com.google.android.material.textview.MaterialTextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="12dp"
+            android:text="思考强度"
+            android:textAppearance="?attr/textAppearanceLabelMedium"
+            android:textColor="?attr/colorOnSurfaceVariant" />
+
+        <Spinner
+            android:id="@+id/spAiEffort"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:minHeight="48dp"
+            android:spinnerMode="dropdown" />
+
+        <!-- mimo 无档位提示：仅开/关思考，隐藏档位下拉无效配置。默认 GONE -->
+        <com.google.android.material.textview.MaterialTextView
+            android:id="@+id/tvAiEffortHint"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="4dp"
+            android:text="小米 MiMo 无思考强度档位（仅开/关思考），此模型不设档位。"
+            android:textAppearance="?attr/textAppearanceBodySmall"
+            android:textColor="?attr/colorOnSurfaceVariant"
+            android:visibility="gone" />
+
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/swAiEnabled"
             android:layout_width="match_parent"

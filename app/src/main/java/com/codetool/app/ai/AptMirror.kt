@@ -61,9 +61,8 @@ object AptMirror {
         val f = File(rt, "etc/apt/sources.list")
         f.parentFile?.mkdirs()
         val content = sourcesList(currentId(ctx))
-        return if (f.exists() && f.readText() == content) {
-            true   // 同内容：幂等跳过
-        } else runCatching {
+        return runCatching {
+            if (f.exists() && f.readText() == content) return@runCatching true   // 同内容：幂等跳过
             if (f.exists()) f.copyTo(File(rt, "etc/apt/sources.list.codetool.bak"), overwrite = true)
             f.writeText(content)
             true

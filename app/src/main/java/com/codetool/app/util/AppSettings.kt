@@ -18,7 +18,6 @@ object AppSettings {
     private const val KEY_MOUNT_MODE = "mount_mode"
     private const val KEY_APT_MIRROR = "apt_mirror"
     private const val KEY_VIBRATION = "terminal_vibration"
-    private const val KEY_VIBRATION_STRENGTH = "terminal_vibration_strength"
     private const val KEY_VIBRATION_PCT = "terminal_vibration_pct"
 
     /** 默认终端字号（dp）。Termux 默认 14，这里调大。 */

@@ -48,7 +48,14 @@ android {
         }
         release {
             isMinifyEnabled = false
-            if (signingConfigs.findByName("codetool") != null) {
+            // H2：release 只在显式提供环境变量口令时签名；否则不签名（宁缺勿滥，不用调试密钥+
+            // 明文回退口令签名发布包——同签名可伪造升级包绕过更新校验）。debug 仍可回退明文便于开发。
+            val releasePw = project.findProperty("CODETOOL_STORE_PW")?.toString()
+            val releaseAlias = project.findProperty("CODETOOL_KEY_ALIAS")?.toString()
+            val releaseKeyPw = project.findProperty("CODETOOL_KEY_PW")?.toString()
+            if (signingConfigs.findByName("codetool") != null &&
+                !releasePw.isNullOrBlank() && !releaseAlias.isNullOrBlank() && !releaseKeyPw.isNullOrBlank()
+            ) {
                 signingConfig = signingConfigs.getByName("codetool")
             }
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")

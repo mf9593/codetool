@@ -19,6 +19,11 @@ import com.google.android.material.textview.MaterialTextView
  * 定时切换完整设置从 AiModelsFragment 迁到这里，AI 模型页只留紧凑摘要入口。
  * 触发链路（AlarmManager → ModelScheduleReceiver → 切换 + 提示）不变。
  */
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+
 class ScheduledTasksFragment : Fragment() {
 
     private lateinit var switchSchedule: MaterialSwitch
@@ -63,9 +68,11 @@ class ScheduledTasksFragment : Fragment() {
 
     private fun setupScheduleCard() {
         val ctx = requireContext()
-        switchSchedule.isChecked = ModelScheduleManager.load(ctx).enabled
-        switchWeekendOff.isChecked = ModelScheduleManager.load(ctx).weekendOff
-        switchHolidayOff.isChecked = ModelScheduleManager.load(ctx).holidayOff
+        // 低危：同一份配置只读一次（原重复 load 3 次读盘）。
+        val s = ModelScheduleManager.load(ctx)
+        switchSchedule.isChecked = s.enabled
+        switchWeekendOff.isChecked = s.weekendOff
+        switchHolidayOff.isChecked = s.holidayOff
         switchWeekendOff.setOnCheckedChangeListener { _, checked ->
             if (scheduleSuppress) return@setOnCheckedChangeListener
             ModelScheduleManager.save(ctx, ModelScheduleManager.load(ctx).apply { weekendOff = checked })
@@ -154,30 +161,37 @@ class ScheduledTasksFragment : Fragment() {
 
     private fun pickScheduleModel(peak: Boolean) {
         val ctx = requireContext()
-        val all = AiModelManager.listModels(ctx).filter { it.enabled }
-        if (all.isEmpty()) {
-            toast("没有可用模型，先去「AI 模型」页新增")
-            return
-        }
-        val s = ModelScheduleManager.load(ctx)
-        val curName = if (peak) s.peakModel else s.offModel
-        val curTarget = if (peak) s.peakTarget else s.offTarget
-        // 标签显示服务商（provider），不再显示 target（mimo/opencode）：定时切换现在
-        // 两个 CLI 同时生效，标 target 会误导成「只切这个 CLI」；provider 才能区分同名模型。
-        val labels = all.map { "${it.name}（${it.provider}）" }.toTypedArray()
-        MaterialAlertDialogBuilder(ctx)
-            .setTitle(if (peak) "选择高峰模型" else "选择闲时模型")
-            .setSingleChoiceItems(labels, all.indexOfFirst { it.name == curName && it.target == curTarget }) { d, which ->
-                val m = all[which]
-                val cur = ModelScheduleManager.load(ctx)
-                if (peak) { cur.peakModel = m.name; cur.peakTarget = m.target }
-                else { cur.offModel = m.name; cur.offTarget = m.target }
-                ModelScheduleManager.save(ctx, cur)
-                d.dismiss()
-                afterScheduleChange()
+        viewLifecycleOwner.lifecycleScope.launch {
+            // 主线程 IO：listModels + load 读盘放 IO 线程，避免打开弹窗时主线程读盘卡 UI。
+            val (all, s) = withContext(Dispatchers.IO) {
+                val all = AiModelManager.listModels(ctx.applicationContext).filter { it.enabled }
+                val s = ModelScheduleManager.load(ctx.applicationContext)
+                all to s
             }
-            .setNegativeButton("取消", null)
-            .show()
+            if (!isAdded) return@launch
+            if (all.isEmpty()) {
+                toast("没有可用模型，先去「AI 模型」页新增")
+                return@launch
+            }
+            val curName = if (peak) s.peakModel else s.offModel
+            val curTarget = if (peak) s.peakTarget else s.offTarget
+            // 标签显示服务商（provider），不再显示 target（mimo/opencode）：定时切换现在
+            // 两个 CLI 同时生效，标 target 会误导成「只切这个 CLI」；provider 才能区分同名模型。
+            val labels = all.map { "${it.name}（${it.provider}）" }.toTypedArray()
+            MaterialAlertDialogBuilder(ctx)
+                .setTitle(if (peak) "选择高峰模型" else "选择闲时模型")
+                .setSingleChoiceItems(labels, all.indexOfFirst { it.name == curName && it.target == curTarget }) { d, which ->
+                    val m = all[which]
+                    val cur = ModelScheduleManager.load(ctx)
+                    if (peak) { cur.peakModel = m.name; cur.peakTarget = m.target }
+                    else { cur.offModel = m.name; cur.offTarget = m.target }
+                    ModelScheduleManager.save(ctx, cur)
+                    d.dismiss()
+                    afterScheduleChange()
+                }
+                .setNegativeButton("取消", null)
+                .show()
+        }
     }
 
     /** 刷新定时切换卡片的状态文本（当前北京时间 / 当前时段 / 下次切换）。 */

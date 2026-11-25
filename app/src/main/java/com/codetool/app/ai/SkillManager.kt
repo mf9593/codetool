@@ -142,12 +142,9 @@ object SkillManager {
         body: String,
     ): String? {
         val trimmedName = name.trim()
-        if (existing == null) {
-            if (!NAME_RE.matches(trimmedName))
-                return "名称只能小写字母/数字/连字符（如 my-skill），且与目录名一致"
-        } else if (trimmedName.isEmpty()) {
-            return "名称不能为空"
-        }
+        // 低危：编辑也校验 NAME_RE（原名可能被改；空串不匹配 NAME_RE，覆盖「不能为空」）。
+        if (!NAME_RE.matches(trimmedName))
+            return "名称只能小写字母/数字/连字符（如 my-skill），且与目录名一致"
         if (description.isBlank() || description.length > 1024)
             return "description 必填且不超过 1024 字符"
         if (body.isBlank()) return "指令正文不能为空"
@@ -156,10 +153,12 @@ object SkillManager {
             val f = existing?.file
                 ?: File(File(dir(ctx), trimmedName).apply { mkdirs() }, "SKILL.md")
             f.parentFile?.mkdirs()
-            f.writeText(
-                "---\nname: $trimmedName\ndescription: ${description.replace("\n", " ").trim()}\n---\n\n" +
-                    body.trim() + "\n"
-            )
+            // 低危：原子写（tmp→rename），避免写一半失败损坏 SKILL.md。
+            val content = "---\nname: $trimmedName\ndescription: ${description.replace("\n", " ").trim()}\n---\n\n" +
+                body.trim() + "\n"
+            val tmp = File(f.parentFile, f.name + ".tmp")
+            tmp.writeText(content)
+            if (!tmp.renameTo(f)) { tmp.delete(); f.writeText(content) }
             null
         }.getOrElse { it.message ?: "保存失败" }
     }

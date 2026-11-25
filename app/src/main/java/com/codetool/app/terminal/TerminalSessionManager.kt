@@ -97,14 +97,21 @@ class TerminalSessionManager(private val context: Context) {
     fun prepare(): SessionSpec {
         Log.i(TAG, "prepare: step1 startForegroundService")
         // 1. 确保终端服务已启动（持有 wake lock）
-        context.startForegroundService(
-            Intent(context, TerminalService::class.java)
-                .setAction(TerminalService.ACTION_START)
-                .putExtra(TerminalService.EXTRA_KEEP_WIFI, true)
-        )
-        TerminalService.instance?.onSessionStarted()
+        // H7：后台线程 startForegroundService 可能抛 ForegroundServiceStartNotAllowedException
+        //（Android 12+ 后台启动限制），捕获并降级 startService，避免异常向上传播导致终端打不开。
+        val svcIntent = Intent(context, TerminalService::class.java)
+            .setAction(TerminalService.ACTION_START)
+            .putExtra(TerminalService.EXTRA_KEEP_WIFI, true)
+        try {
+            context.startForegroundService(svcIntent)
+        } catch (e: Exception) {
+            Log.w(TAG, "startForegroundService 失败，降级 startService: ${e.message}")
+            runCatching { context.startService(svcIntent) }
+        }
+        // 会话计数改在 createSession（主线程、服务 onCreate 已执行、instance 已赋值）里调
+        // onSessionStarted——原在此后台线程调，服务启动异步、instance 可能为 null，
+        // 导致计数丢失、会话结束时会多释放一次锁。这里只保留配对标志。
         sessionCounted = true
-
         // 2. 确保 rootfs 已解压（阻塞，后台线程）
         Log.i(TAG, "prepare: step2 ensureExtractedSync")
         val rootfs = RootfsManager.get(context).ensureExtractedSync()
@@ -157,6 +164,9 @@ class TerminalSessionManager(private val context: Context) {
             client
         )
         currentSession = session
+        // 会话计数（原在 prepare 后台线程调 instance?.onSessionStarted，instance 竞态会丢计数、
+        // 会话结束多释放锁）；此处主线程、服务已启动 instance 非 null，计数可靠。
+        TerminalService.instance?.onSessionStarted()
         Log.i(TAG, "session created on main thread")
         return session
     }

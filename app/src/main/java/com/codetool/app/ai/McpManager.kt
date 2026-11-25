@@ -109,12 +109,44 @@ object McpManager {
             c.label to (c.candidates.firstOrNull { it.isFile } ?: c.candidates.first())
         }
 
+    /** 简单 shell 分词：支持单引号/双引号/反斜杠转义，空格/制表符分隔。
+     *  用于把用户填的整行启动命令（可能含带空格路径，如 `python3 "/path with space/mcp.py"`）
+     *  正确拆成参数数组——避免 split(Regex("\\s+")) 把引号内空格拆断导致 CLI 启动失败。 */
+    fun tokenizeCommand(cmd: String): List<String> {
+        val out = mutableListOf<String>()
+        val cur = StringBuilder()
+        var inSingle = false
+        var inDouble = false
+        var i = 0
+        while (i < cmd.length) {
+            val ch = cmd[i]
+            when {
+                inSingle -> if (ch == '\'') inSingle = false else cur.append(ch)
+                inDouble -> when (ch) {
+                    '"' -> inDouble = false
+                    '\\' -> if (i + 1 < cmd.length) { cur.append(cmd[i + 1]); i++ }
+                    else -> cur.append(ch)
+                }
+                else -> when (ch) {
+                    '\'' -> inSingle = true
+                    '"' -> inDouble = true
+                    '\\' -> if (i + 1 < cmd.length) { cur.append(cmd[i + 1]); i++ }
+                    ' ', '\t' -> if (cur.isNotEmpty()) { out.add(cur.toString()); cur.clear() }
+                    else -> cur.append(ch)
+                }
+            }
+            i++
+        }
+        if (cur.isNotEmpty()) out.add(cur.toString())
+        return out
+    }
+
     private fun serverFrom(name: String, o: JSONObject, label: String): Server = Server(
         name = name,
         type = o.optString("type", if (o.has("url")) "remote" else "local"),
         command = when (val c = o.opt("command")) {
             is JSONArray -> (0 until c.length()).map { c.optString(it, "") }.filter { it.isNotEmpty() }
-            is String -> c.split(Regex("\\s+")).filter { it.isNotEmpty() }
+            is String -> tokenizeCommand(c)
             else -> emptyList()
         },
         url = o.optString("url", ""),
@@ -150,8 +182,8 @@ object McpManager {
     }
 
     /** 找不到配置可写时返回错误原因；成功返回 null。 */
-    @Synchronized
-    private fun mutate(ctx: Context, block: (JSONObject) -> Unit): String? {
+    private fun mutate(ctx: Context, block: (JSONObject) -> Unit): String? =
+        synchronized(AiModelManager.configLock) {
         var written = 0
         var skipped = 0
         for ((_, f) in writeTargets(ctx)) {
@@ -186,7 +218,7 @@ object McpManager {
                 written++
             }
         }
-        return when {
+        when {
             written == 0 && skipped > 0 -> "配置文件含无法解析的内容，未改写（原文件已保留）"
             written == 0 -> "没有可写的配置文件"
             else -> null
@@ -201,7 +233,9 @@ object McpManager {
             // 合并进已有对象：保留 headers / environment 等本页未展示的字段
             val o = mcp.optJSONObject(s.name) ?: JSONObject()
             o.put("type", s.type)
-            o.put("enabled", s.enabled)
+            // M2：保留该文件自己已设的 enabled（用户显式开关优先），缺失才用 s.enabled。
+            // 避免 ensureBuiltin 用合并列表把某 CLI 的 enabled 强加给另一个 CLI（如 mimo 开、opencode 关被改回开）。
+            if (!o.has("enabled")) o.put("enabled", s.enabled)
             o.put("description", s.description)
             if (s.isRemote) {
                 o.put("url", s.url)
@@ -247,11 +281,12 @@ object McpManager {
         for (b in BUILTINS) {
             val existing = current.firstOrNull { it.name == b.name }
             // 只要该内置服务在某一份配置文件里缺失，就补全（upsert 写所有目标，幂等）；
-            // 已存在但命令/类型变了也要更新（保留 enabled）。
+            // 已存在但命令/类型变了也要更新。enabled 交给 upsert 逐文件保留各自状态，
+            // 这里用默认 b.enabled（内置默认启用），不用合并列表的 existing.enabled（会跨 CLI 污染）。
             val missingInSome = targets.any { (_, f) -> b.name !in readMcpNames(f) }
             val changed = existing != null && (existing.command != b.command || existing.type != b.type)
             if (!missingInSome && !changed) continue
-            val toAdd = if (existing != null) b.copy(enabled = existing.enabled) else b
+            val toAdd = b
             if (upsert(ctx, toAdd) == null) n++
         }
         return n

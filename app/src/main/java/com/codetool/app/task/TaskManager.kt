@@ -51,7 +51,8 @@ object TaskManager {
                 val rootfs = RootfsManager.get(ctx).ensureExtractedSync()
                 val runtime = TawcrootRuntime.get(ctx)
                 val proc = runtime.exec(rootfs, command, *args)
-                val out = proc.inputStream.bufferedReader().readText()
+                // 低危：use 关闭 reader（原依赖进程退出释放 fd，命令永不退出时泄漏）。
+                val out = proc.inputStream.bufferedReader().use { it.readText() }
                 val code = proc.waitFor()
                 val log = buildString {
                     appendLine("命令: $command ${args.joinToString(" ")}")
@@ -84,11 +85,17 @@ object TaskManager {
                 val rootfs = RootfsManager.get(ctx).ensureExtractedSync()
                 val scriptDir = File(rootfs, "root/.codetool-scripts")
                 scriptDir.mkdirs()
-                val dest = File(scriptDir, scriptFile.name)
+                // 低危：文件名白名单校验（防 ../ 路径穿越），不合规则拒绝。
+                val safeName = scriptFile.name
+                if (!Regex("^[A-Za-z0-9._-]+$").matches(safeName) || safeName.startsWith(".")) {
+                    FileLog.e(ctx, "Task", "运行脚本失败: 非法文件名 $safeName")
+                    return@Thread
+                }
+                val dest = File(scriptDir, safeName)
                 scriptFile.copyTo(dest, overwrite = true)
                 dest.setExecutable(true)
                 // ★ 容器内路径（chroot 后 /root/...），不能用 Android 绝对路径
-                val containerPath = "/root/.codetool-scripts/${scriptFile.name}"
+                val containerPath = "/root/.codetool-scripts/$safeName"
                 run(ctx, "脚本: $scriptName", "/bin/sh", containerPath, *args)
             } catch (e: Exception) {
                 FileLog.e(ctx, "Task", "运行脚本失败: $scriptName ${e.message}", e)

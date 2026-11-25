@@ -386,6 +386,12 @@ object DesktopApps {
                 }
                 val p = com.codetool.app.runtime.TawcrootRuntime.get(appCtx)
                     .exec(rootfs, "/bin/bash", "-lc", "exec 2>&1\n$script")
+                // 低危：守护 watchdog，脚本挂死超时（30 分钟）后 destroy，避免读流永久阻塞、
+                // 线程泄漏 + 保活前台服务锁不释放。
+                val watchdog = Thread {
+                    try { Thread.sleep(30 * 60 * 1000L) } catch (_: InterruptedException) {}
+                    runCatching { if (p.isAlive) { p.destroy(); FileLog.w(appCtx, tag, "runScript 超时(30min)，已 destroy") } }
+                }.apply { isDaemon = true; start() }
                 // "exec 2>&1" 把 stderr 重定向到 stdout：proot 容器里 Xwayland/tkinter/
                 // 程序报错走 stderr，之前只读 stdout 导致"点了没反应/无 UI"时看不到
                 // 任何报错。合并后能定位。

@@ -64,7 +64,7 @@ class TerminalService : Service() {
 
     private lateinit var wakeLock: PowerManager.WakeLock
     private var wifiLock: WifiManager.WifiLock? = null
-    @Volatile private var activeSessions = 0
+    private val activeSessions = java.util.concurrent.atomic.AtomicInteger(0)
     @Volatile private var keepWifi = true
 
     override fun onCreate() {
@@ -102,18 +102,20 @@ class TerminalService : Service() {
      * 有终端会话开始时调用（由 TerminalSession 通知）。
      */
     fun onSessionStarted() {
-        activeSessions++
+        val n = activeSessions.incrementAndGet()
         ensureLocks()
-        Log.i(TAG, "session started, active=$activeSessions")
+        // 锁屏联网豁免：终端里跑 opencode/mimo 长任务，Doze 会限制后台网络，需「忽略电池优化」白名单。
+        com.codetool.app.util.BatteryOpt.ensureExempt(this)
+        Log.i(TAG, "session started, active=$n")
     }
 
     /**
      * 有终端会话结束时调用。
      */
     fun onSessionEnded() {
-        activeSessions = (activeSessions - 1).coerceAtLeast(0)
-        Log.i(TAG, "session ended, active=$activeSessions")
-        if (activeSessions == 0) {
+        val n = activeSessions.decrementAndGet().coerceAtLeast(0)
+        Log.i(TAG, "session ended, active=$n")
+        if (n == 0) {
             releaseLocks()
         }
     }
@@ -156,7 +158,7 @@ class TerminalService : Service() {
 
     private fun stopTerminal() {
         releaseLocks()
-        activeSessions = 0
+        activeSessions.set(0)
     }
 
     private fun buildNotification(text: String): Notification {

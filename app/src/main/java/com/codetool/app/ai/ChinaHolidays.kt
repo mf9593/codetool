@@ -18,6 +18,7 @@ object ChinaHolidays {
 
     @Volatile private var builtin: Set<String>? = null
     @Volatile private var extraStamp: Long = Long.MIN_VALUE
+    @Volatile private var extraSize: Long = -1L
     @Volatile private var extra: Set<String> = emptySet()
 
     private val DATE_RE = Regex("\\d{4}-\\d{2}-\\d{2}")
@@ -41,8 +42,11 @@ object ChinaHolidays {
         val base = builtin(ctx)
         val f = File(ctx.applicationContext.dataDir, "share/model-holidays.json")
         val stamp = if (f.isFile) f.lastModified() else 0L
-        if (stamp != extraStamp) {
+        val size = if (f.isFile) f.length() else 0L
+        // 低危：同秒内重写文件 mtime 不变，加 length 兜底，避免新内容不刷新。
+        if (stamp != extraStamp || size != extraSize) {
             extraStamp = stamp
+            extraSize = size
             extra = if (stamp == 0L) emptySet() else readArray(
                 runCatching { f.readText() }.getOrDefault("")
             )

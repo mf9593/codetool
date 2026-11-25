@@ -82,11 +82,14 @@ class BrowserBridgeService : Service() {
                 // 都调——running 是 companion 静态变量，服务被系统重建时可能残留 true，
                 // 放在 if(!running) 里会跳过桥启动（实测「服务 isForeground 但桥目录没建」）。
                 BrowserBridge.start(this) { req, respond -> handleRequest(req, respond) }
+                // H9：startForeground 必须无条件调用——running 残留 true 时若走 if(!running)
+                // 会跳过 startForeground，系统 5s 判定前台服务未启动 → ANR/RemoteServiceException。
+                // startForeground 重复调用幂等、无害，仅用于控制日志/标志。
                 if (!running) {
                     running = true
-                    startForeground(NOTIF_ID, buildNotification())
                     Log.i(TAG, "browser bridge service started (headless mode)")
                 }
+                startForeground(NOTIF_ID, buildNotification())
             }
         }
         return START_STICKY

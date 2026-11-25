@@ -5,6 +5,7 @@
     <files-path name="internal_files" path="." />
     <!-- 外部私有目录（Android/data/<pkg>/files/...，日志镜像在这里） -->
     <external-files-path name="external_files" path="." />
-    <!-- 共享存储根（Download 等），仅在有 MANAGE_EXTERNAL_STORAGE 时有效 -->
-    <external-path name="external_root" path="." />
+    <!-- 共享存储根（Download 等），仅在有 MANAGE_EXTERNAL_STORAGE 时有效。
+         收紧到 Download 子目录：不暴露整个共享存储根，防授权前缀过宽被外部应用读取任意共享文件。 -->
+    <external-path name="external_root" path="Download" />
 </paths>

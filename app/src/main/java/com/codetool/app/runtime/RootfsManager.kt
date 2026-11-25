@@ -277,28 +277,17 @@ class RootfsManager private constructor(private val context: Context) {
         if (state is State.Extracting) return
         state = if (marker.exists()) State.Ready(containerRoot) else State.NotExtracted
     }
-    /** 异步解压，回调在主线程。 */
-    fun ensureExtractedAsync(onDone: (Result<File>) -> Unit) {
-        if (isReady()) {
-            state = State.Ready(containerRoot)
-            onDone(Result.success(containerRoot))
-            return
-        }
-        Thread {
-            try {
-                val dir = ensureExtractedSync()
-                (context as? android.app.Activity)?.runOnUiThread {
-                    onDone(Result.success(dir))
-                } ?: onDone(Result.success(dir))
-            } catch (e: Exception) {
-                onDone(Result.failure(e))
-            }
-        }.start()
-    }
+    // H5：原 ensureExtractedAsync 全仓库无调用方，且承诺主线程回调但实际恒在后台线程
+    //（构造时 context 被替换为 applicationContext，`context as? Activity` 恒 null）——
+    // 快速路径在主线程回调、慢路径在后台回调，调用方在主线程更新 UI 必崩。直接删除，
+    // 调用方若需异步解压应改用 lifecycleScope + Dispatchers.IO 包 ensureExtractedSync。
 
     /** 删除已解压的 rootfs（用于「重新解压」/清理）。 */
     fun clean() {
-        rootfsDir.deleteRecursively()
-        state = State.NotExtracted
+        // 低危：与 ensureExtractedSync 共用同一把锁，避免解压进行中 clean 并发写目录。
+        synchronized(this) {
+            rootfsDir.deleteRecursively()
+            state = State.NotExtracted
+        }
     }
 }

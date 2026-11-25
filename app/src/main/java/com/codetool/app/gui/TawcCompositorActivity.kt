@@ -2310,6 +2310,9 @@ open class TawcCompositorActivity : Activity() {
         if (wm != null) {
             runCatching { wm.removeView(cursorView) }
             FileLog.i(this, TAG, "cursor panel-window removed")
+        } else if (cursorView.parent === root) {
+            // 低危：panel 子窗口失败时 cursorView 兜底 root.addView、cursorWm=null——这里移除兜底视图，防残留。
+            runCatching { root.removeView(cursorView) }
         }
         cursorWm = null
         cursorParams = null
@@ -2694,8 +2697,10 @@ open class TawcCompositorActivity : Activity() {
                 compositorStarted = false
             }
             NativeBridge.finishAllHosts()
-            if (instance === this) instance = null
         }
+        // H4：无论是否配置变更都清空 instance——旋转时旧 Activity 已销毁，残留引用会让
+        // NativeBridge（10+ 处）与 BrowserBridgeService 在销毁后回调其成员而崩溃/泄漏。
+        if (instance === this) instance = null
         super.onDestroy()
     }
 

@@ -256,8 +256,7 @@ class McpFragment : Fragment() {
                 val s = McpManager.Server(
                     name = etName.text?.toString()?.trim().orEmpty(),
                     type = if (remote) "remote" else "local",
-                    command = etCommand.text?.toString()?.trim().orEmpty()
-                        .split(Regex("\\s+")).filter { it.isNotEmpty() },
+                    command = McpManager.tokenizeCommand(etCommand.text?.toString()?.trim().orEmpty()),
                     url = etUrl.text?.toString()?.trim().orEmpty(),
                     description = etDesc.text?.toString()?.trim().orEmpty(),
                     enabled = swEnabled.isChecked,

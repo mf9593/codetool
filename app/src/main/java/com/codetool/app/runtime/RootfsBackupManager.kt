@@ -80,13 +80,14 @@ object RootfsBackupManager {
     private fun runTar(args: Array<String>): Pair<Int, String> = try {
         val p = ProcessBuilder(args.toList()).redirectErrorStream(true).start()
         currentProcess = p
-        val out = p.inputStream.bufferedReader().readText()
+        val out = p.inputStream.bufferedReader().use { it.readText() }
         val code = p.waitFor()
-        currentProcess = null
         code to out.trim()
     } catch (e: Exception) {
-        currentProcess = null
         -1 to (e.message ?: "tar 执行异常")
+    } finally {
+        // 低危：统一 finally 清理 currentProcess（原 success/catch 各清一次，漏 waitFor 抛异常路径）。
+        currentProcess = null
     }
 
     /** 用 toybox du -sk 快速取目录占用字节；失败返回 0（→ 不确定进度）。 */
@@ -206,6 +207,14 @@ object RootfsBackupManager {
         if (root.exists() && !root.renameTo(bak)) return false to "无法暂存当前 rootfs（可能有进程占用）"
 
         val label = "正在恢复 ${backup.name}…"
+        // tar 路径穿越防护：解压前先列出备份内容，若含 ../、..、绝对路径条目则拒绝恢复
+        //（备份来自外部 EXTRA_BACKUP_PATH，被篡改后 tar -xf 会写出目标目录之外，覆盖任意可写路径）。
+        val (listCode, listOut) = runTar(arrayOf("tar", "-tf", backup.absolutePath))
+        if (listCode != 0) return false to "备份文件无法读取（tar -tf 失败）：${listOut.take(300)}"
+        val unsafe = listOut.lineSequence()
+            .map { it.trimEnd('\r') }
+            .any { it == ".." || it.startsWith("../") || it.startsWith("/") || it.contains("/../") }
+        if (unsafe) return false to "备份文件包含越界路径（../ 或绝对路径），已拒绝恢复，防止覆盖目录外文件"
         val total = duBytes(bak.absolutePath).takeIf { it > 0 } ?: backup.length()
         val poller = ProgressPoller(
             total,

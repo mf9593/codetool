@@ -83,6 +83,9 @@ class MainActivity : AppCompatActivity() {
 
     /** 模型定时切换：前台边界自检 + 防误触重启提示弹窗。 */
     private val scheduleHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    // 低危：onResume 的两个 IME 隐藏延迟 Runnable，保存引用供 onPause 取消（防 Activity 销毁后执行）。
+    private var hideImeRunnable1: Runnable? = null
+    private var hideImeRunnable2: Runnable? = null
     private var scheduleTickRunnable: Runnable? = null
     private var modelRestartDialog: androidx.appcompat.app.AlertDialog? = null
 
@@ -247,8 +250,10 @@ class MainActivity : AppCompatActivity() {
         // 单次 hide 会与之竞态（时弹时不弹），故立即 + 延迟各收一次。
         hideImeUnlessTerminal(currentPage)
         // 延迟兜底：只在「仍停留在首页」时才收，避免误伤用户主动切到终端页打字。
-        window.decorView.postDelayed({ if (currentPage != 1) hideImeUnlessTerminal(currentPage) }, 400)
-        window.decorView.postDelayed({ if (currentPage != 1) hideImeUnlessTerminal(currentPage) }, 1200)
+        hideImeRunnable1 = Runnable { if (currentPage != 1) hideImeUnlessTerminal(currentPage) }
+        hideImeRunnable2 = Runnable { if (currentPage != 1) hideImeUnlessTerminal(currentPage) }
+        window.decorView.postDelayed(hideImeRunnable1, 400)
+        window.decorView.postDelayed(hideImeRunnable2, 1200)
         // 定时切换模型：回到前台兜底应用一次（休眠/进程被杀可能错过闹钟）。
         // 后台切换已由 AlarmManager 完成；若仍有 CLI 在运行 → 弹防误触弹窗告知重启终端。
         com.codetool.app.ai.ModelScheduleManager.runAndCheckPrompt(this)?.let {
@@ -271,6 +276,8 @@ class MainActivity : AppCompatActivity() {
     override fun onPause() {
         super.onPause()
         scheduleHandler.removeCallbacksAndMessages(null)
+        hideImeRunnable1?.let { window.decorView.removeCallbacks(it) }
+        hideImeRunnable2?.let { window.decorView.removeCallbacks(it) }
     }
 
     /**
@@ -832,277 +839,6 @@ class MainActivity : AppCompatActivity() {
 
         sheet.setContentView(container)
         sheet.show()
-    }
-
-    /** 关于：应用信息 + 参考开源项目地址。卡片式统一 UI。 */
-    private fun showAbout() {
-        val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
-        val pInfo = try { packageManager.getPackageInfo(packageName, 0) } catch (_: Exception) { null }
-        val versionName = pInfo?.versionName ?: "debug"
-        val versionCode = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.P) {
-            pInfo?.longVersionCode ?: 0L
-        } else {
-            pInfo?.versionCode?.toLong() ?: 0L
-        }
-
-        // 背景/文字全部跟随当前主题（浅色→浅底深字，深色→深底浅字）。
-        val onSurface = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorOnSurface, 0xFF1B1B1B.toInt())
-        val onSurfaceVariant = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorOnSurfaceVariant, 0xFF44474A.toInt())
-        val surfaceContainer = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorSurfaceContainer, 0xFFE8E8E8.toInt())
-        // 卡片背景用 colorSurfaceContainer（颜色变体都有定义、跟主题走）；别用 colorSurfaceContainerHigh。
-        val surfaceCard = surfaceContainer
-        val bg = MaterialColors.getColor(
-            this, android.R.attr.colorBackground, 0xFFFAFAFA.toInt())
-        val accent = MaterialColors.getColor(
-            this, com.google.android.material.R.attr.colorPrimary, 0xFF00505A.toInt())
-        // 半透明分隔线（基于主文字色）。
-        val divider = (onSurface and 0x00FFFFFF) or (0x22 shl 24)
-
-        // 二级页面：全屏对话框，背景跟随主题。
-        val sheet = android.app.Dialog(this)
-        sheet.window?.setBackgroundDrawable(android.graphics.drawable.ColorDrawable(bg))
-        sheet.window?.setLayout(
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT,
-            android.view.ViewGroup.LayoutParams.MATCH_PARENT)
-        val root = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(28))
-        }
-
-        // ─── 头部：图标 + 名称 + 版本标签 ───
-        val headerCard = com.google.android.material.card.MaterialCardView(this).apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = dp(16) }
-            
-            setRadius(dp(20).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
-        val headerLayout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(20), dp(20), dp(20))
-        }
-        android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_launcher_foreground)
-            layoutParams = android.widget.LinearLayout.LayoutParams(dp(48), dp(48)).also { it.rightMargin = dp(16) }
-        }.also { headerLayout.addView(it) }
-        val titleLayout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-        }
-        android.widget.TextView(this).apply {
-            text = "CodeTool"
-            textSize = 20f
-            setTextColor(onSurface)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-        }.also { v -> titleLayout.addView(v) }
-        android.widget.TextView(this).apply {
-            text = "Android 终端容器 · 版本 $versionName ($versionCode)"
-            textSize = 13f
-            setTextColor(onSurfaceVariant)
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.WRAP_CONTENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.topMargin = dp(4) }
-        }.also { v -> titleLayout.addView(v) }
-        headerLayout.addView(titleLayout)
-        headerCard.addView(headerLayout)
-        root.addView(headerCard)
-
-        // ─── 信息卡片 ───
-        val infoCard = com.google.android.material.card.MaterialCardView(this).apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.bottomMargin = dp(16) }
-            
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
-        val infoLayout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
-        }
-        // 列头
-        android.widget.TextView(this).apply {
-            text = "应用信息"
-            textSize = 14f
-            setTextColor(onSurface)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 0, dp(12))
-        }.also { infoLayout.addView(it) }
-        val infoRows = listOf(
-            "包名" to packageName,
-            "Android" to "${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})",
-            "设备" to Build.MODEL,
-            "运行时" to "tawcroot + tawc 合成器",
-            "开源协议" to "GPL-3.0",
-        )
-        infoRows.forEachIndexed { i, (label, value) ->
-            if (i > 0) {
-                android.view.View(this).apply {
-                    layoutParams = android.widget.LinearLayout.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
-                    ).also { it.topMargin = dp(10); it.bottomMargin = dp(10) }
-                    setBackgroundColor(divider)
-                }.also { infoLayout.addView(it) }
-            }
-            android.widget.LinearLayout(this).apply {
-                orientation = android.widget.LinearLayout.HORIZONTAL
-                gravity = android.view.Gravity.CENTER_VERTICAL
-            }.also { row ->
-                android.widget.TextView(this).apply {
-                    text = label
-                    textSize = 13f
-                    setTextColor(onSurfaceVariant)
-                    layoutParams = android.widget.LinearLayout.LayoutParams(
-                        dp(72), android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-                    )
-                }.also { row.addView(it) }
-                android.widget.TextView(this).apply {
-                    text = value
-                    textSize = 13f
-                    setTextColor(onSurface)
-                    layoutParams = android.widget.LinearLayout.LayoutParams(
-                        0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-                    )
-                }.also { row.addView(it) }
-                infoLayout.addView(row)
-            }
-        }
-        infoCard.addView(infoLayout)
-        root.addView(infoCard)
-
-        // ─── 开源项目卡片 ───
-        val ossCard = com.google.android.material.card.MaterialCardView(this).apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            )
-            
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
-        val ossLayout = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
-        }
-        android.widget.TextView(this).apply {
-            text = "参考开源项目"
-            textSize = 14f
-            setTextColor(onSurface)
-            setTypeface(typeface, android.graphics.Typeface.BOLD)
-            setPadding(0, 0, 0, dp(12))
-        }.also { ossLayout.addView(it) }
-        val projects = listOf(
-            "tawc / tawcroot" to "https://github.com/taowen/tawc",
-            "Smithay" to "https://github.com/smithay/smithay",
-            "Termux" to "https://github.com/termux/termux-app",
-            "proot-distro" to "https://github.com/termux/proot-distro",
-            "sora-editor" to "https://github.com/Rosemoe/sora-editor",
-            "libhybris" to "https://github.com/libhybris/libhybris",
-            "labwc" to "https://github.com/labwc/labwc",
-        )
-        projects.forEachIndexed { i, (name, url) ->
-            if (i > 0) {
-                android.view.View(this).apply {
-                    layoutParams = android.widget.LinearLayout.LayoutParams(
-                        android.view.ViewGroup.LayoutParams.MATCH_PARENT, dp(1)
-                    ).also { it.topMargin = dp(6); it.bottomMargin = dp(6) }
-                    setBackgroundColor(divider)
-                }.also { ossLayout.addView(it) }
-            }
-            android.widget.TextView(this).apply {
-                text = name
-                textSize = 13f
-                setTextColor(accent)
-                setPadding(dp(4), dp(8), dp(4), dp(8))
-                isClickable = true
-                isFocusable = true
-                // 让点击有 ripple 反馈
-                val bg = android.util.TypedValue()
-                context.theme.resolveAttribute(android.R.attr.selectableItemBackground, bg, true)
-                setBackgroundResource(bg.resourceId)
-                setOnClickListener {
-                    val intent = android.content.Intent(
-                        android.content.Intent.ACTION_VIEW,
-                        android.net.Uri.parse(url)
-                    ).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK)
-                    startActivity(intent)
-                }
-            }.also { ossLayout.addView(it) }
-        }
-        ossCard.addView(ossLayout)
-        root.addView(ossCard)
-
-        // ─── QQ 交流群卡片（点击跳转手机 QQ 群）───
-        val qqCard = com.google.android.material.card.MaterialCardView(this).apply {
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                android.view.ViewGroup.LayoutParams.MATCH_PARENT, android.view.ViewGroup.LayoutParams.WRAP_CONTENT
-            ).also { it.topMargin = dp(16) }
-            setRadius(dp(16).toFloat())
-            setBackgroundTintList(ColorStateList.valueOf(surfaceCard))
-        }
-        val qqRow = android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.HORIZONTAL
-            gravity = android.view.Gravity.CENTER_VERTICAL
-            setPadding(dp(20), dp(16), dp(20), dp(16))
-            isClickable = true
-            isFocusable = true
-            val ripple = android.util.TypedValue()
-            context.theme.resolveAttribute(android.R.attr.selectableItemBackground, ripple, true)
-            setBackgroundResource(ripple.resourceId)
-            setOnClickListener { openQqGroup() }
-        }
-        android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_group)
-            layoutParams = android.widget.LinearLayout.LayoutParams(dp(24), dp(24))
-            setColorFilter(accent)
-        }.also { qqRow.addView(it) }
-        android.widget.LinearLayout(this).apply {
-            orientation = android.widget.LinearLayout.VERTICAL
-            layoutParams = android.widget.LinearLayout.LayoutParams(
-                0, android.view.ViewGroup.LayoutParams.WRAP_CONTENT, 1f
-            ).also { it.leftMargin = dp(12) }
-            addView(android.widget.TextView(this@MainActivity).apply {
-                text = "QQ交流群"
-                textSize = 14f
-                setTextColor(onSurface)
-                setTypeface(typeface, android.graphics.Typeface.BOLD)
-            })
-            addView(android.widget.TextView(this@MainActivity).apply {
-                text = "群号 559711374 · 点击加入"
-                textSize = 13f
-                setTextColor(onSurfaceVariant)
-            })
-        }.also { qqRow.addView(it) }
-        android.widget.ImageView(this).apply {
-            setImageResource(R.drawable.ic_chevron_right)
-            layoutParams = android.widget.LinearLayout.LayoutParams(dp(20), dp(20))
-            setColorFilter(onSurfaceVariant)
-        }.also { qqRow.addView(it) }
-        qqCard.addView(qqRow)
-        root.addView(qqCard)
-
-        val scroll = android.widget.ScrollView(this).apply {
-            isFillViewport = true
-            // 背景跟随主题（浅色→浅底，深色→深底），文字用主题前景色，保证清晰。
-            setBackgroundColor(bg)
-        }
-        scroll.addView(root)
-        sheet.setContentView(scroll)
-        sheet.show()
-    }
-
-    /** 打开 QQ 交流群：跳到 QQ 群聊天页；未安装 QQ 则提示。 */
-    private fun openQqGroup() {
-        // mqqwpa 协议：chat_type=group 打开指定群号（需已安装手机 QQ）
-        val url = "mqqwpa://im/chat?chat_type=group&uin=559711374"
-        try {
-            startActivity(android.content.Intent(android.content.Intent.ACTION_VIEW, android.net.Uri.parse(url)))
-        } catch (e: android.content.ActivityNotFoundException) {
-            android.widget.Toast.makeText(this, "未检测到手机 QQ，请先安装", android.widget.Toast.LENGTH_SHORT).show()
-        }
     }
 
     /** 终端设置底部弹窗：字体大小 + 容器挂载目录（日志设置已挪到日志页）。 */
