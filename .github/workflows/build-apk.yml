@@ -97,6 +97,8 @@ jobs:
           ORG_GRADLE_PROJECT_CODETOOL_STORE_PW: ${{ secrets.CODETOOL_STORE_PW || 'codetool-debug' }}
           ORG_GRADLE_PROJECT_CODETOOL_KEY_ALIAS: ${{ secrets.CODETOOL_KEY_ALIAS || 'codetool-debug' }}
           ORG_GRADLE_PROJECT_CODETOOL_KEY_PW: ${{ secrets.CODETOOL_KEY_PW || 'codetool-debug' }}
+          # runner 是 x86_64，用稳定版 36.0.0（本机 aarch64 仍用 37.0.0，见 build.gradle.kts）
+          ORG_GRADLE_PROJECT_CODETOOL_BUILD_TOOLS: "36.0.0"
 
       - name: Report build failure
         if: steps.build.outcome == 'failure'
