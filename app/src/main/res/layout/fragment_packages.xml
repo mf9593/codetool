@@ -41,6 +41,15 @@
                     android:text="命令直接在终端执行，可实时看到输出和错误。"
                     android:textAppearance="?attr/textAppearanceBodySmall"
                     android:textColor="?attr/colorOnSurfaceVariant" />
+
+                <!-- 原底部提示并入顶部卡片：包管理只保留 apt / 软件安装等动作，说明集中在此 -->
+                <com.google.android.material.textview.MaterialTextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="8dp"
+                    android:text="提示：安装 MiMo Code 需要容器能联网；如果 curl 不存在会先自动安装。\n星火商店是社区驱动的 Linux 应用商店，提供大量 arm64 原生应用。安装后点「启动星火商店」即可在合成器里显示 GUI。\nADB：容器里直接调用 Android 调试桥（共享本机网络），配合开发者选项的「无线调试」用 127.0.0.1:&lt;端口&gt; 连接本机。\n更新依赖：apt-get update &amp;&amp; apt-get -y upgrade"
+                    android:textAppearance="?attr/textAppearanceBodySmall"
+                    android:textColor="?attr/colorOnSurfaceVariant" />
             </LinearLayout>
         </com.google.android.material.card.MaterialCardView>
 
@@ -138,14 +147,6 @@
             android:text="一键修复 AI 环境（MCP 起不来时）"
             app:icon="@drawable/ic_refresh"
             app:iconGravity="textStart" />
-
-        <com.google.android.material.textview.MaterialTextView
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="16dp"
-            android:text="提示：安装 MiMo Code 需要容器能联网；如果 curl 不存在会先自动安装。\n星火商店是社区驱动的 Linux 应用商店，提供大量 arm64 原生应用。安装后点「启动星火商店」即可在合成器里显示 GUI。\nADB：容器里直接调用 Android 调试桥（共享本机网络），配合开发者选项的「无线调试」用 127.0.0.1:&lt;端口&gt; 连接本机。\n更新依赖：apt-get update &amp;&amp; apt-get -y upgrade"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?attr/colorOnSurfaceVariant" />
 
     </LinearLayout>
 </ScrollView>

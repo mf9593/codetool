@@ -24,12 +24,16 @@ import androidx.recyclerview.widget.RecyclerView
 import com.codetool.app.script.ScriptManager
 import com.codetool.app.util.AppSettings
 import com.google.android.material.bottomsheet.BottomSheetDialog
+import com.google.android.material.checkbox.MaterialCheckBox
 import com.google.android.material.chip.Chip
 import com.google.android.material.chip.ChipGroup
 import com.google.android.material.color.MaterialColors
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import com.google.android.material.progressindicator.LinearProgressIndicator
+import com.google.android.material.textfield.TextInputEditText
 import java.io.File
 import java.text.SimpleDateFormat
+import java.util.ArrayDeque
 import java.util.Date
 import java.util.Locale
 
@@ -75,6 +79,7 @@ class FilesFragment : Fragment() {
         adapter = FileAdapter(requireContext(), entries)
         list.adapter = adapter
         v.findViewById<ImageView>(R.id.upBtn).setOnClickListener { goUp() }
+        v.findViewById<ImageView>(R.id.btnRefresh).setOnClickListener { refresh() }
         v.findViewById<ImageView>(R.id.btnNew).setOnClickListener { showNewSheet() }
         // 标题栏复制按钮：复制当前目录完整路径
         v.findViewById<ImageView>(R.id.btnCopyPath).setOnClickListener { copyPath(currentDir) }
@@ -156,6 +161,309 @@ class FilesFragment : Fragment() {
         list.visibility = if (empty) View.GONE else View.VISIBLE
         renderFavChips()
         updateQuickEntries()
+    }
+
+    // ---------------- 文件搜索 ----------------
+
+    private data class SearchHit(val file: File, val snippet: String?)
+
+    @Volatile private var searchCancelled = false
+    private var searchThread: Thread? = null
+    private var searchSheet: BottomSheetDialog? = null
+    /** 搜索发起时的模式（外部/容器），点结果跳转时沿用，避免搜索中切换模式导致路径错乱。 */
+    @Volatile private var searchInContainer = false
+
+    /** 标题栏搜索入口：关键字 + 「搜索文件内容 / 区分大小写」，在当前路径递归搜索。 */
+    fun showSearchDialog() {
+        if (!isAdded) return
+        val ctx = requireContext()
+        val v = layoutInflater.inflate(R.layout.dialog_file_search, null)
+        val input = v.findViewById<TextInputEditText>(R.id.searchQueryInput)
+        val deepCheck = v.findViewById<MaterialCheckBox>(R.id.searchDeepCheck)
+        val contentCheck = v.findViewById<MaterialCheckBox>(R.id.searchContentCheck)
+        val caseCheck = v.findViewById<MaterialCheckBox>(R.id.searchCaseCheck)
+        v.findViewById<TextView>(R.id.searchPathHint).text =
+            "当前路径：${currentDir.absolutePath}" + if (inContainer) "（容器）" else ""
+        val dialog = MaterialAlertDialogBuilder(ctx)
+            .setTitle("搜索文件")
+            .setView(v)
+            .setPositiveButton("搜索", null)
+            .setNegativeButton("取消", null)
+            .create()
+        dialog.setOnShowListener {
+            dialog.getButton(android.app.AlertDialog.BUTTON_POSITIVE).setOnClickListener {
+                val q = input.text?.toString()?.trim().orEmpty()
+                if (q.isEmpty()) {
+                    input.error = "请输入关键字"
+                    return@setOnClickListener
+                }
+                dialog.dismiss()
+                startSearch(q, contentCheck.isChecked, caseCheck.isChecked, deepCheck.isChecked)
+            }
+        }
+        dialog.show()
+        input.requestFocus()
+    }
+
+    /** 后台递归搜索当前路径，结果用底部弹窗边搜边显示；点击结果跳到对应目录/文件。 */
+    private fun startSearch(
+        query: String, searchContent: Boolean, caseSensitive: Boolean, deepSearch: Boolean
+    ) {
+        cancelSearch()
+        searchCancelled = false
+        searchInContainer = inContainer
+        val ctx = requireContext()
+        val root = currentDir
+        val scanHidden = showHidden
+        val density = resources.displayMetrics.density
+        fun dp(v: Int) = (v * density).toInt()
+        val hintColor = MaterialColors.getColor(
+            requireView(), com.google.android.material.R.attr.colorOnSurfaceVariant)
+        val onSurface = MaterialColors.getColor(
+            requireView(), com.google.android.material.R.attr.colorOnSurface)
+
+        val title = TextView(ctx).apply {
+            text = "搜索结果"
+            textSize = 18f
+            typeface = android.graphics.Typeface.DEFAULT_BOLD
+            setTextColor(onSurface)
+            setPadding(dp(24), dp(16), dp(24), dp(2))
+        }
+        val subtitle = TextView(ctx).apply {
+            text = "关键字：$query" + if (deepSearch) " · 深层搜索" else " · 当前目录"
+            textSize = 12f
+            setTextColor(hintColor)
+            setPadding(dp(24), 0, dp(24), dp(4))
+            maxLines = 1
+            ellipsize = TextUtils.TruncateAt.END
+        }
+        val status = TextView(ctx).apply {
+            text = "正在搜索…"
+            textSize = 13f
+            setTextColor(hintColor)
+            setPadding(dp(24), dp(4), dp(24), dp(4))
+        }
+        val progress = LinearProgressIndicator(ctx).apply {
+            isIndeterminate = true
+            layoutParams = LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT,
+                LinearLayout.LayoutParams.WRAP_CONTENT
+            ).apply { setMargins(dp(24), 0, dp(24), dp(8)) }
+        }
+        val rv = RecyclerView(ctx).apply {
+            layoutManager = LinearLayoutManager(ctx)
+            setPadding(dp(16), 0, dp(16), dp(16))
+            clipToPadding = false
+        }
+        // 线程写入 results（加锁），UI 线程写入 adapterData（独立列表），避免并发改同一个 List
+        val results = mutableListOf<SearchHit>()
+        val adapterData = mutableListOf<SearchHit>()
+        val adapter = SearchResultAdapter(ctx, adapterData) { hit -> openSearchHit(hit) }
+        rv.adapter = adapter
+        val box = LinearLayout(ctx).apply {
+            orientation = LinearLayout.VERTICAL
+            addView(title)
+            addView(subtitle)
+            addView(status)
+            addView(progress)
+            addView(rv, LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, 0, 1f))
+        }
+        val sheet = BottomSheetDialog(ctx).apply {
+            setContentView(box, ViewGroup.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                (resources.displayMetrics.heightPixels * 0.7f).toInt()))
+            setOnDismissListener { searchCancelled = true }
+        }
+        searchSheet = sheet
+        sheet.show()
+
+        val maxResults = 200
+        val maxVisited = 20_000
+        // 深层搜索 = 递归所有子目录（上限 64 层，实际由 maxVisited 兜底）；关闭只搜当前目录
+        val maxDepth = if (deepSearch) 64 else 0
+        val maxContentBytes = 100L * 1024 * 1024
+        val resultsLock = Any()
+        val thread = Thread {
+            val queue = ArrayDeque<Pair<File, Int>>()
+            queue.add(root to 0)
+            val seenDirs = HashSet<String>()
+            var visited = 0
+            var contentBytes = 0L
+            var hitCap = false
+            var lastUi = 0L
+            while (queue.isNotEmpty() && !searchCancelled && visited < maxVisited) {
+                val (dir, depth) = queue.removeFirst()
+                // 防止符号链接回环/重复扫描同一目录
+                val dirKey = runCatching { dir.canonicalPath }.getOrDefault(dir.absolutePath)
+                if (!seenDirs.add(dirKey)) continue
+                val children = try { dir.listFiles() } catch (_: Exception) { null } ?: continue
+                for (f in children) {
+                    if (searchCancelled) break
+                    if (synchronized(resultsLock) { results.size } >= maxResults) {
+                        hitCap = true
+                        break
+                    }
+                    visited++
+                    if (!scanHidden && f.name.startsWith(".")) continue
+                    val nameMatch = if (caseSensitive) f.name.contains(query)
+                        else f.name.contains(query, ignoreCase = true)
+                    var snippet: String? = null
+                    if (!f.isDirectory && searchContent && contentBytes < maxContentBytes) {
+                        val len = f.length()
+                        // 内容搜索只对文本格式生效；单文件上限 10MB
+                        if (len in 1..(10L * 1024 * 1024) && isSearchableText(f)) {
+                            contentBytes += len
+                            snippet = searchInFile(f, query, caseSensitive)
+                        }
+                    }
+                    if (nameMatch || snippet != null) {
+                        synchronized(resultsLock) { results.add(SearchHit(f, snippet)) }
+                    }
+                    if (deepSearch && f.isDirectory && depth < maxDepth) {
+                        queue.add(f to depth + 1)
+                    }
+                }
+                val now = System.currentTimeMillis()
+                if (now - lastUi >= 250) {
+                    lastUi = now
+                    val snap = synchronized(resultsLock) { results.toList() }
+                    activity?.runOnUiThread {
+                        if (!isAdded || searchCancelled) return@runOnUiThread
+                        adapter.replace(snap)
+                        status.text = "正在搜索… 已找到 ${snap.size} 项"
+                    }
+                }
+            }
+            val snap = synchronized(resultsLock) { results.toList() }
+            val finalVisited = visited
+            val finalHitCap = hitCap
+            activity?.runOnUiThread {
+                if (!isAdded) return@runOnUiThread
+                adapter.replace(snap)
+                progress.visibility = View.GONE
+                status.text = when {
+                    searchCancelled -> "已取消 · 找到 ${snap.size} 项"
+                    snap.isEmpty() -> "无结果（扫描 $finalVisited 项）"
+                    finalHitCap -> "找到 ${snap.size} 项（结果已达上限）"
+                    finalVisited >= maxVisited -> "找到 ${snap.size} 项（扫描已达上限）"
+                    else -> "找到 ${snap.size} 项（扫描 $finalVisited 项）"
+                }
+            }
+        }
+        searchThread = thread
+        thread.start()
+    }
+
+    /** 内容搜索的文本格式白名单；无扩展名文件用内容嗅探（无 NUL）。 */
+    private fun isSearchableText(f: File): Boolean {
+        val name = f.name.lowercase(Locale.US)
+        val ext = name.substringAfterLast('.', "")
+        if (ext.isNotEmpty()) return ext in TEXT_EXTS
+        return runCatching {
+            val head = ByteArray(minOf(4096, f.length().toInt()))
+            f.inputStream().use { it.read(head) }
+            head.isNotEmpty() && head.none { it == 0.toByte() }
+        }.getOrDefault(false)
+    }
+
+    private val TEXT_EXTS = setOf(
+        "txt", "log", "md", "markdown", "json", "jsonc", "xml", "yaml", "yml", "toml",
+        "ini", "conf", "cfg", "properties", "kt", "kts", "java", "gradle", "groovy",
+        "js", "jsx", "ts", "tsx", "css", "scss", "less", "html", "htm", "py", "sh",
+        "bash", "zsh", "c", "h", "cpp", "hpp", "cc", "rs", "go", "rb", "php", "pl",
+        "lua", "sql", "csv", "tsv", "bat", "cmd", "ps1", "vim", "el", "mk",
+        "dart", "swift", "cs", "vue", "svelte", "proto", "graphql", "gql",
+        "diff", "patch", "rst", "tex", "env", "cmake", "asm", "s", "lock"
+    )
+
+    /** 文件内容搜索：文件已按文本格式/10MB 过滤，返回首个匹配行（截断 160 字）。 */
+    private fun searchInFile(f: File, query: String, caseSensitive: Boolean): String? {
+        return try {
+            val head = ByteArray(minOf(8192, f.length().toInt()))
+            f.inputStream().use { it.read(head) }
+            if (head.any { it == 0.toByte() }) return null
+            f.bufferedReader().use { r ->
+                while (true) {
+                    val line = r.readLine() ?: break
+                    val ok = if (caseSensitive) line.contains(query)
+                        else line.contains(query, ignoreCase = true)
+                    if (ok) return line.trim().take(160)
+                }
+            }
+            null
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun openSearchHit(hit: SearchHit) {
+        searchSheet?.dismiss()
+        searchSheet = null
+        inContainer = searchInContainer
+        val f = hit.file
+        if (f.isDirectory) {
+            currentDir = f
+            refresh()
+        } else {
+            currentDir = f.parentFile ?: currentDir
+            refresh()
+            val idx = entries.indexOfFirst { it.absolutePath == f.absolutePath }
+            if (idx >= 0) list.scrollToPosition(idx)
+        }
+    }
+
+    private fun cancelSearch() {
+        searchCancelled = true
+        searchThread?.interrupt()
+        searchThread = null
+        runCatching { searchSheet?.dismiss() }
+        searchSheet = null
+    }
+
+    private inner class SearchResultAdapter(
+        private val ctx: Context,
+        private val data: MutableList<SearchHit>,
+        private val onClick: (SearchHit) -> Unit
+    ) : RecyclerView.Adapter<SearchResultAdapter.VH>() {
+
+        inner class VH(v: View) : RecyclerView.ViewHolder(v) {
+            val icon: ImageView = v.findViewById(R.id.srIcon)
+            val name: TextView = v.findViewById(R.id.srName)
+            val path: TextView = v.findViewById(R.id.srPath)
+            val snippet: TextView = v.findViewById(R.id.srSnippet)
+        }
+
+        override fun onCreateViewHolder(parent: ViewGroup, viewType: Int): VH =
+            VH(LayoutInflater.from(ctx).inflate(R.layout.item_search_result, parent, false))
+
+        override fun getItemCount() = data.size
+
+        override fun onBindViewHolder(h: VH, pos: Int) {
+            val hit = data[pos]
+            val f = hit.file
+            h.icon.setImageResource(if (f.isDirectory) R.drawable.ic_folder else R.drawable.ic_files)
+            h.name.text = f.name
+            h.path.text = f.absolutePath
+            if (hit.snippet.isNullOrBlank()) {
+                h.snippet.visibility = View.GONE
+            } else {
+                h.snippet.visibility = View.VISIBLE
+                h.snippet.text = hit.snippet
+            }
+            h.itemView.setOnClickListener { onClick(hit) }
+        }
+
+        fun replace(newData: List<SearchHit>) {
+            data.clear()
+            data.addAll(newData)
+            notifyDataSetChanged()
+        }
+    }
+
+    override fun onDestroyView() {
+        cancelSearch()
+        super.onDestroyView()
     }
 
     /** 容器模式下不允许 up 到 rootfs 之外。 */

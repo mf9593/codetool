@@ -12,13 +12,13 @@ import com.google.android.material.tabs.TabLayout
 import com.google.android.material.tabs.TabLayoutMediator
 
 /**
- * 工具页：脚本库 / 包管理 / AI 模型 / 定时任务 / Skill / MCP / 备份，同页 tab 切换。
- * 内嵌 ViewPager2，七个子 tab。首页只做状态展示，管理/破坏性入口都放这里。
+ * 工具页：脚本库 / AI 模型 / 包管理 / 定时任务 / Skill / MCP / Git / 下载 / 备份，同页 tab 切换。
+ * 内嵌 ViewPager2，九个子 tab。首页只做状态展示，管理/破坏性入口都放这里。
  */
 class ToolsFragment : Fragment() {
 
     companion object {
-        const val TAB_AI_MODELS = 2
+        const val TAB_AI_MODELS = 1
         const val TAB_SCHEDULED = 3
     }
 
@@ -32,12 +32,13 @@ class ToolsFragment : Fragment() {
         TabLayoutMediator(tabs, pager) { tab, pos ->
             tab.text = when (pos) {
                 0 -> "脚本库"
-                1 -> "包管理"
-                2 -> "AI 模型"
+                1 -> "AI 模型"
+                2 -> "包管理"
                 3 -> "定时任务"
                 4 -> "Skill"
                 5 -> "MCP"
                 6 -> "Git"
+                7 -> "下载"
                 else -> "备份"
             }
         }.attach()
@@ -50,15 +51,16 @@ class ToolsFragment : Fragment() {
     }
 
     private class InnerAdapter(fa: FragmentActivity) : FragmentStateAdapter(fa) {
-        override fun getItemCount() = 8
+        override fun getItemCount() = 9
         override fun createFragment(position: Int): Fragment = when (position) {
             0 -> ScriptsFragment()
-            1 -> PackagesFragment()
-            2 -> AiModelsFragment()
+            1 -> AiModelsFragment()
+            2 -> PackagesFragment()
             3 -> ScheduledTasksFragment()
             4 -> SkillsFragment()
             5 -> McpFragment()
             6 -> GitFragment()
+            7 -> DownloadsFragment()
             else -> RootfsBackupFragment()
         }
     }

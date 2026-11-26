@@ -16,6 +16,24 @@ object Changelog {
 
     val entries: List<Entry> = listOf(
         Entry(
+            version = "2.0.8",
+            date = "2026-11-26",
+            items = listOf(
+                "工具页 Tab 调整为：脚本库 / AI 模型 / 包管理 / 定时任务 / Skill / MCP / Git / 下载 / 备份；新增「下载」页，构建环境卡片从包管理迁入（包管理顶部卡片并入原底部提示）。",
+                "下载页新增在线下载列表（GitHub Release，默认 mf9593/codetool-env）：Android SDK 37、NDK r27d/r30b、build-tools、platform-tools、CMake、Flutter、JDK17/21 共 9 个 arm64 包；显示本地是否已下载与大小；前台服务 + WakeLock 后台下载，进度含百分比与已下载字节，支持单包/全部取消，后台下完切回自动刷新。",
+                "下载设置：可改下载仓库（owner/repo）、镜像加速（ghfast.top 默认，另 gh-proxy.com / ghproxy.net / 自定义前缀）、自定义 GitHub 直链下载；镜像失败自动回退直连。",
+                "构建包目录改为 /storage/emulated/0/Download/codetool/data/：下载页下载到这里，安装脚本直接扫描该目录（容器默认挂载 Download；不挂载模式才复制进容器）；NDK 归类兼容 r27d / r30b，多版本保留并自动选最高版。",
+                "文件管理：地址栏新增刷新按钮；标题栏搜索支持当前路径递归（可关深层搜索）、文件名/文本内容（文本格式 ≤10MB、可区分大小写），结果点击跳转目录或定位文件。",
+                "Skill 说明：gradle-mirror 改为内置中文说明；codetool-browser 修正为后台无头 Chrome（不再要求打开 GUI 合成器）。",
+                "构建环境检测改为读 env 文件（/etc/profile.d/codetool-buildenv.sh）：按 JAVA_HOME / ANDROID_HOME / ANDROID_NDK_HOME / CMAKE_HOME / FLUTTER_HOME 定位组件，不再全盘扫描；30 秒缓存 + 手动刷新；版本号读真实文件（JDK release、NDK Pkg.Revision、build-tools 最高版本、SDK 最高 API、CMake share、Flutter version/commit）。",
+                "终端 ^X 组合键对齐：统一左对齐 + 固定缩进；^X ↵ 的回车放大但不撑高行高，^X 与其它组合键水平、垂直一致。终端第二页 /v 键点击直接输入 /variants；说明弹窗补充【思考程度切换】，并说明部分按键按一次即等同长按（如 CTRL 粘性）、^X 表示 CTRL+X 组合键。",
+                "日志筛选立即生效：修复筛选弹窗打开时列表不更新、必须等自动刷新才显示；快速连点不丢最后一次；切换筛选不重复读盘、Spannable 后台构建，减少卡顿。",
+                "日志标签筛选更全：增量扫描整个运行日志（首次回看 4MB，之后只扫新增字节），覆盖 V/D/I/W/E/A/F 全部级别，上限 100。",
+                "日志文件始终记录完整时间戳（yyyy-MM-dd HH:mm:ss.SSS），日志页按「显示日期 / 显示毫秒」裁切显示（旧日志缺失字段不补、不做推断）；时间戳用主题主色，WARN/ERROR 颜色跟随主题（浅/深模式与颜色变体）。",
+                "mimo 思考强度档位恢复可选：支持 none/minimal/low/medium/high/xhigh/max，经 opencode 顶层 model#档位与 mimo variants 生效。",
+            ),
+        ),
+        Entry(
             version = "2.0.7",
             date = "2026-11-25",
             items = listOf(

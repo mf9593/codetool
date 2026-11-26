@@ -49,6 +49,7 @@ object SkillManager {
     val BUILTIN_IDS: Set<String> = setOf(
         "codetool-browser", "codetool-shizuku", "codetool-system",
         "multi-search-engine", "dev-god", "app-debug-rules",
+        "gradle-mirror",
     )
 
     /** 标准扫描根（相对容器根）。 */
@@ -175,15 +176,17 @@ object SkillManager {
     private val BUILTIN_BODY = """
 # 用 app 内置浏览器渲染与调试网页
 
-这个 app 自带浏览器能力（tawc 合成器里渲染的 Chrome），**不要打开外部浏览器**。
+这个 app 自带浏览器能力：MCP / CLI 用**后台无头 Chrome**（CDP 9222），**不需要打开 GUI 合成器**。
+只有用户想手动看页面时，才需要到终端点「显示」打开 GUI。
 浏览器**不预装**，由用户在 app 里一键安装。
 
 ## 前置（每次先确认）
 1. 调 `browser_status` 检查三件事：浏览器是否已装、CDP 9222 是否就绪、文件桥是否可用。
 2. 若浏览器未安装，告诉用户：到 app 的「工具 → 包管理」点「安装 Chrome」。
-   **不要自行 apt install**，装好后让用户回到终端点「显示」打开 GUI 合成器。
-   （Firefox 可以装在桌面使用，但 browser_* MCP 只支持 Chrome / Chromium 的 CDP。）
-3. CDP / 文件桥未就绪时同样提示用户先点「显示」打开 GUI 合成器。
+   **不要自行 apt install**。装好后 MCP 会后台无头启动，不需要点「显示」。
+   （Firefox 可以装在桌面手动使用，但 browser_* MCP 只支持 Chrome / Chromium 的 CDP。）
+3. CDP / 文件桥未就绪时，先等 `browser_status` 自愈；仍失败再让用户检查 Chrome 是否装好，
+   **不要**默认让用户打开 GUI 合成器。
 
 ## 通过 MCP 工具（推荐）
 - `browser_status()`：上面的前置检查。
@@ -268,7 +271,7 @@ shizuku_status → `shizuku_screenshot()` 看界面 → `shizuku_ui_dump()` 拿�
 """.trimIndent()
 
     private const val SYSTEM_DESC =
-        "终端里跑的是 rootfs 里的 Ubuntu 系统（由 tawcroot 模拟 chroot 运行，无 root 权限、原理类似 PRoot 的单进程版本）：可直接跑 ping / curl / apt / adb 等系统命令安装组件、做网络诊断。装通用工具先确认包里有没有，没有就用 apt 装（容器内 root 是模拟映射，不代表 Android 已 root），装完必须验证。需要新能力可从 skill 商店搜索安装 skill，推荐优先用腾讯 SkillHub（skillhub.cn），其它商店备用；装前必须安全审查）。"
+        "终端里跑的是 rootfs 里的 Ubuntu 系统（由 tawcroot 模拟 chroot 运行，无 root 权限、原理类似 PRoot 的单进程版本）：可直接跑 ping / curl / apt / adb 等系统命令安装组件、做网络诊断。装通用工具先确认包里有没有，没有就用 apt 装（容器内 root 是模拟映射，不代表 Android 已 root），装完必须验证。需要新能力可从 skill 商店搜索安装 skill，推荐优先用腾讯 SkillHub（skillhub.cn），其它商店备用；装前必须安全审查。"
 
     private val SYSTEM_BODY = """
 # rootfs Ubuntu 系统环境（可直接调系统命令）
@@ -495,6 +498,60 @@ sh gradlew :app:assembleDebug                  # Debug 包；release 加签名�
   不要让用户把 token 粘贴到对话里。
 """.trimIndent()
 
+    private const val GRADLE_MIRROR_DESC =
+        "Gradle wrapper 下载超时/太慢时，把 distributionUrl 换成国内镜像（腾讯云 / 华为云 / 阿里云），" +
+        "自动从 gradle-wrapper.properties 读取版本并验证；触发词：gradle 下载超时、换 gradle 镜像、gradle 镜像源、gradle 下载不了。"
+
+    private val GRADLE_MIRROR_BODY = """
+# Gradle 镜像源（换掉 services.gradle.org）
+
+国内直连 services.gradle.org 经常超时或极慢。把 wrapper 下载地址换成国内镜像即可。
+
+## 何时用
+- `sh gradlew` / `./gradlew` 报下载超时、`SocketTimeoutException`、连接被拒
+- Gradle wrapper 下载极慢
+- 用户说「换 gradle 镜像」「gradle 镜像源」「gradle 下载不了」
+
+## 镜像（按速度选一个）
+| 镜像 | 地址 |
+|---|---|
+| 腾讯云 | `https://mirrors.cloud.tencent.com/gradle/gradle-{VERSION}-bin.zip` |
+| 华为云 | `https://mirrors.huaweicloud.com/gradle/gradle-{VERSION}-bin.zip` |
+| 阿里云 | `https://mirrors.aliyun.com/macports/distfiles/gradle/gradle-{VERSION}-bin.zip` |
+
+`{VERSION}` 从 `gradle/wrapper/gradle-wrapper.properties` 的 `distributionUrl` 读取
+（如 `gradle-9.3.1-bin.zip` → `9.3.1`）；原地址是 `-all` 就换成 `-all`。
+
+## 步骤
+1. 读版本：
+   ```bash
+   grep distributionUrl gradle/wrapper/gradle-wrapper.properties
+   ```
+2. 测镜像（可选，推荐）：
+   ```bash
+   curl -sI "https://mirrors.cloud.tencent.com/gradle/gradle-9.3.1-bin.zip" | head -1
+   ```
+   返回 `200` 即可用，选第一个可用的。
+3. 改 `distributionUrl`（保留 `distributionSha256Sum` 不动：镜像文件相同、校验一致）：
+   ```properties
+   distributionUrl=https\://mirrors.cloud.tencent.com/gradle/gradle-9.3.1-bin.zip
+   ```
+4. 验证（FUSE 盘不要依赖执行位，用 `sh` 跑）：
+   ```bash
+   sh gradlew --version
+   ```
+   能打印 `Gradle 9.x.x` 即成功。
+
+## 还原 / 注意
+- 还原官方源：
+  ```bash
+  sed -i 's#mirrors.cloud.tencent.com/gradle#services.gradle.org/distributions#' gradle/wrapper/gradle-wrapper.properties
+  ```
+- 只改 properties，不改 `gradlew`。
+- 之前下了一半：删 `~/.gradle/wrapper/dists/gradle-{VERSION}-bin/*/` 里的 `.part` / `.lck` 再重试。
+- 镜像可能滞后于最新 Gradle；没有该版本就换一个镜像或暂时保留官方地址。
+""".trimIndent()
+
     /**
      * 内置**多文件** skill 包（assets/skills/<name>/ → 容器 ~/.agents/skills/<name>/）。
      * 与单文件 ensureOne 不同：包带 references/ scripts/ 目录，走 assets 递归复制。
@@ -537,9 +594,10 @@ sh gradlew :app:assembleDebug                  # Debug 包；release 加签名�
 
     fun ensureBuiltin(ctx: Context): Int {
         var n = 0
-        n += ensureOne(ctx, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY, "Firefox 可以装在桌面使用")
+        n += ensureOne(ctx, "codetool-browser", BUILTIN_DESC, BUILTIN_BODY, "后台无头 Chrome")
         n += ensureOne(ctx, "codetool-shizuku", SHIZUKU_DESC, SHIZUKU_BODY, "android_tap_text")
         n += ensureOne(ctx, "codetool-system", SYSTEM_DESC, SYSTEM_BODY, "读取 CodeTool 自身日志")
+        n += ensureOne(ctx, "gradle-mirror", GRADLE_MIRROR_DESC, GRADLE_MIRROR_BODY, "gradle 镜像")
         // 多文件内置包（assets/skills/，装前已按规范做安全审查：multi_search.py 的 base64
         // 仅解码 Bing 中转链接、请求目标全为公开搜索引擎；project_probe.py 纯文件探测无网络）
         n += ensureBuiltinPack(ctx, "multi-search-engine", "3.0.4")

@@ -25,6 +25,17 @@
             android:background="?attr/selectableItemBackgroundBorderless"
             app:tint="?attr/colorOnSurfaceVariant" />
 
+        <ImageView
+            android:id="@+id/btnRefresh"
+            android:layout_width="32dp"
+            android:layout_height="32dp"
+            android:layout_marginStart="2dp"
+            android:src="@drawable/ic_refresh"
+            android:contentDescription="刷新当前目录"
+            android:padding="6dp"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            app:tint="?attr/colorOnSurfaceVariant" />
+
         <com.google.android.material.textview.MaterialTextView
             android:id="@+id/pathText"
             android:layout_width="0dp"

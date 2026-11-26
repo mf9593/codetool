@@ -143,6 +143,12 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!-- 构建环境包下载前台服务：后台下载 + 进度通知 + wake lock -->
+        <service
+            android:name=".DownloadService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
+
         <!-- 后台任务保活前台服务：长时间任务期间持 wake lock + 常驻通知，
              防止锁屏冻结后台进程导致引导/下载中断 -->
         <service

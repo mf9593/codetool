@@ -165,16 +165,7 @@
             android:minHeight="48dp"
             android:spinnerMode="dropdown" />
 
-        <!-- mimo 无档位提示：仅开/关思考，隐藏档位下拉无效配置。默认 GONE -->
-        <com.google.android.material.textview.MaterialTextView
-            android:id="@+id/tvAiEffortHint"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:layout_marginTop="4dp"
-            android:text="小米 MiMo 无思考强度档位（仅开/关思考），此模型不设档位。"
-            android:textAppearance="?attr/textAppearanceBodySmall"
-            android:textColor="?attr/colorOnSurfaceVariant"
-            android:visibility="gone" />
+        <!-- 思考强度档位说明：默认=不声明档位，其余为真实档位（none~max）。 -->
 
         <com.google.android.material.materialswitch.MaterialSwitch
             android:id="@+id/swAiEnabled"

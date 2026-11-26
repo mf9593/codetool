@@ -22,8 +22,26 @@ object FileLog {
     private const val MAX_BYTES = 2L * 1024 * 1024
     // 日志会从终端 / 主线程 / 后台任务并发写入；SimpleDateFormat 非线程安全，
     // 时间戳写坏会让日志按块解析失效，所以用 ThreadLocal。
-    private val fmt = object : ThreadLocal<SimpleDateFormat>() {
-        override fun initialValue() = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+    // 时间戳格式由「日志设置 → 显示日期/毫秒」控制（4 种组合），按 pattern 缓存，设置变更自动重建。
+    private class FmtHolder {
+        var pattern = ""
+        var sdf: SimpleDateFormat? = null
+    }
+    private val fmt = object : ThreadLocal<FmtHolder>() {
+        override fun initialValue() = FmtHolder()
+    }
+
+    /** 当前时间戳格式：日志文件始终写完整时间戳（日期 + 毫秒）。
+     *  「显示日期/毫秒」只影响日志页查看时的显示（见 TasksFragment.formatLogForDisplay），
+     *  不再改变写入格式——时间筛选与跨天日志都依赖完整日期。 */
+    private fun fmt(): SimpleDateFormat {
+        val pattern = "yyyy-MM-dd HH:mm:ss.SSS"
+        val h = fmt.get()
+        if (h.sdf == null || h.pattern != pattern) {
+            h.pattern = pattern
+            h.sdf = SimpleDateFormat(pattern, Locale.US)
+        }
+        return h.sdf!!
     }
 
     @Volatile
@@ -88,7 +106,7 @@ object FileLog {
 
     private fun write(ctx: Context, level: String, tag: String, msg: String, throwable: Throwable?) {
         val sb = StringBuilder()
-        sb.append(fmt.get().format(Date())).append(' ').append(level).append('/').append(tag)
+        sb.append(fmt().format(Date())).append(' ').append(level).append('/').append(tag)
             .append(": ").append(msg).append('\n')
         if (throwable != null) {
             val sw = StringWriter()

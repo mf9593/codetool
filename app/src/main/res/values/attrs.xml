@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- 自定义主题属性：颜色一律走 ?attr/colorXxx 引用，换主题只改 themes.xml，不重写 UI。
+     colorWarn = 警告色（Material 无标准 warn 属性；琥珀在浅/深色下需不同深浅才可读）。 -->
+<resources>
+    <attr name="colorWarn" format="color" />
+</resources>

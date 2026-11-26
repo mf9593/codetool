@@ -70,8 +70,12 @@ class TasksFragment : Fragment() {
     private var rangeEnd = 0L
     /** 时间下拉当前显示文字（自定义时显示具体区间）。 */
     private var timeLabel = "全部"
-    private val lineTimeFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
-    private val tsPrefix = Regex("""^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\.\d{3}""")
+    // FileLog 时间戳格式可配（显示日期/毫秒开关），行首形态兼容全部 4 种组合：
+    //   2026-11-26 10:32:05.123 | 2026-11-26 10:32:05 | 10:32:05.123 | 10:32:05
+    // 行头匹配：group1=日期(可空，含尾空格) group2=时分秒 group3=毫秒(可空) group4=级别字母。
+    // 供时间解析 / 级别识别 / 时间戳高亮共用，避免硬编码 23 字符。
+    private val logHead = Regex(
+        """^(\d{4}-\d{2}-\d{2} )?(\d{2}:\d{2}:\d{2})(\.\d{3})? ([A-Z])/""")
 
     private val refreshTask = object : Runnable {
         override fun run() {
@@ -231,12 +235,23 @@ class TasksFragment : Fragment() {
         if (isAdded) AppSettings.setLogRefreshIntervalMs(requireContext(), refreshIntervalMs)
     }
 
-    /** 标题栏放大镜：展开/收起关键词搜索栏。 */
+    /** 日志设置变化后立即重绘（「显示日期/毫秒」是查看时裁切，需要重新生成显示文本）。 */
+    fun refreshLog() {
+        if (isAdded) loadLog()
+    }
+
+    /** 标题栏放大镜：展开/收起关键词搜索栏。收起时清空关键字，避免留下看不见的筛选。 */
     fun toggleSearch() {
         if (!isAdded || view == null) return
         val show = logSearchBar.visibility != View.VISIBLE
         logSearchBar.visibility = if (show) View.VISIBLE else View.GONE
-        if (show) logSearchInput.requestFocus()
+        if (show) {
+            logSearchInput.requestFocus()
+        } else if (searchQuery.isNotEmpty()) {
+            searchQuery = ""
+            logSearchInput.setText("")
+            loadLog()
+        }
     }
 
     /**
@@ -249,7 +264,7 @@ class TasksFragment : Fragment() {
         val dp = { v: Int -> (v * resources.displayMetrics.density).toInt() }
         filterSheetShowing = true
         val sheet = com.google.android.material.bottomsheet.BottomSheetDialog(ctx)
-        sheet.setOnDismissListener { filterSheetShowing = false }
+        sheet.setOnDismissListener { filterSheetShowing = false; loadLog() }
         val container = android.widget.LinearLayout(ctx).apply {
             orientation = android.widget.LinearLayout.VERTICAL
             setPadding(dp(24), dp(16), dp(24), dp(28))
@@ -267,6 +282,15 @@ class TasksFragment : Fragment() {
             textSize = 13f
             setPadding(0, 0, 0, dp(16))
         })
+        if (currentTab == 1) {
+            container.addView(android.widget.TextView(ctx).apply {
+                text = "崩溃日志没有标准时间/级别/模块标签格式，下面的时间/级别/标签筛选对它基本无效，建议用搜索。"
+                textSize = 12f
+                setTextColor(com.google.android.material.color.MaterialColors.getColor(
+                    ctx, com.google.android.material.R.attr.colorOnSurfaceVariant, 0))
+                setPadding(0, 0, 0, dp(12))
+            })
+        }
 
         // —— 时间 ——
         container.addView(sectionLabel(ctx, "时间", dp))
@@ -330,7 +354,7 @@ class TasksFragment : Fragment() {
 
         // 清除全部筛选按钮
         val clearBtn = com.google.android.material.button.MaterialButton(ctx).apply {
-            text = "清除全部筛选"
+            text = "清除筛选（保留搜索）"
             setTextColor(com.google.android.material.color.MaterialColors.getColor(ctx, com.google.android.material.R.attr.colorPrimary, 0))
             setBackgroundColor(android.graphics.Color.TRANSPARENT)
             setPadding(0, dp(12), 0, 0)
@@ -460,32 +484,80 @@ class TasksFragment : Fragment() {
     private fun logFile(ctx: Context): File = File(ctx.filesDir, "logs/codetool.log")
     private fun crashDir(ctx: Context): File = File(ctx.filesDir, "crash").apply { mkdirs() }
 
+    /** 运行日志尾部缓存：文件未变化时复用，避免筛选/自动刷新反复读 200KB。 */
+    private var cachedRaw = ""
+    private var cachedRawKey = ""
+    /** 加载中又收到请求：本轮结束后用最新筛选条件再跑一次（避免快速点选被丢弃）。 */
+    @Volatile private var reloadPending = false
+    /** 标签增量扫描游标（只扫新增字节；日志轮转/清空时重置）。 */
+    private val tagSet = LinkedHashSet<String>()
+    private var tagScanOffset = 0L
+    private val tagRegex = Regex("""\s[VDIWEFA]/([^:\n]+):""")
+
+    /** 日志着色用的主题色（在 UI 线程按 Activity 当前主题解析，避免 applicationContext 默认主题串色）。 */
+    private data class LogColors(val accent: Int, val ts: Int, val red: Int, val orange: Int)
+
     private fun loadLog() {
-        if (loading) return
+        if (loading) { reloadPending = true; return }
         loading = true
-        val ctx = requireContext().applicationContext
+        val appCtx = requireContext().applicationContext
+        // ★ 必须用 Activity 当前主题解析颜色：applicationContext 用的是 manifest 默认主题，
+        //   深色/颜色变体下会拿到浅色主题的深色 tertiary，时间戳糊在深色背景上。
+        val uiCtx = requireContext()
+        val colors = LogColors(
+            // 搜索高亮背景用 primaryContainer（浅/深主题都有对应色，不会和 primary 文字撞色）
+            accent = com.google.android.material.color.MaterialColors.getColor(
+                uiCtx, com.google.android.material.R.attr.colorPrimaryContainer, 0),
+            // 时间戳用主题主色 primary（app 每个主题变体都定义；colorTertiary 未定义会回落默认紫红）
+            ts = com.google.android.material.color.MaterialColors.getColor(
+                uiCtx, com.google.android.material.R.attr.colorPrimary, 0),
+            red = com.google.android.material.color.MaterialColors.getColor(
+                uiCtx, com.google.android.material.R.attr.colorError, 0),
+            orange = com.google.android.material.color.MaterialColors.getColor(
+                uiCtx, com.codetool.app.R.attr.colorWarn, 0),
+        )
+        val tab = currentTab
         Thread {
             val raw = try {
-                if (currentTab == 1) crashLogs(ctx) else tail(ctx, 2000)
+                if (tab == 1) crashLogs(appCtx) else readAppLogCached(appCtx)
             } catch (_: Exception) {
                 ""
             }
-            // 解析日志里出现过的模块标签（供筛选弹窗里的标签选项）
-            val tags = collectTags(raw)
+            // 标签：运行日志按增量扫描整个文件（不只当前 2000 行）；崩溃日志从合并内容收集
+            val tags = try {
+                if (tab == 1) collectTags(raw) else collectTagsIncremental(appCtx)
+            } catch (_: Exception) {
+                emptyList()
+            }
             activity?.runOnUiThread { tagOptions = listOf("全部") + tags }
+            // 时间筛选兜底日期：老日志没有日期时按「文件最后写入日期」解析，避免把昨天的日志算成今天
+            val fallbackDate = SimpleDateFormat("yyyy-MM-dd", Locale.US).format(
+                Date(
+                    if (tab == 0) logFile(appCtx).lastModified().takeIf { it > 0 }
+                        ?: System.currentTimeMillis()
+                    else System.currentTimeMillis()
+                )
+            )
             // 应用级别/标签/时间筛选 + 搜索关键字过滤
-            val text = applyFilter(raw)
+            val text = applyFilter(raw, fallbackDate)
+            // 「显示日期/毫秒」只影响查看：从完整时间戳裁剪出显示文本
+            val showDate = AppSettings.logShowDate(appCtx)
+            val showMs = AppSettings.logShowMs(appCtx)
+            val display = formatLogForDisplay(text, showDate, showMs)
+            // Spannable 在后台构建（2000+ 行的 span 循环移出 UI 线程，减少筛选卡顿）
+            val spannable = try { highlight(colors, display) } catch (_: Exception) { null }
             activity?.runOnUiThread {
                 loading = false
-                if (!isAdded || view == null) return@runOnUiThread
-                // 筛选弹窗打开期间跳过本轮列表更新（避免背后列表跳动、状态不同步）。
-                if (filterSheetShowing) return@runOnUiThread
+                if (!isAdded || view == null) {
+                    reloadPending = false
+                    return@runOnUiThread
+                }
                 updateFilterBar()
-                if (text.isBlank()) {
+                if (display.isBlank()) {
                     logText.text = ""
                     emptyState.visibility = View.VISIBLE
                     btnLogScroll.visibility = View.GONE
-                    if (currentTab == 1) {
+                    if (tab == 1) {
                         statusText.text = "崩溃日志 · 暂无崩溃记录"
                         (emptyState.findViewById<android.widget.TextView>(R.id.emptyHint))?.let {
                             it.text = "暂无崩溃日志。应用发生闪退时，崩溃信息会显示在这里。"
@@ -501,35 +573,85 @@ class TasksFragment : Fragment() {
                     }
                 } else {
                     emptyState.visibility = View.GONE
-                    // 只有内容变化才重设文本：否则每 2 秒重设会把 scrollY 重置到第一行、
-                    // 页面闪一下。跟随模式下先屏蔽滚动监听，避免把重置误判成「用户上滑」。
-                    val newText = highlight(text)
-                    if (logText.text?.toString() != text) {
+                    // 只有内容变化才重建 Spannable：自动刷新时避免每 2 秒重建 2000+ span
+                    if (logText.text?.toString() != display) {
                         if (followBottom) followingScroll = true
-                        logText.text = newText
+                        logText.text = spannable ?: display
                     }
                     val time = SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date())
-                    val shown = text.count { it == '\n' } + 1
-                    if (currentTab == 1) {
-                        val files = crashDir(ctx).listFiles()?.filter { it.isFile } ?: emptyList()
+                    val shown = display.count { it == '\n' } + 1
+                    if (tab == 1) {
+                        val files = crashDir(appCtx).listFiles()?.filter { it.isFile } ?: emptyList()
                         statusText.text = "崩溃日志 · ${files.size} 份 · $shown 行 · 更新于 $time"
                     } else {
                         statusText.text = "应用日志 · $shown 行 · 更新于 $time"
                     }
                     scroll.post { scrollToBottomIfFollowing() }
                 }
+                // 加载期间又点了筛选：用最新条件再跑一轮
+                if (reloadPending) { reloadPending = false; loadLog() }
             }
         }.start()
     }
 
-    /** 从日志内容里提取出现过的模块 tag（` I/Terminal: ` → Terminal），最多 50 个。 */
+    /** 读运行日志尾部；文件长度/修改时间未变则复用上次内容（切换筛选不重复读盘）。 */
+    private fun readAppLogCached(ctx: Context): String {
+        val f = logFile(ctx)
+        val key = "${f.length()}|${f.lastModified()}"
+        if (key == cachedRawKey) return cachedRaw
+        val raw = tail(ctx, 2000)
+        cachedRaw = raw
+        cachedRawKey = key
+        return raw
+    }
+
+    /**
+     * 增量扫描运行日志的模块标签：首次最多回看 4MB，之后只扫新增字节；
+     * 覆盖 V/D/I/W/E/A/F 全部标准级别，最多保留 100 个，比只看尾部 2000 行全面。
+     */
+    private fun collectTagsIncremental(ctx: Context): List<String> {
+        val f = logFile(ctx)
+        if (!f.isFile) return tagSet.toList()
+        val len = f.length()
+        if (len < tagScanOffset) { // 文件被清空/轮转
+            tagSet.clear()
+            tagScanOffset = 0L
+        }
+        if (len > tagScanOffset) {
+            var start = tagScanOffset
+            // 首次扫描最多回看 4MB；之后只读新增部分
+            if (start == 0L && len > 4L * 1024 * 1024) start = len - 4L * 1024 * 1024
+            runCatching {
+                java.io.RandomAccessFile(f, "r").use { raf ->
+                    raf.seek(start)
+                    val size = (len - start).coerceAtMost(4L * 1024 * 1024).toInt()
+                    if (size <= 0) return@use
+                    val bytes = ByteArray(size)
+                    raf.readFully(bytes)
+                    var text = String(bytes, Charsets.UTF_8)
+                    // 从文件中部开始时，第一行可能不完整，丢掉
+                    if (start > 0) text = text.substringAfter('\n', "")
+                    for (line in text.lineSequence()) {
+                        val m = tagRegex.find(line) ?: continue
+                        val tag = m.groupValues[1].trim()
+                        if (tag.isNotEmpty()) tagSet.add(tag)
+                        if (tagSet.size >= 100) break
+                    }
+                }
+            }
+            tagScanOffset = len
+        }
+        return tagSet.toList()
+    }
+
+    /** 从日志内容里提取出现过的模块 tag（` I/Terminal: ` → Terminal），最多 100 个。 */
     private fun collectTags(raw: String): List<String> {
         val set = LinkedHashSet<String>()
-        val re = Regex("""\s[IWED]/([^:\n]+):""")
         for (line in raw.lineSequence()) {
-            val m = re.find(line) ?: continue
-            set.add(m.groupValues[1].trim())
-            if (set.size >= 50) break
+            val m = tagRegex.find(line) ?: continue
+            val tag = m.groupValues[1].trim()
+            if (tag.isNotEmpty()) set.add(tag)
+            if (set.size >= 100) break
         }
         return set.toList()
     }
@@ -562,7 +684,8 @@ class TasksFragment : Fragment() {
                     return@setPositiveButton
                 }
                 rangeStart = start
-                rangeEnd = end
+                // 选择器精确到分钟；结束时间按整分钟包含（12:34 → 12:34:59.999）
+                rangeEnd = end + 59_999L
                 timeFilter = 4
                 timeLabel = rangeLabel(start, end)
                 loadLog()
@@ -622,8 +745,37 @@ class TasksFragment : Fragment() {
         return if (a.substring(0, 5) == b.substring(0, 5)) "$a~${b.substring(6)}" else "$a~$b"
     }
 
-    /** 按级别 + 标签 + 时间 + 关键词过滤日志行。日志格式：`时间去 级别/标签: 消息`。 */
-    private fun applyFilter(raw: String): String {
+    /**
+     * 按「显示日期/毫秒」裁剪时间戳（只影响显示，文件里始终是完整时间戳）。
+     * 老日志如果本来就没有日期/毫秒，无法补出缺失部分，原样保留。
+     */
+    private fun formatLogForDisplay(text: String, showDate: Boolean, showMs: Boolean): String {
+        // 只做「裁掉」：旧日志当时没写日期/毫秒的，文件里没有数据，不做推断/猜测。
+        if (showDate && showMs) return text
+        return text.lines().joinToString("\n") { line ->
+            val m = logHead.find(line) ?: return@joinToString line
+            val date = m.groupValues[1]
+            val time = m.groupValues[2]
+            val ms = m.groupValues[3]
+            val prefixLen = date.length + time.length + ms.length
+            if (prefixLen <= 0) return@joinToString line
+            val newPrefix = buildString {
+                if (showDate) append(date)
+                append(time)
+                if (showMs) append(ms)
+            }
+            line.substring(0, m.range.first) + newPrefix + line.substring(m.range.first + prefixLen)
+        }
+    }
+
+    /** 时间戳解析格式（每行 new SimpleDateFormat 在 2000 行筛选时很慢，复用两个实例）。 */
+    private val tsFmtMs = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.US)
+        .apply { isLenient = false }
+    private val tsFmt = SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.US)
+        .apply { isLenient = false }
+
+    /** 按级别 + 标签 + 时间 + 关键词过滤日志行。日志格式：`时间 级别/标签: 消息`。 */
+    private fun applyFilter(raw: String, fallbackDate: String): String {
         if (!anyFilterActive()) return raw
         val q = searchQuery.lowercase()
         val now = System.currentTimeMillis()
@@ -638,13 +790,17 @@ class TasksFragment : Fragment() {
         val to = if (timeFilter == 4 && rangeEnd > 0) rangeEnd else Long.MAX_VALUE
         var lastInTime = true
         var lastLevel = 0  // 上一条日志的级别（1=D 2=I 3=W 4=E），供续行（堆栈）继承
-        // 级别字母 -> 内部级别编码
+        // 级别字母 -> 内部级别编码（V/A/F 不是 app 常用级别，分别归入 Debug/Error，避免误继承上一条）
         fun levelOf(ch: Char): Int = when (ch) {
-            'D' -> 1; 'I' -> 2; 'W' -> 3; 'E' -> 4; else -> 0
+            'V', 'D' -> 1
+            'I' -> 2
+            'W' -> 3
+            'E', 'A', 'F' -> 4
+            else -> 0
         }
         return raw.lines().filter { line ->
             // 时间 + 级别：行首有时间戳就解析（`时间去 级别/标签: 消息`），续行继承上一条
-            val ts = parseLineTime(line)
+            val ts = parseLineTime(line, fallbackDate)
             lastInTime = if (ts != null) ts in from..to else lastInTime
             val timeOk = timeFilter == 0 || lastInTime
             // 级别：从时间戳后的 ` X/` 解析级别字母（比 contains 更准），续行继承上一条级别
@@ -658,23 +814,28 @@ class TasksFragment : Fragment() {
     }
 
     /**
-     * 从日志行解析级别字母：行首时间戳（23 字符）后紧跟 ` X/`，返回该字母（D/I/W/E/V）。
+     * 从日志行解析级别字母：行首时间戳后紧跟 ` X/`，返回该字母（D/I/W/E/V）。
      * 非日志头行（续行 / 堆栈）返回 null，由调用方继承上一条级别。
+     * 时间戳长度随「显示日期/毫秒」设置变化，用 logHead 匹配定位级别，不硬编码 23 字符。
      */
     private fun levelPrefix(line: String): Char? {
-        if (line.length < 26) return null
-        if (line[23] != ' ') return null
-        val ch = line[24]
-        return if (ch in 'A'..'Z' && line[25] == '/') ch else null
+        return logHead.find(line)?.groupValues?.get(4)?.firstOrNull()
     }
 
-    private fun parseLineTime(line: String): Long? {
-        if (line.length < 23) return null
-        return try {
-            lineTimeFmt.parse(line.substring(0, 23))?.time
-        } catch (_: Exception) {
-            null
-        }
+    /**
+     * 解析日志行时间戳为绝对毫秒。时间戳可含/不含日期与毫秒（4 种组合）：
+     * 无日期时按「今天」解释（时间过滤需要真实绝对时刻，否则 1970 基准会全被排除）。
+     */
+    private fun parseLineTime(line: String, fallbackDate: String): Long? {
+        val m = logHead.find(line) ?: return null
+        val hasMs = m.groupValues[3].isNotEmpty()
+        val dateStr = m.groupValues[1].trim()
+        // 无日期 → 用调用方给的兜底日期（通常是日志文件的最后写入日期）
+        val dateForParse = dateStr.ifEmpty { fallbackDate }
+        val ts = "$dateForParse ${m.groupValues[2]}${m.groupValues[3]}"
+        return runCatching {
+            (if (hasMs) tsFmtMs else tsFmt).parse(ts)?.time
+        }.getOrNull()
     }
 
     private fun startOfToday(): Long {
@@ -690,17 +851,14 @@ class TasksFragment : Fragment() {
      * 高亮：搜索关键字（强调色背景）+ Error 行（红）/ Warn 行（橙）。
      * 用 Spannable 给整行或关键字上色，纯 UI 不改文本。
      */
-    private fun highlight(text: String): android.text.SpannableString {
+    private fun highlight(colors: LogColors, text: String): android.text.SpannableString {
         val sp = android.text.SpannableString(text)
-        val accent = com.google.android.material.color.MaterialColors.getColor(
-            requireContext(), com.google.android.material.R.attr.colorPrimary, 0)
-        val tsColor = com.google.android.material.color.MaterialColors.getColor(
-            requireContext(), com.google.android.material.R.attr.colorTertiary, 0)
-            .let { if (it == 0) 0xFF7986CB.toInt() else it }
-        // 低危：颜色跟随主题（AGENTS.md 禁硬编码色值）；警告色无 Material 属性，用 tertiary 兜底。
-        val red = com.google.android.material.color.MaterialColors.getColor(
-            requireContext(), com.google.android.material.R.attr.colorError, 0xFFE53935.toInt())
-        val orange = tsColor
+        val accent = colors.accent
+        // 时间戳：主题主色（primary），按 Activity 当前主题解析，深色/变体下都清晰。
+        val tsColor = colors.ts
+        // 错误红 / 警告琥珀：都来自当前 Activity 主题。
+        val red = colors.red
+        val orange = colors.orange
         // 整行级别着色
         var idx = 0
         for (line in text.lines()) {
@@ -712,9 +870,10 @@ class TasksFragment : Fragment() {
             } else if (line.contains(" W/") || line.contains("/WARN")) {
                 sp.setSpan(android.text.style.ForegroundColorSpan(orange), start, end.coerceAtMost(sp.length), android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
-            // 时间戳高亮：行首 `yyyy-MM-dd HH:mm:ss.SSS`（23 字符），叠在行色之上
-            if (tsPrefix.containsMatchIn(line)) {
-                val tsEnd = (start + 23).coerceAtMost(sp.length)
+            // 时间戳高亮：行首时间戳（长度随设置变化，用 logHead 定位），叠在行色之上
+            logHead.find(line)?.let { m ->
+                val tsLen = m.groupValues[1].length + m.groupValues[2].length + m.groupValues[3].length
+                val tsEnd = (start + tsLen).coerceAtMost(sp.length)
                 sp.setSpan(android.text.style.ForegroundColorSpan(tsColor), start, tsEnd, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
             }
         }

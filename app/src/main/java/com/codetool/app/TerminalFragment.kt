@@ -98,7 +98,16 @@ class TerminalFragment : Fragment() {
                     com.codetool.app.util.FileLog.i(context, "Script", "已复制脚本: $containerPath")
                     // 只有「安装构建环境」需要这些压缩包：避免跑个系统信息脚本也复制 GB 级文件
                     if (file.name.contains("buildenv")) {
-                        copyBuildArchives(context, file.parentFile, scriptDir)
+                        // 容器默认把 /storage/emulated/0/Download 挂进容器，脚本可直接扫
+                        // Download/codetool/data；只有「不挂载」模式才需要复制进容器。
+                        if (AppSettings.mountMode(context) == AppSettings.MountMode.NONE) {
+                            val dataDir = java.io.File(
+                                android.os.Environment.getExternalStorageDirectory(),
+                                "Download/codetool/data"
+                            )
+                            copyBuildArchives(context, dataDir, scriptDir)
+                            copyBuildArchives(context, file.parentFile, scriptDir, skipIfExists = true)
+                        }
                     }
                 } catch (e: Exception) {
                     com.codetool.app.util.FileLog.e(context, "Script", "复制脚本失败: ${e.message}", e)
@@ -138,7 +147,8 @@ class TerminalFragment : Fragment() {
          * 只拷贝 jdk/sdk/ndk 相关压缩包；同名且同大小的跳过（增量）。
          */
         private fun copyBuildArchives(
-            context: android.content.Context, srcDir: java.io.File?, destDir: java.io.File
+            context: android.content.Context, srcDir: java.io.File?, destDir: java.io.File,
+            skipIfExists: Boolean = false
         ) {
             if (srcDir == null || !srcDir.isDirectory) return
             // 与 03-buildenv.sh 的归类保持一致，文件名可能不带类别关键字：
@@ -148,7 +158,7 @@ class TerminalFragment : Fragment() {
             //   4.3.0-aarch64...    → CMake（官方命名是纯版本号）
             val archive = Regex("(?i).*\\.(tar\\.gz|tgz|tar\\.xz|tar\\.bz2|zip|tar)$")
             val known = Regex(
-                "(?i).*(jdk|jre|java|temurin|zulu|ndk|r2[0-9][a-z]|sdk|commandlinetools|" +
+                "(?i).*(jdk|jre|java|temurin|zulu|ndk|r[0-9][0-9][a-z]|sdk|commandlinetools|" +
                     "platform-?tools|build-?tools|cmake|flutsdk|flutter).*"
             )
             val cmakeVersion = Regex("(?i)^[0-9]+\\.[0-9]+\\.[0-9]+-(aarch64|arm64).*")
@@ -162,6 +172,7 @@ class TerminalFragment : Fragment() {
             for (f in files) {
                 try {
                     val d = java.io.File(destDir, f.name)
+                    if (skipIfExists && d.exists()) continue // data/ 优先，旧脚本目录不覆盖
                     if (d.exists() && d.length() == f.length()) continue // 已复制过
                     com.codetool.app.util.FileLog.i(
                         context, "Script", "复制构建包进容器: ${f.name} (${f.length() / 1024 / 1024}MB)"
@@ -744,6 +755,46 @@ class TerminalFragment : Fragment() {
 
     // ==================== 快捷键 ====================
 
+    /**
+     * 放大单个字形但不撑高行：ReplacementSpan 的字体度量固定为基准字号，
+     * 这样 ^X ↵ 里放大的回车不会把整行基线推低，^X 与其它组合键（^X M 等）保持同一高度。
+     */
+    private class EnlargedGlyphSpan(private val scale: Float) : android.text.style.ReplacementSpan() {
+        override fun getSize(
+            paint: android.graphics.Paint, text: CharSequence, start: Int, end: Int,
+            fm: android.graphics.Paint.FontMetricsInt?
+        ): Int {
+            val base = paint.textSize
+            val m = paint.fontMetricsInt
+            val a = m.ascent
+            val d = m.descent
+            val t = m.top
+            val b = m.bottom
+            val l = m.leading
+            paint.textSize = base * scale
+            val w = paint.measureText(text, start, end)
+            paint.textSize = base
+            if (fm != null) {
+                fm.ascent = a
+                fm.descent = d
+                fm.top = t
+                fm.bottom = b
+                fm.leading = l
+            }
+            return w.toInt()
+        }
+
+        override fun draw(
+            canvas: android.graphics.Canvas, text: CharSequence, start: Int, end: Int,
+            x: Float, top: Int, y: Int, bottom: Int, paint: android.graphics.Paint
+        ) {
+            val base = paint.textSize
+            paint.textSize = base * scale
+            canvas.drawText(text.subSequence(start, end).toString(), x, y.toFloat(), paint)
+            paint.textSize = base
+        }
+    }
+
     private fun setupShortcutRow(v: View) {
         val pager = v.findViewById<ViewPager2>(R.id.shortcutScroll) ?: return
         val ctx = requireContext()
@@ -772,42 +823,21 @@ class TerminalFragment : Fragment() {
          * 按键标签：`^X m` 这类多字符组合把 `^X ` 前缀做成上标小字（幂数），主字符正常；
          * 单字符标签（如 @ | ^C）原样返回。保证多字符标签在统一 btnW 内不挤且不缩小主字符。
          */
-        fun styledKeyLabel(label: String, baseSize: Float): CharSequence {
+        fun styledKeyLabel(label: String): CharSequence {
             // 只处理「^X 前缀 + 主字符」的多字符组合；^P/^O 等 2 字符组合保持原样。
             if (label.startsWith("^X ") && label.length > 3) {
-                // ^X ↵：↵(U+21B5) 在 Monospace 里 fallback 宽度与等宽主字符（M/L/N…）不同，
-                // 使整行宽度差、居中后 ^X 位置偏移。运行时测量 ↵（含 1.4f）与参照字符 M 的宽度差，
-                // 补足精确数量的空格让整行宽度与其它键一致，^X 回到相同水平位置（动态测量避免盲估）。
-                var text = label
-                if (label.endsWith("↵")) {
-                    val paint = android.graphics.Paint().apply {
-                        typeface = keyTypeface
-                        textSize = android.util.TypedValue.applyDimension(
-                            android.util.TypedValue.COMPLEX_UNIT_SP, baseSize,
-                            ctx.resources.displayMetrics)
-                    }
-                    val paintBig = android.graphics.Paint().apply {
-                        typeface = keyTypeface
-                        textSize = android.util.TypedValue.applyDimension(
-                            android.util.TypedValue.COMPLEX_UNIT_SP, baseSize * 1.4f,
-                            ctx.resources.displayMetrics)
-                    }
-                    val wRef = paint.measureText("M")
-                    val wEnter = paintBig.measureText("↵")
-                    // 用 NBSP（\u00A0）补宽度：普通尾随空格可能被 TextView 忽略，NBSP 保证计入。
-                    val wSpace = paint.measureText("\u00A0")
-                    val pad = if (wSpace > 0f) ((wRef - wEnter) / wSpace).toInt().coerceAtLeast(0) else 0
-                    text = label + "\u00A0".repeat(pad)
-                }
-                val sp = android.text.SpannableString(text)
+                val sp = android.text.SpannableString(label)
                 // ^X 前缀（前 2 字符）上标 + 缩小
                 sp.setSpan(android.text.style.SuperscriptSpan(), 0, 2,
                     android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 sp.setSpan(android.text.style.RelativeSizeSpan(0.85f), 0, 2,
                     android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-                // ^X ↵：回车字符单独调大（1.4f，突出回车）
+                // ^X ↵：保留 ^X 与 ↵ 之间的空格，只把 ↵ 放大到明显大于等宽主字符。
+                // 不再靠「去掉空格凑整行等宽 + 居中」对齐——那套依赖字体回退的 advance，
+                // 实测会移位；^X 的对齐改由 makeBtn 的「组合键左对齐 + 固定缩进」保证，
+                // 回车字符的位置/宽度不再影响 ^X。
                 if (label.endsWith("↵")) {
-                    sp.setSpan(android.text.style.RelativeSizeSpan(1.4f), label.length - 1,
+                    sp.setSpan(EnlargedGlyphSpan(1.73f), label.length - 1,
                         label.length, android.text.Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
                 }
                 return sp
@@ -826,7 +856,7 @@ class TerminalFragment : Fragment() {
             "AI_UNDO" -> "撤销上一条消息\nCtrl+X 然后 U"
             "AI_QUIT" -> "退出\nCtrl+X 然后 Q"
             "AI_AGENT" -> "选择 Agent\nCtrl+X 然后 A"
-            "AI_SIDEBAR" -> "切换侧边栏\nCtrl+X 然后 B"
+            "AI_VARIANTS" -> "切换思考程度（variants 档位）\n点击输入 /variants"
             "AI_JUMPMSG" -> "跳转到消息\nCtrl+X 然后 G"
             "AI_EXPORT" -> "导出会话到编辑器\nCtrl+X 然后 X"
             "AI_CLOSETAB" -> "关闭当前标签页\nCtrl+X 然后 W"
@@ -856,14 +886,29 @@ class TerminalFragment : Fragment() {
                 }
                 card.addView(img)
             } else {
+                // 组合键（^X M 等）统一「左对齐 + 固定缩进」：^X 恒在按钮同一横坐标，
+                // 不再因主字符/回车宽度不同而左右漂移（整体居中会随总宽变化）。
+                // 缩进按「^X M」整体居中反推，正常字号下组合键看起来仍居中。
+                val isCombo = label.startsWith("^X ") && label.length > 3
+                val comboPad = if (isCombo) {
+                    val p = android.graphics.Paint().apply {
+                        typeface = keyTypeface
+                        this.textSize = android.util.TypedValue.applyDimension(
+                            android.util.TypedValue.COMPLEX_UNIT_SP, textSize,
+                            ctx.resources.displayMetrics)
+                    }
+                    val w = p.measureText("^X") * 0.85f + p.measureText(" M")
+                    ((btnW - w) / 2f).toInt().coerceAtLeast(0)
+                } else 0
                 val tv = TextView(ctx).apply {
                     // 多字符标签（如 ^X m / ^X ⏎）：把 ^X 前缀做成上标小字（幂数形式），
                     // 主字母保持正常 textSize；单字符标签原样。这样两页按键宽度一致且不挤。
-                    text = styledKeyLabel(label, textSize)
+                    text = styledKeyLabel(label)
                     setTextSize(android.util.TypedValue.COMPLEX_UNIT_SP, textSize)
                     setTextColor(onSurface)
                     typeface = keyTypeface
-                    gravity = Gravity.CENTER
+                    gravity = if (isCombo) (Gravity.START or Gravity.CENTER_VERTICAL) else Gravity.CENTER
+                    if (comboPad > 0) setPadding(comboPad, 0, 0, 0)
                     includeFontPadding = false
                     letterSpacing = 0f
                     paint.isSubpixelText = false
@@ -962,7 +1007,9 @@ class TerminalFragment : Fragment() {
         val row4 = listOf(
             Triple("AI_NEW", "^X N", 0), Triple("AI_UNDO", "^X U", 0),
             Triple("AI_QUIT", "^X Q", 0), Triple("AI_AGENT", "^X A", 0),
-            Triple("AI_SIDEBAR", "^X B", 0), Triple("AI_JUMPMSG", "^X G", 0),
+            // 原「切换侧边栏 ^X B」改为 /variants 快捷键：点击直接向 AI 输入框输入 /variants
+            // （切换 mimo 思考档位）。标签用 /v（40dp 按钮放不下 /variants 全名），长按提示见 aiHintFor。
+            Triple("AI_VARIANTS", "/v", 0), Triple("AI_JUMPMSG", "^X G", 0),
             Triple("AI_EXPORT", "^X X", 0), Triple("AI_CLOSETAB", "^X W", 0)
         )
         val pages = listOf(listOf(row1, row2), listOf(row3, row4))
@@ -1004,7 +1051,7 @@ class TerminalFragment : Fragment() {
             "AI_UNDO" -> confirmUndo()   // ^X 然后 u = 撤销上一条消息（误触代价高，二次确认）
             "AI_QUIT" -> sendAiCommand('q')     // ^X 然后 q = 退出
             "AI_AGENT" -> sendAiCommand('a')    // ^X 然后 a = 选择 Agent
-            "AI_SIDEBAR" -> sendAiCommand('b')  // ^X 然后 b = 切换侧边栏
+            "AI_VARIANTS" -> sendAiText("/variants") // 直接输入 /variants 到 AI 输入框（mimo 切思考档位）
             "AI_JUMPMSG" -> sendAiCommand('g')  // ^X 然后 g = 跳转到消息
             "AI_EXPORT" -> sendAiCommand('x')   // ^X 然后 x = 导出会话到编辑器
             "AI_CLOSETAB" -> sendAiCommand('w') // ^X 然后 w = 关闭当前标签页
@@ -1036,6 +1083,17 @@ class TerminalFragment : Fragment() {
         }
         aiCmdRunnable = r
         keyRepeatHandler.postDelayed(r, 300)
+    }
+
+    /**
+     * 直接向当前 AI 工具会话输入一段文本（不按键、不回车）——用于斜杠命令如 /variants。
+     * 与 sendAiCommand（^X+字母）不同：文本会出现在输入框里，由用户确认/继续输入。
+     */
+    private fun sendAiText(text: String) {
+        val s = TerminalTabs.activeSession() ?: return
+        vibrateKey(false)
+        val bytes = text.toByteArray(Charsets.UTF_8)
+        s.write(bytes, 0, bytes.size)
     }
 
     /**

@@ -31,8 +31,7 @@ object AiModelManager {
 
     /** 思考强度全部档位（opencode ReasoningEfforts 全集，不含 "default"）。
      *  opencode：capabilities.reasoning.effort = 该集合（据此建 #variant，openai-compatible 协议每档一个）。
-     *  mimo：provider.<id>.models.<id>.variants = {每档:{}}（mimo 据此建可切档位）。
-     *  小米 MiMo 内置模型实测无档位（efforts:[]、reasoning_options:[{type:toggle}]），不写。 */
+     *  mimo：provider.<id>.models.<id>.variants = {每档:{}}（mimo 据此建可切档位，含小米 MiMo）。 */
     val ALL_EFFORTS = listOf("none", "minimal", "low", "medium", "high", "xhigh", "max")
 
     // ---------------- 服务商列表（规范：不让用户手填 provider） ----------------
@@ -496,13 +495,6 @@ object AiModelManager {
         return out
     }
 
-    /** 小米 MiMo 模型：实测无思考强度档位（efforts:[]、reasoning_options:[{type:toggle}]，仅开/关）。
-     *  codetool 内置 id 是 "mimo"，mimo CLI 的 provider id 是 "xiaomi"，两者都算。 */
-    private fun isMimoModel(m: Model): Boolean {
-        val p = effProvider(m)
-        return p == "mimo" || p == "xiaomi" || m.provider == "mimo" || m.provider == "xiaomi"
-    }
-
     /** 判断某 opencode providers.<id> 是否为 codetool 生成（清理旧残留时只动这些，不动内置/手工 provider）。
      *  判据：package=@opencode/ai/providers/openai-compatible 且 env 首项以 _API_KEY 结尾（envVarFor 的形态）。 */
     private fun isCodetoolProvider(po: JSONObject): Boolean {
@@ -586,9 +578,9 @@ object AiModelManager {
                         decl.put("id", mm.modelId)
                         decl.put("name", mm.name.substringAfter('/').ifEmpty { mm.modelId })
                         decl.put("reasoning", mm.supportsReasoning)
-                        // 思考强度档位：mimo 内置模型无档位不写；其他模型写全量档位（mimo 据此建可切档位）。
+                        // 思考强度档位：全部模型（含小米 MiMo，实测支持档位）写全量档位（mimo 据此建可切档位）。
                         // 用户选中档位经 model.json 的 variant 状态（见下），TUI ctrl+t / /variants 可切。
-                        if (mm.supportsReasoning && !isMimoModel(mm)) {
+                        if (mm.supportsReasoning) {
                             val variants = JSONObject()
                             ALL_EFFORTS.forEach { variants.put(it, JSONObject()) }
                             decl.put("variants", variants)
@@ -645,10 +637,10 @@ object AiModelManager {
                 if (mimoMcp != null && mimoMcp.length() > 0) obj.put("mcp", JSONObject(mimoMcp.toString()))
             }
         }
-        // 顶层 model = current 默认。若当前模型选了思考强度且支持档位（非 mimo），
+        // 顶层 model = current 默认。若当前模型选了思考强度且支持档位，
         // 经 variant 表达为 "provider/id#档位"（opencode 用 capabilities.reasoning.effort 建的 variant）；
-        // 默认（未选档位）不带 #，用模型自身默认档位。mimo 无档位，从不带 #。
-        val modelRef = if (m.reasoningEffort.isNotEmpty() && m.supportsReasoning && !isMimoModel(m)) {
+        // 默认（未选档位）不带 #，用模型自身默认档位。
+        val modelRef = if (m.reasoningEffort.isNotEmpty() && m.supportsReasoning) {
             "${mProv}/${m.modelId}#${m.reasoningEffort}"
         } else {
             "${mProv}/${m.modelId}"
@@ -725,9 +717,8 @@ object AiModelManager {
         // 思考强度（schema 确认）：capabilities.reasoning.effort = 模型支持的档位集合，
         // opencode 据此自动建 #variant（openai-compatible 协议每个档位一个 variant，settings.reasoningEffort）。
         // 用户选中档位不写这里——它经顶层 model: "provider/id#档位" 选中对应 variant（见 writeOpencode）。
-        // 小米 MiMo 实测无档位（efforts:[]、reasoning_options:[{type:toggle}]，仅开/关思考），不写 effort。
         val reasoning = JSONObject().put("supported", mm.supportsReasoning)
-        if (mm.supportsReasoning && !isMimoModel(mm)) {
+        if (mm.supportsReasoning) {
             val arr = JSONArray()
             ALL_EFFORTS.forEach { arr.put(it) }
             reasoning.put("effort", arr)

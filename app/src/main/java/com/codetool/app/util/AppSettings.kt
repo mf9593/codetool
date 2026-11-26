@@ -12,6 +12,8 @@ object AppSettings {
     private const val KEY_FONT_SIZE = "font_size"
     private const val KEY_LOG_AUTO_REFRESH = "log_auto_refresh"
     private const val KEY_LOG_REFRESH_INTERVAL = "log_refresh_interval_ms"
+    private const val KEY_LOG_SHOW_DATE = "log_show_date"
+    private const val KEY_LOG_SHOW_MS = "log_show_ms"
     private const val KEY_FILE_SHOW_HIDDEN = "file_show_hidden"
     private const val KEY_BATTERY_PROMPTED = "battery_prompted"
     private const val KEY_ONBOARDING_DONE = "onboarding_done"
@@ -19,6 +21,9 @@ object AppSettings {
     private const val KEY_APT_MIRROR = "apt_mirror"
     private const val KEY_VIBRATION = "terminal_vibration"
     private const val KEY_VIBRATION_PCT = "terminal_vibration_pct"
+    private const val KEY_DL_REPO = "dl_repo"
+    private const val KEY_DL_MIRROR_ON = "dl_mirror_on"
+    private const val KEY_DL_MIRROR_PREFIX = "dl_mirror_prefix"
 
     /** 默认终端字号（dp）。Termux 默认 14，这里调大。 */
     const val DEFAULT_FONT_SIZE = 30
@@ -33,6 +38,11 @@ object AppSettings {
     /** 可选刷新间隔范围：1 秒 ~ 10 秒。 */
     const val MIN_LOG_REFRESH_INTERVAL = 1000
     const val MAX_LOG_REFRESH_INTERVAL = 10000
+
+    /** 日志时间戳默认不显示日期（同一天日志重复日期是噪音，只看时间即可分清先后）。 */
+    const val DEFAULT_LOG_SHOW_DATE = false
+    /** 日志时间戳默认显示毫秒（同秒内多条日志靠它排序）。 */
+    const val DEFAULT_LOG_SHOW_MS = true
 
     /** 默认 APT 源镜像 id：清华（国内网络下官方源易被 DNS/CDN 污染导致 apt 挂死）。 */
     const val DEFAULT_APT_MIRROR = "tuna"
@@ -69,6 +79,26 @@ object AppSettings {
     fun setLogRefreshIntervalMs(context: Context, ms: Int) {
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
             .edit().putInt(KEY_LOG_REFRESH_INTERVAL, ms.coerceIn(MIN_LOG_REFRESH_INTERVAL, MAX_LOG_REFRESH_INTERVAL)).apply()
+    }
+
+    /** 日志时间戳是否显示日期（yyyy-MM-dd 前缀）。默认关闭（只看时间，去掉重复日期噪音）。 */
+    fun logShowDate(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_LOG_SHOW_DATE, DEFAULT_LOG_SHOW_DATE)
+
+    fun setLogShowDate(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_LOG_SHOW_DATE, enabled).apply()
+    }
+
+    /** 日志时间戳是否显示毫秒（.SSS 后缀）。默认开启（同秒内多条靠它排序）。 */
+    fun logShowMs(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_LOG_SHOW_MS, DEFAULT_LOG_SHOW_MS)
+
+    fun setLogShowMs(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_LOG_SHOW_MS, enabled).apply()
     }
 
     /** 文件管理是否显示隐藏文件（以 . 开头）。默认不显示。 */
@@ -205,5 +235,40 @@ object AppSettings {
     const val MIN_VIBRATION_PCT = 5
     const val MAX_VIBRATION_PCT = 100
     const val DEFAULT_VIBRATION_PCT = 30
+
+    // ---------------- 在线下载（构建环境包） ----------------
+
+    /** 默认下载仓库：用户自己的 codetool-env（含全部 14 个上游资产 + JDK17/21）。 */
+    const val DEFAULT_DL_REPO = "mf9593/codetool-env"
+    /** 默认镜像：实测 ghfast.top 明显最快（直连/ghproxy 在大文件上只有 10~50KB/s）。 */
+    const val DEFAULT_DL_MIRROR_PREFIX = "https://ghfast.top/"
+
+    fun downloadRepo(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_DL_REPO, DEFAULT_DL_REPO).orEmpty().ifBlank { DEFAULT_DL_REPO }
+
+    fun setDownloadRepo(context: Context, repo: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_DL_REPO, repo.trim()).apply()
+    }
+
+    /** 镜像加速开关（开启后下载链接前加镜像前缀）。 */
+    fun downloadMirrorOn(context: Context): Boolean =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getBoolean(KEY_DL_MIRROR_ON, false)
+
+    fun setDownloadMirrorOn(context: Context, enabled: Boolean) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putBoolean(KEY_DL_MIRROR_ON, enabled).apply()
+    }
+
+    fun downloadMirrorPrefix(context: Context): String =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .getString(KEY_DL_MIRROR_PREFIX, DEFAULT_DL_MIRROR_PREFIX).orEmpty()
+
+    fun setDownloadMirrorPrefix(context: Context, prefix: String) {
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+            .edit().putString(KEY_DL_MIRROR_PREFIX, prefix.trim()).apply()
+    }
 
 }

@@ -40,11 +40,11 @@ class MainActivity : AppCompatActivity() {
     private lateinit var viewPager: ViewPager2
     private lateinit var bottomNav: BottomNavigationView
 
-    // 五个页面：首页 / 终端 / 工具(脚本库|包管理 tab) / 文件 / 日志
+    // 五个页面：首页 / 终端 / 工具(脚本库|下载|包管理 tab 等) / 文件 / 日志
     private val fragments = listOf(
         HomeFragment(),      // 首页：状态 + 终端开关
         TerminalFragment(),  // 终端 + 画面
-        ToolsFragment(),     // 工具：脚本库 | 包管理（同页 tab）
+        ToolsFragment(),     // 工具：脚本库 / 下载 / 包管理（同页 tab）
         FilesFragment(),     // 文件：文件管理（独立页）
         TasksFragment()      // 日志管理
     )
@@ -432,12 +432,12 @@ class MainActivity : AppCompatActivity() {
         fileCfg.icon?.mutate()?.setTint(iconColor)
         fileCfg.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
         fileCfg.isVisible = currentPage == 3
-        // 日志页：复制 / 清空移到标题栏（仅日志页可见）
+        // 日志页：复制 / 清空移到标题栏（仅日志页可见）；搜索图标文件页/日志页共用
         val search = menu.add(0, MENU_SEARCH, 3, "搜索")
         search.setIcon(R.drawable.ic_search)
         search.icon?.mutate()?.setTint(iconColor)
         search.setShowAsAction(MenuItem.SHOW_AS_ACTION_ALWAYS)
-        search.isVisible = currentPage == 4
+        search.isVisible = currentPage == 3 || currentPage == 4
         val copy = menu.add(0, MENU_COPY, 4, "复制")
         copy.setIcon(R.drawable.ic_copy)
         copy.icon?.mutate()?.setTint(iconColor)
@@ -478,8 +478,13 @@ class MainActivity : AppCompatActivity() {
             return true
         }
         if (item.itemId == MENU_SEARCH) {
-            supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()
-                ?.toggleSearch()
+            if (currentPage == 3) {
+                supportFragmentManager.fragments.filterIsInstance<FilesFragment>().firstOrNull()
+                    ?.showSearchDialog()
+            } else {
+                supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()
+                    ?.toggleSearch()
+            }
             return true
         }
         if (item.itemId == MENU_CLEAR) {
@@ -630,7 +635,19 @@ class MainActivity : AppCompatActivity() {
                 ?.setAutoRefresh(enabled)
         }
         addRefreshIntervalRow(container)
-        sheetHint(container, "开启自动滚动后按选定的间隔（1~10 秒）自动刷新并滚动到最新日志（终端式）")
+        // 时间戳格式：显示日期/毫秒可分别开关（4 种组合）。默认不显示日期、显示毫秒——
+        // 同一天日志重复日期是噪音，去掉后只看时分秒；同秒内多条靠毫秒分清先后。
+        addSwitchRow(container, "显示日期", AppSettings.logShowDate(this)) { enabled ->
+            AppSettings.setLogShowDate(this, enabled)
+            supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()?.refreshLog()
+        }
+        addSwitchRow(container, "显示毫秒", AppSettings.logShowMs(this)) { enabled ->
+            AppSettings.setLogShowMs(this, enabled)
+            supportFragmentManager.fragments.filterIsInstance<TasksFragment>().firstOrNull()?.refreshLog()
+        }
+        sheetHint(container, "开启自动滚动后按选定的间隔（1~10 秒）自动刷新并滚动到最新日志（终端式）；" +
+            "「显示日期/毫秒」只影响日志页查看时的显示（如 10:32:05.123 或 2026-11-26 10:32:05）；" +
+            "新日志始终写完整时间戳，旧日志当时没写日期/毫秒的无法补出（不做推断）。")
         sheet.setContentView(container)
         sheet.show()
     }
@@ -682,7 +699,7 @@ class MainActivity : AppCompatActivity() {
 
         val intro = android.widget.TextView(this).apply {
             text = "第一页 = 光标/编辑常用键；第二页 = AI 工具（opencode / mimo）命令面板。\n" +
-                "修饰键 CTRL/ALT/SHIFT 粘性：点一次带修饰；方向键 / BCK 长按连续；长按 AI 键显示提示。"
+                "部分按键按一次即等同长按（如 CTRL 粘性）；^X 表示 CTRL+X 组合键。"
             textSize = 13f
             setPadding(0, dp(4), 0, dp(4))
         }
@@ -699,10 +716,10 @@ class MainActivity : AppCompatActivity() {
             "Ctrl+X 然后 M" to "切换模型", "Ctrl+X 然后 L" to "切换会话",
             "Ctrl+X 然后 N" to "新建会话", "Ctrl+X 然后 ↵" to "排队发送提示（稍后处理）",
             "Ctrl+X 然后 U" to "撤销上一条消息", "Ctrl+X 然后 Q" to "退出",
-            "Ctrl+X 然后 A" to "选择 Agent", "Ctrl+X 然后 B" to "切换侧边栏",
+            "Ctrl+X 然后 A" to "选择 Agent",
             "Ctrl+X 然后 G" to "跳转到消息", "Ctrl+X 然后 X" to "导出会话到编辑器",
             "Ctrl+X 然后 W" to "关闭当前标签页", "^P" to "打开设置", "^O" to "最近会话 + 项目一起开",
-            "^R" to "重命名当前会话",
+            "^R" to "重命名当前会话", "/v" to "输入 /variants（mimo 切换思考档位）",
         )
 
         val col = android.widget.LinearLayout(this).apply {
@@ -714,6 +731,18 @@ class MainActivity : AppCompatActivity() {
         for ((k, v, i) in p1) col.addView(rowLine(k, v, i))
         col.addView(sectionTitle("【第二页】AI 工具命令面板"))
         for ((k, v) in p2) col.addView(rowLine(k, v))
+
+        // 思考程度切换：mimo 内置命令 /variants（或 Ctrl+T），app 内也可选档位直接写 CLI 配置。
+        col.addView(sectionTitle("【思考程度切换】"))
+        col.addView(android.widget.TextView(this).apply {
+            text = "终端第二页有 /v 快捷键：点击直接向输入框输入 /variants（mimo 切档位），" +
+                "也可在 mimo 里输入 / 打开命令面板选 /variants，或按 Ctrl+T。" +
+                "opencode 用 /models 选 model#档位。\n" +
+                "应用内：AI 模型 → 编辑模型 → 思考强度档位，保存即写入 CLI 配置（mimo 的 " +
+                "~/.config/mimocode/mimocode.jsonc provider.<id>.models.<id>.variants，opencode 顶层 model#档位）。"
+            textSize = 12.5f
+            setPadding(0, dp(2), 0, dp(2))
+        })
 
         val scroll = android.widget.ScrollView(this).apply {
             addView(col)

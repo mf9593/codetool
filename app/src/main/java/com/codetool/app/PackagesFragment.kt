@@ -7,7 +7,6 @@ import android.os.Looper
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
-import android.widget.Toast
 import androidx.fragment.app.Fragment
 import com.codetool.app.ai.AptMirror
 import com.codetool.app.gui.TawcCompositorActivity
@@ -43,10 +42,10 @@ class PackagesFragment : Fragment() {
         // 清理 apt 缓存：删除已下载的 .deb 与索引缓存，释放空间（不影响已安装包）。
         // 破坏性低但属清理操作：按规范用描边样式 + 二次确认。
         v.findViewById<MaterialButton>(R.id.btnAptClean).setOnClickListener {
-            android.app.AlertDialog.Builder(requireContext())
+            com.google.android.material.dialog.MaterialAlertDialogBuilder(requireContext())
                 .setTitle("清理 apt 缓存")
-                .setMessage("将删除已下载的软件包缓存与索引缓存（/var/cache/apt、/var/lib/apt/lists），释放空间。\n" +
-                    "不影响已安装的软件，仅下次下载需重新拉取。")
+                .setMessage("将删除已下载的软件包缓存与索引缓存（/var/cache/apt/archives、/var/lib/apt/lists），释放空间。\n" +
+                    "不影响已安装的软件；下次 apt 安装/更新时会重新下载索引。")
                 .setPositiveButton("清理") { _, _ ->
                     runInTerminal(
                         "清理 apt 缓存",
@@ -54,10 +53,11 @@ class PackagesFragment : Fragment() {
                             "echo '=== 清理前占用 ==='\n" +
                             "du -sh /var/cache/apt/archives /var/lib/apt/lists 2>/dev/null || true\n" +
                             "apt-get clean\n" +
-                            "apt-get autoclean\n" +
+                            "rm -rf /var/lib/apt/lists/*\n" +
+                            "mkdir -p /var/lib/apt/lists/partial\n" +
                             "echo '=== 清理后占用 ==='\n" +
                             "du -sh /var/cache/apt/archives /var/lib/apt/lists 2>/dev/null || true\n" +
-                            "echo '[OK] apt 缓存已清理'\n"
+                            "echo '[OK] apt 缓存已清理（软件包缓存 + 索引缓存）'\n"
                     )
                 }
                 .setNegativeButton("取消", null)

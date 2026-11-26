@@ -17,8 +17,13 @@
     <color name="on_background">#FFDEE4E2</color>
     <color name="outline">#FF83938F</color>
     <color name="error">#FFFFB4AB</color>
+    <!-- 浅色主题的 error：Material 标准浅色红（#B3261E），深色主题继续用 error（浅粉）。 -->
+    <color name="error_light">#FFB3261E</color>
     <color name="error_container">#FF93000A</color>
     <color name="on_error_container">#FFFFDAD6</color>
+    <!-- 警告色：浅色主题用深琥珀（白底可读），深色主题用亮琥珀（黑底可读）。 -->
+    <color name="warn_light">#FF8A5000</color>
+    <color name="warn_dark">#FFFFC107</color>
 
     <!-- 图标背景（深青黑） -->
     <color name="ic_launcher_background">#FF0B1B1E</color>

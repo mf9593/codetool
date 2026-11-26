@@ -108,6 +108,17 @@ have_flutter() {
   [ -n "$(find "$TARGET/flutter" -type f -path '*/bin/flutter' 2>/dev/null | head -1)" ]
 }
 
+# 选最高版本的 NDK（多版本并存时 env / SDK 软链都用最高版）
+pick_highest_ndk() {
+  for d in "$TARGET"/ndk/*/; do
+    [ -f "$d/source.properties" ] || continue
+    [ -d "$d/toolchains" ] || continue
+    rev="$(grep -E '^Pkg\.Revision' "$d/source.properties" 2>/dev/null | cut -d= -f2 | tr -d ' ')"
+    [ -z "$rev" ] && rev="0"
+    echo "$rev|${d%/}"
+  done | sort -V | tail -1 | cut -d'|' -f2
+}
+
 SKIPPED=0
 # $1=组件标记名 $2=压缩包 $3=结构检查函数（旧版安装无标记时兜底）
 need_install() {
@@ -133,9 +144,25 @@ need_install() {
   return 0
 }
 
-echo "==== 扫描脚本目录: $DIR ===="
-# 逐个精确归类（按文件名，避免 r27d/buildtools/platformtools 被关键字漏掉）
-for f in "$DIR"/*; do
+DATA_DIR="${CODETOOL_DATA_DIR:-/storage/emulated/0/Download/codetool/data}"
+echo "==== 扫描构建包 ===="
+echo "  脚本目录: $DIR"
+if [ -d "$DATA_DIR" ]; then
+  echo "  数据目录: $DATA_DIR"
+else
+  echo "  数据目录: $DATA_DIR（不存在，跳过）"
+fi
+LIST="/tmp/codetool-buildenv-list.$$"
+DEDUP="/tmp/codetool-buildenv-dedup.$$"
+: > "$LIST"
+# data/ 优先（下载页下载到这里）；脚本目录作为旧版兼容
+if [ -d "$DATA_DIR" ]; then
+  for f in "$DATA_DIR"/*; do [ -f "$f" ] && echo "$f" >> "$LIST"; done
+fi
+for f in "$DIR"/*; do [ -f "$f" ] && echo "$f" >> "$LIST"; done
+# 按文件名去重（同名包优先用 data/ 的，脚本目录里的旧副本跳过）
+awk -F/ '!seen[$NF]++' "$LIST" > "$DEDUP"
+while IFS= read -r f; do
   [ -f "$f" ] || continue
   b="$(basename "$f")"; l="$(echo "$b" | tr 'A-Z' 'a-z')"
   case "$l" in
@@ -158,10 +185,26 @@ for f in "$DIR"/*; do
       if need_install sdk "$f" have_sdk; then
         extract "$f" "$TARGET/sdk" && mark_installed sdk "$f"
       fi ;;
-    *r27d*|*ndk*)
+    *r[0-9][0-9][a-z]*|*ndk*)
       echo "[NDK] $b"
-      if need_install ndk "$f" have_ndk; then
-        extract "$f" "$TARGET/ndk" && mark_installed ndk "$f"
+      # 多版本并存：每个压缩包独立标记，装过就跳过；env 稍后选最高版本
+      mark_ndk="ndk_${b}"
+      if [ "$FORCE" != "1" ] && is_installed "$mark_ndk" "$f"; then
+        echo "  已安装（压缩包未变），跳过"
+        SKIPPED=$((SKIPPED + 1))
+      else
+        # 旧版已解压但无 per-version 标记：按 rXX 目录名补记，避免重复解压
+        tok="$(echo "$b" | grep -oE 'r[0-9][0-9]' | head -1)"
+        old=""
+        [ -n "$tok" ] && old="$(find "$TARGET/ndk" -maxdepth 1 -mindepth 1 -type d -name "*${tok}*" 2>/dev/null | head -1)"
+        if [ -n "$old" ] && [ -f "$old/source.properties" ] && [ -d "$old/toolchains" ]; then
+          mark_installed "$mark_ndk" "$f"
+          echo "  检测到已解压目录 $(basename "$old")（旧版无标记），跳过并补记标记"
+          SKIPPED=$((SKIPPED + 1))
+        else
+          echo "  解压 NDK（多版本保留）"
+          extract "$f" "$TARGET/ndk" && mark_installed "$mark_ndk" "$f"
+        fi
       fi ;;
     *buildtools*|*build-tools*)
       # 版本号从文件名取（buildtools_36.1.0_... → 36.1.0），不再写死
@@ -188,13 +231,14 @@ for f in "$DIR"/*; do
       fi ;;
     *) echo "[跳过] 未归类的包: $b" ;;
   esac
-done
+done < "$DEDUP"
+rm -f "$LIST" "$DEDUP"
 
 # ---- 定位各级目录（find 兜底，兼容顶层带一层目录名的包）----
 JAVA_BIN="$(find "$TARGET/jdk" -type f -name java -path '*/bin/*' 2>/dev/null | head -1)"
 JAVA_HOME_DIR="${JAVA_BIN%/bin/java}"
-NDK_TOOLCHAINS="$(find "$TARGET/ndk" -maxdepth 4 -type d -name toolchains 2>/dev/null | head -1)"
-NDK_DIR="${NDK_TOOLCHAINS%/toolchains}"
+NDK_DIR="$(pick_highest_ndk)"
+if [ -n "$NDK_DIR" ]; then NDK_TOOLCHAINS="$NDK_DIR/toolchains"; else NDK_TOOLCHAINS=""; fi
 SDK_DIR="$(find "$TARGET/sdk" -maxdepth 3 -type d -name build-tools 2>/dev/null | head -1 | xargs dirname 2>/dev/null)"
 [ -z "$SDK_DIR" ] && SDK_DIR="$TARGET/sdk/android-sdk"
 CMAKE_BIN="$(find "$TARGET/cmake" -type f -name cmake -path '*/bin/*' 2>/dev/null | head -1)"
@@ -274,7 +318,12 @@ fix_ndk_host_arch() {
         [ "$(grep -E '^Pkg\.Revision' "$cand/source.properties" 2>/dev/null | cut -d= -f2 | tr -d ' ')" = "$rel" ] && { pre="${cand%/}"; break; }
       fi
     done
-    [ -z "$pre" ] && pre="$(find "$TARGET/ndk" -maxdepth 1 -mindepth 1 -type d 2>/dev/null | while read -r d; do [ -d "$d/toolchains/llvm/prebuilt/linux-arm64" ] && echo "$d" && break; done)"
+    if [ -z "$pre" ]; then
+      local hi; hi="$(pick_highest_ndk)"
+      if [ -n "$hi" ] && { [ -d "$hi/toolchains/llvm/prebuilt/linux-arm64" ] || [ -d "$hi/toolchains/llvm/prebuilt/linux-aarch64" ]; }; then
+        pre="$hi"
+      fi
+    fi
     [ -z "$pre" ] && continue   # 没有可用的 aarch64 NDK，放弃
     echo "[NDK-HOST] SDK 内 NDK 副本 $(basename "$sdk_ndk") 非 arm64 host → 替换为软链 → $pre"
     rm -rf "${sdk_ndk%/}"

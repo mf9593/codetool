@@ -290,7 +290,6 @@ class AiModelsFragment : Fragment() {
         val targetBtn = v.findViewById<MaterialButton>(R.id.btnAiTarget)
         val spAiApiType = v.findViewById<Spinner>(R.id.spAiApiType)
         val spAiEffort = v.findViewById<Spinner>(R.id.spAiEffort)
-        val tvAiEffortHint = v.findViewById<MaterialTextView>(R.id.tvAiEffortHint)
         val swAiEnabled = v.findViewById<MaterialSwitch>(R.id.swAiEnabled)
         val testBtn = v.findViewById<MaterialButton>(R.id.btnAiTest)
         val testResult = v.findViewById<MaterialTextView>(R.id.tvAiTestResult)
@@ -333,13 +332,9 @@ class AiModelsFragment : Fragment() {
             modelAdapter.addAll(p.models)
             modelAdapter.notifyDataSetChanged()
             btnDelProvider.visibility = if (p.builtin) View.GONE else View.VISIBLE
-            // 思考强度：小米 MiMo 无档位（仅开/关思考），禁用档位下拉避免选了无效配置。
-            // 其他服务商经 openai-compatible 声明 effort=[low,medium,high]，可选。
-            val mimo = p.id == "mimo" || p.id == "xiaomi"
-            spAiEffort.isEnabled = !mimo
-            spAiEffort.alpha = if (mimo) 0.4f else 1f
-            tvAiEffortHint.visibility = if (mimo) View.VISIBLE else View.GONE
-            if (mimo) spAiEffort.setSelection(0, false)   // 复位「默认」，mimo 不存档位
+            // 思考强度：全部服务商（含小米 MiMo，实测支持档位）都允许选档位。
+            spAiEffort.isEnabled = true
+            spAiEffort.alpha = 1f
         }
 
         existing?.let {
@@ -362,8 +357,8 @@ class AiModelsFragment : Fragment() {
         // 思考强度（reasoning effort）：默认=不声明（""）；其余为全部真实档位（none/minimal/low/medium/
         // high/xhigh/max），作为「默认档位」同步到 opencode 顶层 model: "provider/id#档位"，
         // 以及 mimo 的 provider.<id>.models.<id>.variants（据此建可切档位）。
-        // capabilities.reasoning.effort 写的是模型支持档位集合（全量，mimo 不写），不是用户选中值。
-        // 编辑已有模型时回填当前值；mimo 模型禁用（无档位）。
+        // capabilities.reasoning.effort 写的是模型支持档位集合（全量），不是用户选中值。
+        // 编辑已有模型时回填当前值。
         val effortLabels = listOf("默认") + AiModelManager.ALL_EFFORTS
         val effortAdapter = ArrayAdapter(ctx, android.R.layout.simple_spinner_item, effortLabels.toMutableList())
         effortAdapter.setDropDownViewResource(android.R.layout.simple_spinner_dropdown_item)
@@ -401,9 +396,9 @@ class AiModelsFragment : Fragment() {
             supportsImage = fetchedCaps?.supportsImage ?: existing?.supportsImage ?: true,
             supportsTemperature = fetchedCaps?.supportsTemperature ?: existing?.supportsTemperature ?: true,
             // 思考强度：下拉「默认」存 ""（不声明档位）；否则存所选档位（none/minimal/.../max），
-            // 保存后经 writeOpencode 写顶层 model#档位、writeMimo 写 variants。mimo 模型被禁用、恒为 ""。
+            // 保存后经 writeOpencode 写顶层 model#档位、writeMimo 写 variants。
             reasoningEffort = effortLabels.getOrNull(spAiEffort.selectedItemPosition).orEmpty()
-                .takeIf { it != "默认" && spAiEffort.isEnabled } ?: "",
+                .takeIf { it != "默认" } ?: "",
         )
 
         var lastPos = providers.indexOfFirst { it.id == existing?.provider.orEmpty() }.coerceAtLeast(0)
